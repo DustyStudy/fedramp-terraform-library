@@ -109,6 +109,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "trail_access_log" {
   rule {
     id     = "abort-failed-uploads-and-expire"
     status = "Enabled"
+    filter {}
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
@@ -161,6 +162,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "trail" {
   rule {
     id     = "abort-failed-uploads"
     status = "Enabled"
+    filter {}
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
@@ -168,6 +170,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "trail" {
   rule {
     id     = "archive-and-expire"
     status = "Enabled"
+    filter {}
     transition {
       days          = 90
       storage_class = "STANDARD_IA"
