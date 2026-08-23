@@ -14,3 +14,9 @@ variable "rate_limit_threshold" {
   default     = 2000
   description = "Maximum requests allowed from a single IP per 5-minute window"
 }
+
+variable "log_retention_days" {
+  type        = number
+  default     = 365
+  description = "Retention period for WAF logs in days"
+}
