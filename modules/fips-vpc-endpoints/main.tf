@@ -26,7 +26,7 @@ resource "aws_security_group" "endpoints" {
   }
 }
 
-# Interface Endpoints with FIPS & Private DNS Enabled
+# Interface Endpoints with a dedicated FIPS-suffixed service name
 resource "aws_vpc_endpoint" "fips_services" {
   for_each = toset(var.fips_endpoint_services)
 
@@ -39,6 +39,24 @@ resource "aws_vpc_endpoint" "fips_services" {
 
   tags = {
     Name = "${var.environment}-${each.value}-fips-vpce"
+  }
+}
+
+# Interface Endpoints for services without a distinct FIPS-suffixed
+# service name (see variables.tf for why these are separate — these are
+# ordinary interface endpoints, not FIPS-specific ones)
+resource "aws_vpc_endpoint" "standard_services" {
+  for_each = toset(var.standard_endpoint_services)
+
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${local.region}.${each.value}"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = var.subnet_ids
+  security_group_ids  = [aws_security_group.endpoints.id]
+
+  tags = {
+    Name = "${var.environment}-${each.value}-vpce"
   }
 }
 

@@ -5,6 +5,15 @@ locals {
 data "aws_caller_identity" "current" {}
 
 # Customer-Managed KMS Key for ECR Image Encryption (FedRAMP SC-13/SC-28)
+#
+# Note: unlike CloudWatch Logs, ECR image push/pull operations authorize
+# through the calling IAM principal (the developer, CI/CD role, or task
+# execution role doing docker push/pull) rather than through a fixed
+# service-principal grant on the key. Whoever needs to push or pull images
+# from this repository must have kms:GenerateDataKey/kms:Decrypt on this
+# key — via an IAM identity policy on their own role, or an additional
+# statement here — which this module doesn't grant on its own since it
+# doesn't know which principals need access.
 data "aws_iam_policy_document" "ecr_kms" {
   #checkov:skip=CKV_AWS_109:KMS administrative operations require root account wildcard
   #checkov:skip=CKV_AWS_111:KMS key management requires constrained write access
