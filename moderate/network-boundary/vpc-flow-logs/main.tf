@@ -160,7 +160,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "flow_log" {
   bucket = aws_s3_bucket.flow_log.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm     = "aws:kms"
+      sse_algorithm = "aws:kms"
       # Must be the full key ARN, not a bare key ID — AWS's own docs warn
       # that a key ID causes flow log delivery to fail with an
       # undeliverable-destination error rather than a clear KMS error.
