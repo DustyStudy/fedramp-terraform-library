@@ -5,8 +5,8 @@ variable "config_bucket_name" {
 }
 
 variable "conformance_pack_template" {
-  type    = string
-  default = "Operational-Best-Practices-for-FedRAMP-Moderate.yaml"
+  type        = string
+  default     = "Operational-Best-Practices-for-FedRAMP-Moderate.yaml"
   description = <<-EOT
     AWS-managed conformance pack sample template name. For High, review the
     FedRAMP High sample pack (where published) or layer additional Config
