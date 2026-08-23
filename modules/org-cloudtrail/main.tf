@@ -3,9 +3,6 @@ locals {
   region     = data.aws_region.current.name
 }
 
-data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
-
 # KMS Key Policy for CloudTrail
 data "aws_iam_policy_document" "cloudtrail_kms" {
   #checkov:skip=CKV_AWS_109:KMS administrative and service operations require root wildcard scoping
@@ -69,7 +66,6 @@ resource "aws_kms_key" "cloudtrail" {
   policy                  = data.aws_iam_policy_document.cloudtrail_kms.json
 }
 
-# SNS Alerts Topic
 resource "aws_sns_topic" "cloudtrail_alerts" {
   name              = "${var.trail_name}-alerts"
   kms_master_key_id = aws_kms_key.cloudtrail.id
@@ -117,7 +113,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "trail_access_log" {
       days_after_initiation = 7
     }
     expiration {
-      days = var.log_retention_days
+      days = var.s3_log_retention_days
     }
   }
 }
@@ -181,7 +177,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "trail" {
       storage_class = "GLACIER"
     }
     expiration {
-      days = var.log_retention_days
+      days = var.s3_log_retention_days
     }
   }
 }

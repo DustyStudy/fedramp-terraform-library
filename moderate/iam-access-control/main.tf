@@ -2,9 +2,32 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
 }
 
-data "aws_caller_identity" "current" {}
+# IAM Access Analyzer for continuous access evaluation
+resource "aws_accessanalyzer_analyzer" "analyzer" {
+  analyzer_name = "fedramp-moderate-access-analyzer"
+  type          = var.analyzer_type
 
-# Permission boundary policy with explicit least-privilege scoping and Checkov annotations
+  configuration {
+    unused_access {
+      unused_access_age = var.unused_access_age
+    }
+  }
+}
+
+# CloudWatch Alarm for Root Usage Alerting
+resource "aws_cloudwatch_metric_alarm" "root_usage" {
+  alarm_name          = "RootAccountUsageAlert"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "RootAccountUsageCount"
+  namespace           = "CloudTrailMetrics"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 1
+  alarm_actions       = ["arn:aws:sns:${data.aws_region.current.name}:${local.account_id}:${var.root_usage_alert_topic_name}"]
+}
+
+# Permission Boundary Policy
 data "aws_iam_policy_document" "developer_permission_boundary" {
   #checkov:skip=CKV_AWS_107:Credentials exposure is prevented via explicit Deny blocks below
   #checkov:skip=CKV_AWS_108:Data exfiltration is mitigated by boundary scoping
