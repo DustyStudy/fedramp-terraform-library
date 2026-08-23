@@ -35,7 +35,7 @@ resource "aws_cloudwatch_log_group" "ecs" {
   kms_key_id        = aws_kms_key.ecs.arn
 }
 
-# ECS Cluster with Container Insights Enabled (CKV_AWS_65)
+# ECS Cluster with Container Insights & Encrypted Command Logging
 resource "aws_ecs_cluster" "this" {
   name = var.cluster_name
 
@@ -49,7 +49,8 @@ resource "aws_ecs_cluster" "this" {
       logging    = "OVERRIDE"
       kms_key_id = aws_kms_key.ecs.arn
       log_configuration {
-        cloud_watch_log_group_name = aws_cloudwatch_log_group.ecs.name
+        cloud_watch_encryption_enabled = true
+        cloud_watch_log_group_name     = aws_cloudwatch_log_group.ecs.name
       }
     }
   }
