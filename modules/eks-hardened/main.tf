@@ -5,6 +5,16 @@ locals {
 data "aws_caller_identity" "current" {}
 
 # KMS Key for EKS Secrets Envelope Encryption (FedRAMP SC-13/SC-28)
+#
+# Note: unlike CloudWatch Logs (which explicitly requires a key-policy
+# statement for the logs service principal), AWS's EKS documentation does
+# not clearly state that same-account secrets encryption needs an explicit
+# key-policy statement for the cluster role or eks.amazonaws.com — the
+# grant is typically established via the creating principal's own KMS
+# permissions at cluster-creation time. If cluster creation fails with a
+# KMS access error, that's the first thing to check: either add an
+# explicit statement here for aws_iam_role.cluster.arn, or confirm the
+# principal running `terraform apply` has kms:CreateGrant on this key.
 data "aws_iam_policy_document" "eks_kms" {
   #checkov:skip=CKV_AWS_109:KMS root account scoping
   #checkov:skip=CKV_AWS_111:KMS key management write access

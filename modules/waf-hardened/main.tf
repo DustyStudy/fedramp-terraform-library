@@ -1,14 +1,16 @@
 locals {
   account_id = data.aws_caller_identity.current.account_id
+  region     = data.aws_region.current.name
 }
 
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 # KMS CMK for WAF Logging
 data "aws_iam_policy_document" "waf_kms" {
-  #checkov:skip=CKV_AWS_109:KMS administrative operations require root account wildcard
-  #checkov:skip=CKV_AWS_111:KMS key management requires write access for key admins
-  #checkov:skip=CKV_AWS_356:KMS key policies require wildcard resource within the key definition itself
+  #checkov:skip=CKV_AWS_109:KMS root account scoping
+  #checkov:skip=CKV_AWS_111:KMS key management write access
+  #checkov:skip=CKV_AWS_356:KMS key policy wildcard scoping
   statement {
     sid    = "AllowRootAccountAdmin"
     effect = "Allow"
@@ -18,6 +20,28 @@ data "aws_iam_policy_document" "waf_kms" {
     }
     actions   = ["kms:*"]
     resources = ["*"]
+  }
+
+  # Required: CloudWatch Logs makes its own encrypt/decrypt calls as the
+  # logs service, not as the IAM principal that created the log group.
+  # Without this statement, log delivery to a KMS-encrypted log group
+  # fails outright — this isn't optional hardening, it's how CloudWatch
+  # Logs KMS encryption works at all.
+  statement {
+    sid    = "AllowCloudWatchLogsEncrypt"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${local.region}.amazonaws.com"]
+    }
+    actions   = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
+    resources = ["*"]
+
+    condition {
+      test     = "ArnLike"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values   = ["arn:aws:logs:${local.region}:${local.account_id}:log-group:*"]
+    }
   }
 }
 

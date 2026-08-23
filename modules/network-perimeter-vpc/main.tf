@@ -1,8 +1,10 @@
 locals {
   account_id = data.aws_caller_identity.current.account_id
+  region     = data.aws_region.current.name
 }
 
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 # KMS CMK for VPC Flow Logs
 data "aws_iam_policy_document" "flow_logs_kms" {
@@ -18,6 +20,27 @@ data "aws_iam_policy_document" "flow_logs_kms" {
     }
     actions   = ["kms:*"]
     resources = ["*"]
+  }
+
+  # Required: CloudWatch Logs makes its own encrypt/decrypt calls as the
+  # logs service (separate from whichever IAM role publishes flow log
+  # records via logs:PutLogEvents). Without this statement, the log group
+  # can't be encrypted with this CMK at all.
+  statement {
+    sid    = "AllowCloudWatchLogsEncrypt"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${local.region}.amazonaws.com"]
+    }
+    actions   = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
+    resources = ["*"]
+
+    condition {
+      test     = "ArnLike"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values   = ["arn:aws:logs:${local.region}:${local.account_id}:log-group:*"]
+    }
   }
 }
 

@@ -19,6 +19,23 @@ data "aws_iam_policy_document" "ssm_kms" {
     actions   = ["kms:*"]
     resources = ["*"]
   }
+
+  # Required: whichever role actually writes patch output to the S3
+  # bucket needs explicit kms:GenerateDataKey/Decrypt rights on this CMK
+  # for SSE-KMS to work — the root-admin statement above doesn't imply
+  # this by itself, and the maintenance-window role's attached managed
+  # policy (AmazonSSMMaintenanceWindowRole) doesn't grant KMS access to a
+  # customer-managed key.
+  statement {
+    sid    = "AllowPatchLogWriterKeyUsage"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = [aws_iam_role.ssm_maintenance_window.arn]
+    }
+    actions   = ["kms:GenerateDataKey*", "kms:Decrypt", "kms:DescribeKey"]
+    resources = ["*"]
+  }
 }
 
 resource "aws_kms_key" "ssm" {

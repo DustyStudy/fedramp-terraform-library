@@ -1,8 +1,10 @@
 locals {
   account_id = data.aws_caller_identity.current.account_id
+  region     = data.aws_region.current.name
 }
 
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 # KMS Key for CloudWatch Logs & ECS Exec Encryption
 data "aws_iam_policy_document" "ecs_kms" {
@@ -19,6 +21,36 @@ data "aws_iam_policy_document" "ecs_kms" {
     actions   = ["kms:*"]
     resources = ["*"]
   }
+
+  # Required: CloudWatch Logs makes its own encrypt/decrypt calls as the
+  # logs service, not as the IAM principal that created the log group.
+  # Without this statement, log delivery to a KMS-encrypted log group
+  # fails outright.
+  statement {
+    sid    = "AllowCloudWatchLogsEncrypt"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${local.region}.amazonaws.com"]
+    }
+    actions   = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
+    resources = ["*"]
+
+    condition {
+      test     = "ArnLike"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values   = ["arn:aws:logs:${local.region}:${local.account_id}:log-group:*"]
+    }
+  }
+
+  # Note: this key is also referenced by ECS Exec's
+  # execute_command_configuration for encrypting the interactive session
+  # data channel. That feature separately requires kms:GenerateDataKey/
+  # kms:Decrypt for whichever IAM principals actually run
+  # `aws ecs execute-command` — since a reusable module can't know who
+  # those principals are, grant that access from your root configuration
+  # (either here via an additional statement, or as an IAM identity policy
+  # on those roles) rather than assuming this module covers it.
 }
 
 resource "aws_kms_key" "ecs" {
