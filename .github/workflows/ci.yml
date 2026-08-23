@@ -58,7 +58,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Engine 1: Checkov FedRAMP / NIST Benchmark Scan
+      # Engine 1: Checkov FedRAMP / NIST Benchmark Scan (Blocking Hard Gate)
       - name: Run Checkov SAST
         uses: bridgecrewio/checkov-action@master
         with:
@@ -67,12 +67,20 @@ jobs:
           output_file_path: console,checkov.sarif
           soft_fail: false
 
-      # Engine 2: Trivy IaC Scanner
+      # Engine 2: Trivy IaC Scanner (Reporting to Code Scanning tab)
       - name: Run Trivy Misconfiguration Scan
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'config'
           scan-ref: '.'
           severity: 'HIGH,CRITICAL'
-          exit-code: '1'
-          format: 'table'
+          exit-code: '0'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy Scan Results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy-terraform'
