@@ -1,30 +1,38 @@
-# NIST SP 800-53 Rev 5 FedRAMP Control Mapping Matrix
+# NIST SP 800-53 Rev 5 Control Mapping Matrix
 
-This document maps all infrastructure modules in this library directly to NIST SP 800-53 Rev 5 security controls required for **FedRAMP Moderate** and **FedRAMP High** baselines.
+This document maps the modules in this library to NIST SP 800-53 Rev 5
+controls relevant to **FedRAMP Moderate** and **FedRAMP High**. Every cell
+here was checked directly against the module code as of this writing —
+where a control is only *partially* addressed, or where a module protects
+a setting rather than creating it, that distinction is called out
+explicitly rather than glossed over. This is a starting point for your
+control implementation narrative, not a substitute for your own SSP
+language or your 3PAO's assessment.
 
----
-
-| Control ID | Control Name | Implemented By Module | Technical Implementation / Enforcement Detail |
+| Control ID | Control Name | Implemented By | Detail |
 | :--- | :--- | :--- | :--- |
-| **AC-2** | Account Management | `moderate/iam-access-control`<br>`modules/org-governance` | Enforces IAM MFA requirement group, blocks interactive root usage in member accounts, and disables inactive local credentials. |
-| **AC-3** | Access Enforcement | `modules/org-scp-boundary`<br>`modules/fips-vpc-endpoints` | Service Control Policies restrict member accounts to authorized service operations; VPC endpoints strictly limit API calls to private VPC boundaries. |
-| **AC-4** | Information Flow Enforcement | `modules/org-scp-boundary`<br>`modules/org-governance`<br>`modules/fips-vpc-endpoints` | Prohibits non-approved regions (`us-east-1`, `us-west-2`), denies direct Internet Gateways in workload VPCs, and enforces PrivateLink interface endpoints. |
-| **AC-6** | Least Privilege | `moderate/iam-access-control`<br>`modules/eks-hardened`<br>`modules/ecs-fargate-hardened` | Developer IAM Permissions Boundaries prevent privilege escalation; container workloads run with scoped IAM execution roles and non-root UID policies. |
-| **AU-2** | Event Logging | `modules/org-cloudtrail`<br>`modules/eks-hardened`<br>`modules/rds-postgres-hardened` | Captures management events, multi-region trails, S3 data events, all 5 EKS control plane log types, and PostgreSQL DDL audit logs. |
-| **AU-3** | Content of Audit Records | `modules/org-cloudtrail` | CloudTrail log file integrity validation enabled; CloudWatch Logs integration logs user identity, source IP, timestamp, and API call parameters. |
-| **AU-9** | Protection of Audit Information | `modules/org-cloudtrail`<br>`modules/config-conformance-pack`<br>`modules/org-governance` | Enforces S3 Object Lock (WORM), Customer-Managed KMS Key (CMK) envelope encryption, and SCP explicit denies on deleting or disabling trails and logs. |
-| **AU-12** | Audit Record Generation | `modules/config-conformance-pack`<br>`modules/ecs-fargate-hardened` | AWS Config continuous resource recording and ECS Exec CloudWatch log delivery with KMS CMK encryption. |
-| **CM-7** | Least Functionality | `modules/account-baseline`<br>`modules/eks-hardened` | Neutralizes default VPC and strips default security groups; disables public cluster endpoints on EKS. |
-| **CM-8** | Information System Component Inventory | `modules/config-conformance-pack` | AWS Config Conformance Pack continuously tracks and evaluates full multi-region resource inventories against FedRAMP Moderate/High baselines. |
-| **CP-9** | System Backup | `modules/org-governance`<br>`modules/rds-postgres-hardened` | Organization AWS Backup policy enforces automated daily backups and immutable vault retention; RDS automated backups set to 35-day retention. |
-| **CP-10** | System Recovery & Reconstitution | `modules/rds-postgres-hardened`<br>`modules/config-conformance-pack` | Multi-AZ automated failover enabled for databases; versioning and cross-region replication configurations for critical compliance sinks. |
-| **IA-2** | Identification and Authentication | `moderate/iam-access-control`<br>`modules/org-governance` | Requires hardware/virtual MFA for IAM console users; denies creation of long-lived local IAM access keys via SCP. |
-| **IA-5** | Authenticator Management | `modules/account-baseline`<br>`modules/rds-postgres-hardened` | Enforces strict IAM password policy (14/16+ characters, 60-day expiry, 24-history reuse); automated secret rotation via AWS Secrets Manager. |
-| **MP-2** | Media Marking & Handling | `modules/org-governance`<br>`modules/account-baseline` | Account-level and Organization-level S3 Public Access Block prevents unauthorized public exposure of Federal media/data. |
-| **RA-5** | Vulnerability Monitoring and Scanning | `modules/ecr-hardened`<br>`modules/guardduty-org` | Continuous container vulnerability scan-on-push for ECR; Amazon GuardDuty organizational malware and runtime threat detection. |
-| **SC-7** | Boundary Protection | `modules/org-scp-boundary`<br>`modules/fips-vpc-endpoints`<br>`modules/account-baseline` | Restricts access exclusively to approved US FedRAMP regions, blocks direct IGWs, and restricts all VPC endpoint traffic to private subnets. |
-| **SC-8** | Transmission Confidentiality and Integrity | `modules/fips-vpc-endpoints`<br>`modules/rds-postgres-hardened`<br>`modules/org-scp-boundary` | Enforces TLS 1.2+ across all data in transit (`aws:SecureTransport`), FIPS 140-2/3 validated endpoint connections, and `rds.force_ssl = 1`. |
-| **SC-12** | Cryptographic Key Establishment | `modules/account-baseline`<br>`modules/ecr-hardened`<br>`modules/eks-hardened`<br>`modules/rds-postgres-hardened` | Customer-Managed KMS Keys (CMKs) provisioned with automated 365-day rotation and strict least-privilege key administrative policies. |
-| **SC-13** | Cryptographic Protection | `modules/account-baseline`<br>`modules/fips-vpc-endpoints`<br>`modules/eks-hardened` | FIPS 140-2/3 endpoints configured; KMS envelope encryption enforced for Kubernetes secrets and EBS volumes by default. |
-| **SC-28** | Protection of Information at Rest | `modules/account-baseline`<br>`modules/ecr-hardened`<br>`modules/rds-postgres-hardened` | Default EBS encryption enabled; KMS CMK encryption enforced across S3 buckets, ECR container registries, and PostgreSQL storage. |
-| **SI-4** | Information System Monitoring | `modules/guardduty-org`<br>`moderate/logging-monitoring` | GuardDuty runtime threat detection, AWS CloudWatch Metric Alarms for root usage, and automated SNS alerting. |
+| **AC-2** | Account Management | `moderate/iam-access-control`, `modules/account-baseline`, `modules/org-governance` | MFA-enforcement IAM group; account-wide password policy; SCP denies direct root-account API usage in member accounts. |
+| **AC-3** | Access Enforcement | `modules/org-scp-boundary`, `modules/fips-vpc-endpoints` | Region-lock and security-guardrail SCPs restrict what member accounts can do; VPC endpoints keep AWS API traffic off the public internet. |
+| **AC-4** | Information Flow Enforcement | `modules/org-scp-boundary`, `modules/org-governance` | SCPs deny API calls outside the approved region list and deny direct Internet Gateway creation, forcing traffic through an approved path. |
+| **AC-6** | Least Privilege | `moderate/iam-access-control`, `modules/org-scp-boundary` | Permission-boundary policy caps what any attached role/user can do regardless of its own identity policy; SCP closes several IAM privilege-escalation paths. Container workloads (`ecs-fargate-hardened`, `eks-hardened`) do *not* currently enforce non-root execution — that's a gap, not a feature, if you need it. |
+| **AU-2** | Event Logging | `modules/org-cloudtrail` | Multi-region organization trail with management + S3 data events. |
+| **AU-3** | Content of Audit Records | `modules/org-cloudtrail` | CloudTrail log file validation enabled; CloudWatch Logs integration carries full event detail (identity, source IP, timestamp, parameters). |
+| **AU-6** | Audit Record Review | `moderate/logging-monitoring` | 14 CIS/Security Hub CloudWatch alarms (root usage, unauthorized API calls, IAM/network/config changes, etc.) — see that module's README for the full list. |
+| **AU-9** | Protection of Audit Information | `modules/org-cloudtrail`, `modules/org-governance` | CloudTrail logs are KMS-encrypted with a dedicated CMK. `org-governance`'s SCP denies bypassing or deleting Object Lock retention settings *if* a bucket has Object Lock configured — it does not itself enable Object Lock on any bucket; that's a separate step you'd add per-bucket. |
+| **AU-12** | Audit Record Generation | `modules/config-conformance-pack`, `modules/ecs-fargate-hardened` | AWS Config continuous resource recording; ECS Exec sessions logged to a KMS-encrypted CloudWatch log group. |
+| **CM-6** | Configuration Settings | `modules/config-conformance-pack` | FedRAMP Moderate conformance pack (AWS-managed Config rule set) evaluates configuration drift continuously. |
+| **CM-7** | Least Functionality | `modules/account-baseline`, `modules/network-perimeter-vpc` | Both modules optionally adopt the default VPC and strip its default security group down to zero ingress/egress rules. |
+| **CM-8** | Information System Component Inventory | `modules/config-conformance-pack` | AWS Config tracks all supported resource types plus global resources across the account. |
+| **CP-9** | System Backup | `modules/org-governance` | Organization Backup Policy enforces a daily backup schedule with cold-storage transition and a configurable retention period, applied via tag-based resource selection. Note: this is a scheduling/retention policy, not a vault-lock/immutability configuration — add AWS Backup Vault Lock separately if your SSP requires WORM-protected backups. |
+| **CP-10** | System Recovery & Reconstitution | `modules/rds-postgres-hardened` | Multi-AZ automated failover; 35-day automated backup retention. |
+| **IA-2** | Identification and Authentication | `moderate/iam-access-control` | Enforced-MFA IAM group denies nearly all actions to IAM users without MFA present (governs IAM users only — SSO/Identity Center MFA lives with your IdP). |
+| **IA-5** | Authenticator Management | `modules/account-baseline`, `modules/iam-password-policy` | Account password policy (14+ character minimum, 60-day max age, 24-generation reuse prevention). `rds-postgres-hardened`'s master password is stored and rotated through RDS's managed-master-user-password feature (backed by Secrets Manager) rather than a custom rotation Lambda. |
+| **IR-4** | Incident Handling | `modules/guardduty-org`, `moderate/incident-response` | GuardDuty findings routed to SNS; a separate aggregation topic collects GuardDuty + Security Hub high-severity findings into one feed. |
+| **MP-2** | Media Protection | `modules/account-baseline`, `modules/org-governance` | Account-level and organization-level S3 Public Access Block prevent accidental public exposure of stored data. |
+| **RA-5** | Vulnerability Monitoring and Scanning | `modules/ecr-hardened`, `modules/guardduty-org` | ECR scan-on-push for container images; GuardDuty for runtime threat detection (malware protection, S3 data events, Kubernetes audit logs). |
+| **SC-7** | Boundary Protection | `modules/org-scp-boundary`, `modules/network-perimeter-vpc`, `modules/fips-vpc-endpoints` | Region-lock SCP; VPC Flow Logs on all traffic; default security group locked to zero rules; VPC endpoints keep AWS API traffic within the VPC. |
+| **SC-8** | Transmission Confidentiality and Integrity | `modules/rds-postgres-hardened`, `modules/org-scp-boundary` | `rds.force_ssl` parameter enforced; SCP denies non-TLS S3/SQS/DynamoDB access account-wide. |
+| **SC-12** | Cryptographic Key Establishment | every module with a dedicated KMS key | All customer-managed keys in this library have automatic annual rotation enabled (`enable_key_rotation = true` / `EnableKeyRotation: true`). |
+| **SC-13** | Cryptographic Protection | `modules/eks-hardened`, `modules/fips-vpc-endpoints` | EKS Kubernetes secrets envelope-encrypted with a dedicated CMK. Only `kms`, `ec2`, and `sts` have genuine FIPS-suffixed VPC endpoint service names as of this writing — see that module's variables.tf for which services do and don't, and why. |
+| **SC-28** | Protection of Information at Rest | `modules/account-baseline`, `modules/ecr-hardened`, `modules/rds-postgres-hardened`, `modules/org-cloudtrail` | EBS default encryption; KMS-encrypted ECR repositories, RDS storage, and CloudTrail logs. |
+| **SI-4** | Information System Monitoring | `modules/guardduty-org`, `moderate/logging-monitoring` | GuardDuty continuous threat detection; CIS-benchmark CloudWatch alarms for anomalous account activity. |

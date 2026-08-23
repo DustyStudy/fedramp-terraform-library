@@ -17,12 +17,12 @@ folder, check the current guidance at:
 
 | Folder | KSI Category | Existing modules that already satisfy it |
 |---|---|---|
-| `ksi-cna/` | Cloud Native Architecture | *(none yet — this category is largely architectural and less module-driven)* |
-| `ksi-iam/` | Identity and Access Management | `moderate/iam-access-control`, `modules/iam-password-policy` |
-| `ksi-mla/` | Monitoring, Logging and Auditing | `modules/org-cloudtrail`, `modules/guardduty-org`, `modules/security-hub-org`, `moderate/logging-monitoring` |
-| `ksi-cnbc/` | Configuration and Network Boundary Controls | `modules/config-conformance-pack` |
-| `ksi-svc/` | Service Configuration | *(planned — see moderate/data-protection)* |
-| `ksi-inr/` | Incident Response | `modules/guardduty-org` |
+| `ksi-cna/` | Cloud Native Architecture | `modules/eks-hardened`, `modules/ecs-fargate-hardened`, `modules/network-perimeter-vpc` |
+| `ksi-iam/` | Identity and Access Management | `moderate/iam-access-control`, `modules/iam-password-policy`, `modules/org-scp-boundary` |
+| `ksi-mla/` | Monitoring, Logging and Auditing | `modules/org-cloudtrail`, `modules/guardduty-org`, `modules/security-hub-org`, `moderate/logging-monitoring`, `modules/ecs-fargate-hardened` |
+| `ksi-cnbc/` | Configuration and Network Boundary Controls | `modules/config-conformance-pack`, `modules/network-perimeter-vpc`, `modules/fips-vpc-endpoints`, `modules/org-scp-boundary`, `modules/waf-hardened` |
+| `ksi-svc/` | Service Configuration | `modules/account-baseline`, `modules/ecr-hardened`, `modules/rds-postgres-hardened`, `modules/ssm-patching-hardened` |
+| `ksi-inr/` | Incident Response | `modules/guardduty-org`, `moderate/incident-response` |
 
 This table is a starting point for which existing module to point to when
 assembling KSI evidence; it is not a substitute for reading the actual KSI
