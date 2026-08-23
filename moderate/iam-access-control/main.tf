@@ -1,21 +1,24 @@
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
 locals {
   account_id = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.name
 }
 
-# SNS Topic for Root Usage Alerts (Fixes output root_usage_alert_topic_arn)
+# SNS Topic for Root Usage Alerts
 resource "aws_sns_topic" "root_usage_alerts" {
   name              = var.root_usage_alert_topic_name
   kms_master_key_id = "arn:aws:kms:${local.region}:${local.account_id}:alias/aws/sns"
 }
 
-# External Access Analyzer (Fixes output external_access_analyzer_arn)
+# External Access Analyzer
 resource "aws_accessanalyzer_analyzer" "external_access" {
   analyzer_name = "fedramp-moderate-external-analyzer"
   type          = var.analyzer_type
 }
 
-# Unused Access Analyzer (Fixes output unused_access_analyzer_arn)
+# Unused Access Analyzer
 resource "aws_accessanalyzer_analyzer" "unused_access" {
   analyzer_name = "fedramp-moderate-unused-analyzer"
   type          = var.analyzer_type
@@ -27,7 +30,7 @@ resource "aws_accessanalyzer_analyzer" "unused_access" {
   }
 }
 
-# Require MFA Group & Policy (Fixes output require_mfa_group_name)
+# Require MFA Group & Policy
 resource "aws_iam_group" "require_mfa" {
   name = "require-mfa"
 }
