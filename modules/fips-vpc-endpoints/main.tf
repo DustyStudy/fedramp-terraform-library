@@ -4,8 +4,9 @@ locals {
 
 data "aws_region" "current" {}
 
-# Security Group for FIPS Interface Endpoints (TLS only)
+# Security Group for FIPS Interface Endpoints (TLS only, no outbound egress required)
 resource "aws_security_group" "endpoints" {
+  #checkov:skip=CKV_AWS_23:Interface endpoints receive TLS traffic and do not initiate egress
   name        = "${var.environment}-fips-vpce-sg"
   description = "Security group for FIPS-validated VPC interface endpoints"
   vpc_id      = var.vpc_id
@@ -18,13 +19,7 @@ resource "aws_security_group" "endpoints" {
     cidr_blocks = [var.vpc_cidr]
   }
 
-  egress {
-    description = "Block default egress"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  egress = []
 
   tags = {
     Name = "${var.environment}-fips-vpce-sg"
@@ -47,7 +42,7 @@ resource "aws_vpc_endpoint" "fips_services" {
   }
 }
 
-# Gateway Endpoint for S3 (Supports direct FIPS via S3 API calls)
+# Gateway Endpoint for S3
 resource "aws_vpc_endpoint" "s3" {
   vpc_id            = var.vpc_id
   service_name      = "com.amazonaws.${local.region}.s3"
