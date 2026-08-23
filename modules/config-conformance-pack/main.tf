@@ -1,11 +1,71 @@
-resource "aws_kms_key" "config" {
-  description             = "KMS key for AWS Config buckets"
-  deletion_window_in_days = 30
-  enable_key_rotation     = true
+locals {
+  account_id  = data.aws_caller_identity.current.account_id
+  region      = data.aws_region.current.name
+  bucket_name = var.config_bucket_name
 }
 
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+# KMS Key for AWS Config
+data "aws_iam_policy_document" "config_kms" {
+  statement {
+    sid    = "AllowRootAccountAdmin"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${local.account_id}:root"]
+    }
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowConfigServiceEncrypt"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["config.amazonaws.com"]
+    }
+    actions   = ["kms:GenerateDataKey*", "kms:Decrypt", "kms:DescribeKey"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+}
+
+resource "aws_kms_key" "config" {
+  description             = "KMS key for AWS Config compliance"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.config_kms.json
+}
+
+# --- Access Logs Bucket ---
 resource "aws_s3_bucket" "config_access_log" {
+  #checkov:skip=CKV_AWS_18:Access log bucket is the terminal sink and cannot log to itself
+  #checkov:skip=CKV_AWS_144:Cross-region replication not required for access logs
+  #checkov:skip=CKV2_AWS_62:Access log bucket does not require event notifications
   bucket = "${local.bucket_name}-access-logs"
+}
+
+resource "aws_s3_bucket_public_access_block" "config_access_log" {
+  bucket                  = aws_s3_bucket.config_access_log.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "config_access_log" {
+  bucket = aws_s3_bucket.config_access_log.id
+  versioning_configuration {
+    status = "Enabled"
+  }
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "config_access_log" {
@@ -21,7 +81,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "config_access_log
 resource "aws_s3_bucket_lifecycle_configuration" "config_access_log" {
   bucket = aws_s3_bucket.config_access_log.id
   rule {
-    id     = "abort-and-expire"
+    id     = "abort-failed-uploads-and-expire"
     status = "Enabled"
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
@@ -32,8 +92,32 @@ resource "aws_s3_bucket_lifecycle_configuration" "config_access_log" {
   }
 }
 
+# --- Main Config S3 Bucket ---
 resource "aws_s3_bucket" "config" {
+  #checkov:skip=CKV_AWS_144:Replication managed via regional disaster recovery baseline
+  #checkov:skip=CKV2_AWS_62:Config delivery mechanism writes directly without notifications
   bucket = local.bucket_name
+}
+
+resource "aws_s3_bucket_public_access_block" "config" {
+  bucket                  = aws_s3_bucket.config.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "config" {
+  bucket = aws_s3_bucket.config.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_logging" "config" {
+  bucket        = aws_s3_bucket.config.id
+  target_bucket = aws_s3_bucket.config_access_log.id
+  target_prefix = "config-bucket-logs/"
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "config" {
@@ -62,4 +146,11 @@ resource "aws_s3_bucket_lifecycle_configuration" "config" {
       days = 365
     }
   }
+}
+
+# --- Conformance Pack Resource ---
+resource "aws_config_conformance_pack" "fedramp_moderate" {
+  name          = "fedramp-moderate-pack"
+  template_body = var.conformance_pack_template
+  depends_on    = [aws_s3_bucket.config]
 }

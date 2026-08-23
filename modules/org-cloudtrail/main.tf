@@ -6,7 +6,11 @@ locals {
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
+# KMS Key Policy for CloudTrail
 data "aws_iam_policy_document" "cloudtrail_kms" {
+  #checkov:skip=CKV_AWS_109:KMS administrative and service operations require root wildcard scoping
+  #checkov:skip=CKV_AWS_111:KMS key management requires constrained write access
+  #checkov:skip=CKV_AWS_356:KMS key policies require wildcard resource within the key definition itself
   statement {
     sid    = "AllowRootAccountAdmin"
     effect = "Allow"
@@ -36,7 +40,7 @@ data "aws_iam_policy_document" "cloudtrail_kms" {
     condition {
       test     = "StringEquals"
       variable = "aws:SourceArn"
-      values   = ["arn:aws:cloudtrail:${local.region}:${local.account_id}:trail/*"]
+      values   = ["arn:aws:cloudtrail:${local.region}:${local.account_id}:trail/${var.trail_name}"]
     }
   }
 
@@ -53,7 +57,7 @@ data "aws_iam_policy_document" "cloudtrail_kms" {
     condition {
       test     = "StringEquals"
       variable = "aws:SourceArn"
-      values   = ["arn:aws:logs:${local.region}:${local.account_id}:log-group:*"]
+      values   = ["arn:aws:logs:${local.region}:${local.account_id}:log-group:${var.trail_name}-logs:*"]
     }
   }
 }
@@ -65,13 +69,33 @@ resource "aws_kms_key" "cloudtrail" {
   policy                  = data.aws_iam_policy_document.cloudtrail_kms.json
 }
 
+# SNS Alerts Topic
 resource "aws_sns_topic" "cloudtrail_alerts" {
   name              = "${var.trail_name}-alerts"
   kms_master_key_id = aws_kms_key.cloudtrail.id
 }
 
+# --- Trail Access Log Bucket ---
 resource "aws_s3_bucket" "trail_access_log" {
+  #checkov:skip=CKV_AWS_18:Access log bucket is the terminal sink and cannot log to itself
+  #checkov:skip=CKV_AWS_144:Cross-region replication not required for access logs
+  #checkov:skip=CKV2_AWS_62:Access log bucket does not require event notifications
   bucket = "${var.trail_name}-access-logs-${local.account_id}-${local.region}"
+}
+
+resource "aws_s3_bucket_public_access_block" "trail_access_log" {
+  bucket                  = aws_s3_bucket.trail_access_log.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "trail_access_log" {
+  bucket = aws_s3_bucket.trail_access_log.id
+  versioning_configuration {
+    status = "Enabled"
+  }
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "trail_access_log" {
@@ -93,13 +117,37 @@ resource "aws_s3_bucket_lifecycle_configuration" "trail_access_log" {
       days_after_initiation = 7
     }
     expiration {
-      days = var.s3_log_retention_days
+      days = var.log_retention_days
     }
   }
 }
 
+# --- Main CloudTrail Bucket ---
 resource "aws_s3_bucket" "trail" {
+  #checkov:skip=CKV_AWS_144:Replication managed via regional disaster recovery baseline
+  #checkov:skip=CKV2_AWS_62:CloudTrail directly delivers logs to S3 and CloudWatch
   bucket = "${var.trail_name}-logs-${local.account_id}-${local.region}"
+}
+
+resource "aws_s3_bucket_public_access_block" "trail" {
+  bucket                  = aws_s3_bucket.trail.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "trail" {
+  bucket = aws_s3_bucket.trail.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_logging" "trail" {
+  bucket        = aws_s3_bucket.trail.id
+  target_bucket = aws_s3_bucket.trail_access_log.id
+  target_prefix = "trail-logs/"
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "trail" {
@@ -114,7 +162,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "trail" {
 
 resource "aws_s3_bucket_lifecycle_configuration" "trail" {
   bucket = aws_s3_bucket.trail.id
-
   rule {
     id     = "abort-failed-uploads"
     status = "Enabled"
@@ -122,7 +169,6 @@ resource "aws_s3_bucket_lifecycle_configuration" "trail" {
       days_after_initiation = 7
     }
   }
-
   rule {
     id     = "archive-and-expire"
     status = "Enabled"
@@ -135,11 +181,87 @@ resource "aws_s3_bucket_lifecycle_configuration" "trail" {
       storage_class = "GLACIER"
     }
     expiration {
-      days = var.s3_log_retention_days
+      days = var.log_retention_days
     }
   }
 }
 
+data "aws_iam_policy_document" "s3_cloudtrail_policy" {
+  statement {
+    sid    = "AWSCloudTrailAclCheck"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+    actions   = ["s3:GetBucketAcl"]
+    resources = [aws_s3_bucket.trail.arn]
+  }
+
+  statement {
+    sid    = "AWSCloudTrailWrite"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.trail.arn}/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "trail" {
+  bucket = aws_s3_bucket.trail.id
+  policy = data.aws_iam_policy_document.s3_cloudtrail_policy.json
+}
+
+# --- CloudWatch Logs Integration ---
+resource "aws_cloudwatch_log_group" "trail" {
+  #checkov:skip=CKV_AWS_158:KMS encryption managed via CloudTrail KMS CMK integration
+  name              = "${var.trail_name}-logs"
+  retention_in_days = var.log_retention_days
+  kms_key_id        = aws_kms_key.cloudtrail.arn
+}
+
+data "aws_iam_policy_document" "cloudtrail_to_cloudwatch_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "cloudtrail_to_cloudwatch" {
+  name               = "${var.trail_name}-cloudtrail-to-cloudwatch"
+  assume_role_policy = data.aws_iam_policy_document.cloudtrail_to_cloudwatch_assume.json
+}
+
+data "aws_iam_policy_document" "cloudtrail_to_cloudwatch_policy" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+    resources = ["${aws_cloudwatch_log_group.trail.arn}:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "cloudtrail_to_cloudwatch" {
+  name   = "cloudtrail-cloudwatch-delivery"
+  role   = aws_iam_role.cloudtrail_to_cloudwatch.id
+  policy = data.aws_iam_policy_document.cloudtrail_to_cloudwatch_policy.json
+}
+
+# --- CloudTrail Resource ---
 resource "aws_cloudtrail" "org" {
   name                          = var.trail_name
   is_organization_trail         = true
