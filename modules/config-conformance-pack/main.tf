@@ -1,5 +1,6 @@
 locals {
   account_id  = data.aws_caller_identity.current.account_id
+  region      = data.aws_region.current.name
   bucket_name = var.config_bucket_name
 }
 
@@ -33,6 +34,11 @@ data "aws_iam_policy_document" "config_kms" {
       test     = "StringEquals"
       variable = "aws:SourceAccount"
       values   = [local.account_id]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:config:${local.region}:${local.account_id}:*"]
     }
   }
 }

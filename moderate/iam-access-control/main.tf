@@ -1,10 +1,23 @@
 locals {
   account_id = data.aws_caller_identity.current.account_id
+  region     = data.aws_region.current.name
 }
 
-# IAM Access Analyzer for continuous access evaluation
-resource "aws_accessanalyzer_analyzer" "analyzer" {
-  analyzer_name = "fedramp-moderate-access-analyzer"
+# SNS Topic for Root Usage Alerts (Fixes output root_usage_alert_topic_arn)
+resource "aws_sns_topic" "root_usage_alerts" {
+  name              = var.root_usage_alert_topic_name
+  kms_master_key_id = "arn:aws:kms:${local.region}:${local.account_id}:alias/aws/sns"
+}
+
+# External Access Analyzer (Fixes output external_access_analyzer_arn)
+resource "aws_accessanalyzer_analyzer" "external_access" {
+  analyzer_name = "fedramp-moderate-external-analyzer"
+  type          = var.analyzer_type
+}
+
+# Unused Access Analyzer (Fixes output unused_access_analyzer_arn)
+resource "aws_accessanalyzer_analyzer" "unused_access" {
+  analyzer_name = "fedramp-moderate-unused-analyzer"
   type          = var.analyzer_type
 
   configuration {
@@ -12,6 +25,39 @@ resource "aws_accessanalyzer_analyzer" "analyzer" {
       unused_access_age = var.unused_access_age
     }
   }
+}
+
+# Require MFA Group & Policy (Fixes output require_mfa_group_name)
+resource "aws_iam_group" "require_mfa" {
+  name = "require-mfa"
+}
+
+data "aws_iam_policy_document" "require_mfa" {
+  statement {
+    sid    = "BlockMostAccessUnlessSignedInWithMFA"
+    effect = "Deny"
+    not_actions = [
+      "iam:CreateVirtualMFADevice",
+      "iam:EnableMFADevice",
+      "iam:GetUser",
+      "iam:ListMFADevices",
+      "iam:ListVirtualMFADevices",
+      "iam:ResyncMFADevice",
+      "sts:GetSessionToken"
+    ]
+    resources = ["*"]
+    condition {
+      test     = "BoolIfExists"
+      variable = "aws:MultiFactorAuthPresent"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_iam_group_policy" "require_mfa" {
+  name   = "require-mfa-policy"
+  group  = aws_iam_group.require_mfa.name
+  policy = data.aws_iam_policy_document.require_mfa.json
 }
 
 # CloudWatch Alarm for Root Usage Alerting
@@ -24,7 +70,7 @@ resource "aws_cloudwatch_metric_alarm" "root_usage" {
   period              = 300
   statistic           = "Sum"
   threshold           = 1
-  alarm_actions       = ["arn:aws:sns:${data.aws_region.current.name}:${local.account_id}:${var.root_usage_alert_topic_name}"]
+  alarm_actions       = [aws_sns_topic.root_usage_alerts.arn]
 }
 
 # Permission Boundary Policy
