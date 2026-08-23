@@ -49,7 +49,7 @@ resource "aws_guardduty_organization_configuration" "this" {
     }
     kubernetes {
       audit_logs {
-        auto_enable = true
+        enable = true
       }
     }
     malware_protection {
@@ -101,3 +101,4 @@ resource "aws_cloudwatch_event_target" "guardduty_findings" {
   rule = aws_cloudwatch_event_rule.guardduty_findings.name
   arn  = aws_sns_topic.guardduty_findings.arn
 }
+

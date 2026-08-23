@@ -88,6 +88,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "config_access_log" {
   rule {
     id     = "abort-failed-uploads-and-expire"
     status = "Enabled"
+    filter {}
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
@@ -140,6 +141,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "config" {
   rule {
     id     = "abort-and-transition"
     status = "Enabled"
+    filter {}
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
