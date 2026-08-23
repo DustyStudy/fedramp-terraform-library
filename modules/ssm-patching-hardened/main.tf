@@ -65,13 +65,17 @@ resource "aws_s3_bucket_public_access_block" "patch_logs" {
   restrict_public_buckets = true
 }
 
-# Lifecycle Management for Patch Log Retention (CKV2_AWS_61)
+# Lifecycle Management for Patch Log Retention & Multipart Cleanup (CKV2_AWS_61 / CKV_AWS_300)
 resource "aws_s3_bucket_lifecycle_configuration" "patch_logs" {
   bucket = aws_s3_bucket.patch_logs.id
 
   rule {
     id     = "fedramp-patch-log-retention"
     status = "Enabled"
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
 
     transition {
       days          = 90
