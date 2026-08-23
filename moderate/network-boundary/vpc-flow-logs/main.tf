@@ -20,6 +20,7 @@ locals {
 
 resource "aws_s3_bucket" "flow_log_access_log" {
   #checkov:skip=CKV_AWS_18:This bucket IS the access-log destination for the flow log bucket. A log-destination bucket logging to itself is a circular anti-pattern AWS explicitly advises against, so this is the terminal sink and intentionally has no further logging target.
+  #checkov:skip=CKV_AWS_145:S3 server access logs must land in a bucket encrypted with SSE-S3, not SSE-KMS — that's an AWS platform restriction on the access-logging feature itself, not a choice made here.
   bucket = "vpc-flow-logs-access-logs-${local.account_id}-${local.region}-${var.vpc_id}"
 }
 
@@ -107,6 +108,50 @@ resource "aws_s3_bucket_policy" "flow_log_access_log" {
 
 # --- Flow log delivery bucket ---
 
+# Note: VPC Flow Logs delivered to S3 support SSE-KMS, but with two
+# specific requirements: the key must be referenced by full ARN (a key ID
+# causes a silent "LogDestination undeliverable" failure — a known AWS
+# platform quirk, not a typo), and the delivery.logs.amazonaws.com
+# service principal needs explicit key policy permissions, same as any
+# other AWS log-delivery service using a customer-managed key.
+data "aws_iam_policy_document" "flow_log_kms" {
+  #checkov:skip=CKV_AWS_109:KMS root account scoping
+  #checkov:skip=CKV_AWS_111:KMS key management write access
+  #checkov:skip=CKV_AWS_356:KMS key policy wildcard scoping
+  statement {
+    sid    = "AllowRootAccountAdmin"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${local.account_id}:root"]
+    }
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowFlowLogDeliveryEncrypt"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
+    actions   = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_kms_key" "flow_log" {
+  description         = "KMS key for VPC Flow Logs S3 delivery bucket"
+  enable_key_rotation = true
+  policy              = data.aws_iam_policy_document.flow_log_kms.json
+}
+
+resource "aws_kms_alias" "flow_log" {
+  name          = "alias/vpc-flow-logs-${var.vpc_id}"
+  target_key_id = aws_kms_key.flow_log.key_id
+}
+
 resource "aws_s3_bucket" "flow_log" {
   bucket = "vpc-flow-logs-${local.account_id}-${local.region}-${var.vpc_id}"
 }
@@ -115,7 +160,11 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "flow_log" {
   bucket = aws_s3_bucket.flow_log.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      # Must be the full key ARN, not a bare key ID — AWS's own docs warn
+      # that a key ID causes flow log delivery to fail with an
+      # undeliverable-destination error rather than a clear KMS error.
+      kms_master_key_id = aws_kms_key.flow_log.arn
     }
   }
 }
