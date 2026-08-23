@@ -1,4 +1,4 @@
-name: FedRAMP Terraform CI & SAST
+name: Hardened FedRAMP Terraform Pipeline
 
 on:
   push:
@@ -6,12 +6,30 @@ on:
   pull_request:
     branches: [ main, master ]
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
-  validate:
-    name: Lint & Security Scan
+  secret-scan:
+    name: Secret & Credential Detection
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks Secret Scanner
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  syntax-and-lint:
+    name: Terraform Format & TFLint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Terraform
@@ -19,12 +37,42 @@ jobs:
         with:
           terraform_version: 1.8.0
 
-      - name: Check Terraform Format
+      - name: Verify Formatting (terraform fmt)
         run: terraform fmt -check -recursive
 
-      - name: Run Checkov Security SAST
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: Initialize & Run TFLint
+        run: |
+          tflint --init
+          tflint --recursive --minimum-failure-severity=warning
+
+  sast-security-scan:
+    name: Multi-Engine SAST (Checkov & Trivy)
+    runs-on: ubuntu-latest
+    needs: [secret-scan, syntax-and-lint]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Engine 1: Checkov FedRAMP / NIST Benchmark Scan
+      - name: Run Checkov SAST
         uses: bridgecrewio/checkov-action@master
         with:
           framework: terraform
-          output_format: cli
+          output_format: cli,sarif
+          output_file_path: console,checkov.sarif
           soft_fail: false
+
+      # Engine 2: Trivy IaC Scanner
+      - name: Run Trivy Misconfiguration Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          format: 'table'
