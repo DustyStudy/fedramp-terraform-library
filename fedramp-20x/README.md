@@ -1,0 +1,30 @@
+# FedRAMP 20x
+
+FedRAMP 20x is a fundamentally different assessment model from Rev5's
+control baselines — authorizations are validated against a smaller set of
+**Key Security Indicators (KSIs)**, many of which are meant to be verified
+in a machine-readable way rather than through a traditional control
+narrative.
+
+**Status:** still actively evolving. Before relying on anything in this
+folder, check the current guidance at:
+
+- https://www.fedramp.gov/updates/changelog
+- https://github.com/FedRAMP (machine-readable FRMR docs and the public
+  roadmap)
+
+## Folders (by KSI category) and what already satisfies them
+
+| Folder | KSI Category | Existing modules that already satisfy it |
+|---|---|---|
+| `ksi-cna/` | Cloud Native Architecture | *(none yet — this category is largely architectural and less module-driven)* |
+| `ksi-iam/` | Identity and Access Management | `moderate/iam-access-control`, `modules/iam-password-policy` |
+| `ksi-mla/` | Monitoring, Logging and Auditing | `modules/org-cloudtrail`, `modules/guardduty-org`, `modules/security-hub-org`, `moderate/logging-monitoring` |
+| `ksi-cnbc/` | Configuration and Network Boundary Controls | `modules/config-conformance-pack` |
+| `ksi-svc/` | Service Configuration | *(planned — see moderate/data-protection)* |
+| `ksi-inr/` | Incident Response | `modules/guardduty-org` |
+
+This table is a starting point for which existing module to point to when
+assembling KSI evidence; it is not a substitute for reading the actual KSI
+definitions, since 20x's specific validation method for each indicator may
+expect something more precise than "a relevant control exists."
