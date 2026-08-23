@@ -70,6 +70,25 @@ See `docs/control-mapping.md` for the NIST 800-53/20x KSI mapping per
 module, and `docs/NIST-800-53-REV5-MATRIX.md` for the same information
 organized by control ID instead.
 
+## Compliance documentation beyond control mapping
+
+Passing a FedRAMP audit takes more than deployed infrastructure. These
+docs are aimed at that gap directly:
+
+- **`docs/CUSTOMER-RESPONSIBILITY-MATRIX.md`** — what AWS already covers,
+  what this repo automates, what's still a manual process
+- **`docs/COVERAGE-GAPS.md`** — control families and requirements this
+  repo genuinely cannot address (personnel security, training, the SSP
+  itself, tested IR/contingency plans, and more), stated plainly rather
+  than left implicit
+- **`docs/CONTINUOUS-MONITORING.md`** — how this repo's modules feed
+  FedRAMP's monthly/annual ConMon deliverables, and what ConMon requires
+  that nothing here automates
+- **`docs/POAM-TEMPLATE.md`** — a starting point for tracking findings;
+  get FedRAMP's official POA&M workbook for actual submissions
+- **`CHANGELOG.md`** — change history, in the spirit of the documentation
+  discipline FedRAMP's Significant Change Request process expects
+
 ## A Terraform-specific note
 
 Unlike CloudFormation, the Terraform AWS provider has native resources for
