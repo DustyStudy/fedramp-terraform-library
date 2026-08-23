@@ -64,6 +64,31 @@ Access Analyzer, permission boundary, enforced-MFA group, root usage
 alerting — see `moderate/iam-access-control/README.md` for the full
 resource-level control mapping.
 
+### network-boundary/
+
+| Module | Rev5 Controls | 20x KSI |
+|---|---|---|
+| `vpc-flow-logs` | SC-7, AU-2, AU-12 | KSI-CNBC-02, KSI-MLA-01 |
+| `default-security-group-lockdown` | SC-7, CM-7 | KSI-CNBC-02 |
+
+**Note:** `default-security-group-lockdown` uses the native
+`aws_default_security_group` resource — no custom scripting needed,
+unlike the CloudFormation version of this library, where the same task
+required a Lambda-backed custom resource because CFN can't otherwise
+manage default-SG rules directly.
+
+### data-protection/
+
+| Module | Rev5 Controls | 20x KSI |
+|---|---|---|
+| `kms-cmk-baseline` | SC-12, SC-13, SC-28 | KSI-SVC-02 |
+
+### incident-response/
+
+| Module | Rev5 Controls | 20x KSI |
+|---|---|---|
+| `incident-notifications` | IR-4, IR-5, IR-6 | KSI-INR-01, KSI-INR-02 |
+
 *(Fill in remaining folder mappings as modules are added.)*
 
 ## high/

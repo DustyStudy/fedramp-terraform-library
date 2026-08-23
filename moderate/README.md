@@ -12,8 +12,8 @@ underpin nearly every control family below.
 | `account-baseline/` | AC-2, IA-5, MP-2 | Calls `modules/account-baseline` with Moderate password-policy values |
 | `org-governance/` | AC-2, AC-4, CP-9 | Calls `modules/org-governance` with a 365-day backup retention |
 | `org-scp-boundary/` | AC-3, AC-4, SC-7 | Calls `modules/org-scp-boundary` with the Moderate policy name |
-| `network-boundary/` | SC | Not yet built for Terraform (see the CFN repo's equivalent for the pattern to port) |
-| `data-protection/` | SC-13, SC-28, MP | Not yet built for Terraform |
-| `incident-response/` | IR | Not yet built for Terraform |
+| `network-boundary/` | SC | `vpc-flow-logs/` and `default-security-group-lockdown/` — standalone submodules for an existing VPC (if you created your VPC via `modules/network-perimeter-vpc`, it already includes both) |
+| `data-protection/` | SC-13, SC-28, MP | `kms-cmk-baseline/` — reusable customer-managed key for encryption at rest |
+| `incident-response/` | IR | `incident-notifications/` — aggregated SNS topic for high-severity GuardDuty/Security Hub findings |
 
 See `../docs/control-mapping.md` for module-to-control detail.
