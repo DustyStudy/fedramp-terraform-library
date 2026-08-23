@@ -34,6 +34,7 @@ resource "aws_s3_bucket" "patch_logs" {
   #checkov:skip=CKV_AWS_144:Cross-region replication managed at account baseline level
   #checkov:skip=CKV_AWS_145:KMS CMK encryption enforced below
   #checkov:skip=CKV_AWS_21:Versioning enabled below
+  #checkov:skip=CKV2_AWS_62:Event notifications are not required for internal SSM patch command logs
   bucket        = "${var.environment}-fedramp-ssm-patch-logs-${local.account_id}"
   force_destroy = false
 }
@@ -62,6 +63,30 @@ resource "aws_s3_bucket_public_access_block" "patch_logs" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+
+# Lifecycle Management for Patch Log Retention (CKV2_AWS_61)
+resource "aws_s3_bucket_lifecycle_configuration" "patch_logs" {
+  bucket = aws_s3_bucket.patch_logs.id
+
+  rule {
+    id     = "fedramp-patch-log-retention"
+    status = "Enabled"
+
+    transition {
+      days          = 90
+      storage_class = "GLACIER"
+    }
+
+    noncurrent_version_transition {
+      noncurrent_days = 30
+      storage_class   = "GLACIER"
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 365
+    }
+  }
 }
 
 # FedRAMP Custom Linux Patch Baseline (Auto-approves Critical/Important within 7 days)
@@ -118,7 +143,7 @@ resource "aws_iam_role_policy_attachment" "ssm_mw_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonSSMMaintenanceWindowRole"
 }
 
-# Maintenance Window (Runs weekly for automated compliance patching)
+# Maintenance Window
 resource "aws_ssm_maintenance_window" "weekly_patch" {
   name     = "${var.environment}-fedramp-weekly-patch-window"
   schedule = var.maintenance_window_cron
