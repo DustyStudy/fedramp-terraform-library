@@ -1,8 +1,10 @@
 locals {
   account_id = data.aws_caller_identity.current.account_id
+  partition  = data.aws_partition.current.partition
 }
 
 data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
 
 # Customer-Managed KMS Key for ECR Image Encryption (FedRAMP SC-13/SC-28)
 #
@@ -23,7 +25,7 @@ data "aws_iam_policy_document" "ecr_kms" {
     effect = "Allow"
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${local.account_id}:root"]
+      identifiers = ["arn:${local.partition}:iam::${local.account_id}:root"]
     }
     actions   = ["kms:*"]
     resources = ["*"]

@@ -1,14 +1,16 @@
 data "aws_region" "current" {}
+data "aws_partition" "current" {}
 
 locals {
   account_id = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.name
+  partition  = data.aws_partition.current.partition
 }
 
 # SNS Topic for Root Usage Alerts
 resource "aws_sns_topic" "root_usage_alerts" {
   name              = var.root_usage_alert_topic_name
-  kms_master_key_id = "arn:aws:kms:${local.region}:${local.account_id}:alias/aws/sns"
+  kms_master_key_id = "arn:${local.partition}:kms:${local.region}:${local.account_id}:alias/aws/sns"
 }
 
 # External Access Analyzer
@@ -88,7 +90,7 @@ data "aws_iam_policy_document" "developer_permission_boundary" {
     sid       = "AllowScopedServices"
     effect    = "Allow"
     actions   = ["s3:*", "dynamodb:*", "lambda:*", "sqs:*", "sns:*"]
-    resources = ["arn:aws:*:*:${local.account_id}:*"]
+    resources = ["arn:${local.partition}:*:*:${local.account_id}:*"]
   }
 
   statement {
@@ -105,7 +107,7 @@ data "aws_iam_policy_document" "developer_permission_boundary" {
     condition {
       test     = "StringNotEquals"
       variable = "iam:PermissionsBoundary"
-      values   = ["arn:aws:iam::${local.account_id}:policy/developer-permission-boundary"]
+      values   = ["arn:${local.partition}:iam::${local.account_id}:policy/developer-permission-boundary"]
     }
   }
 }

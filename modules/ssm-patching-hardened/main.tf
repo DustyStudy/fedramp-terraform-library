@@ -1,8 +1,10 @@
 locals {
   account_id = data.aws_caller_identity.current.account_id
+  partition  = data.aws_partition.current.partition
 }
 
 data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
 
 # KMS CMK for SSM Patch Logs and Output Encryption (FedRAMP SC-13/AU-9)
 data "aws_iam_policy_document" "ssm_kms" {
@@ -14,7 +16,7 @@ data "aws_iam_policy_document" "ssm_kms" {
     effect = "Allow"
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${local.account_id}:root"]
+      identifiers = ["arn:${local.partition}:iam::${local.account_id}:root"]
     }
     actions   = ["kms:*"]
     resources = ["*"]
@@ -161,7 +163,7 @@ resource "aws_iam_role" "ssm_maintenance_window" {
 
 resource "aws_iam_role_policy_attachment" "ssm_mw_policy" {
   role       = aws_iam_role.ssm_maintenance_window.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonSSMMaintenanceWindowRole"
+  policy_arn = "arn:${local.partition}:iam::aws:policy/service-role/AmazonSSMMaintenanceWindowRole"
 }
 
 # Maintenance Window

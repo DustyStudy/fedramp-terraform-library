@@ -1,3 +1,7 @@
+locals {
+  partition = data.aws_partition.current.partition
+}
+
 # --- 1. Workload Perimeter SCP (Root User, Direct IGW, Local IAM Users, S3 Object Lock) ---
 data "aws_iam_policy_document" "workload_perimeter_scp" {
   #checkov:skip=CKV_AWS_107:Credentials exposure prevented via explicit Deny blocks
@@ -16,7 +20,7 @@ data "aws_iam_policy_document" "workload_perimeter_scp" {
     condition {
       test     = "StringLike"
       variable = "aws:PrincipalArn"
-      values   = ["arn:aws:iam::*:root"]
+      values   = ["arn:${local.partition}:iam::*:root"]
     }
   }
 
@@ -94,7 +98,7 @@ resource "aws_organizations_policy" "backup_policy" {
     plans = {
       FedRAMPDailyBackupPlan = {
         regions = {
-          "@@assign" = ["us-east-1", "us-west-2"]
+          "@@assign" = var.backup_regions
         },
         rules = {
           DailyRule = {
@@ -124,7 +128,12 @@ resource "aws_organizations_policy" "backup_policy" {
           tags = {
             FedRAMPBackup = {
               iam_role_arn = {
-                "@@assign" = "arn:aws:iam::$account:role/AWSBackupDefaultServiceRole"
+                # $account (a literal, un-braced dollar sign) is AWS Backup
+                # Organizations Policy's own substitution placeholder — it
+                # resolves per-account at evaluation time and is untouched
+                # by Terraform's ${...} interpolation syntax, so it's safe
+                # to leave as-is alongside the partition interpolation.
+                "@@assign" = "arn:${local.partition}:iam::$account:role/AWSBackupDefaultServiceRole"
               },
               tag_key = {
                 "@@assign" = "Backup"

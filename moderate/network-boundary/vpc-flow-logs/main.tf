@@ -14,6 +14,7 @@
 locals {
   account_id = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.name
+  partition  = data.aws_partition.current.partition
 }
 
 # --- Access-log bucket (terminal sink; see README for why) ---
@@ -123,7 +124,7 @@ data "aws_iam_policy_document" "flow_log_kms" {
     effect = "Allow"
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${local.account_id}:root"]
+      identifiers = ["arn:${local.partition}:iam::${local.account_id}:root"]
     }
     actions   = ["kms:*"]
     resources = ["*"]

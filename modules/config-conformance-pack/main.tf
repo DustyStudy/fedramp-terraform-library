@@ -2,6 +2,7 @@ locals {
   account_id  = data.aws_caller_identity.current.account_id
   region      = data.aws_region.current.name
   bucket_name = var.config_bucket_name
+  partition   = data.aws_partition.current.partition
 }
 
 # KMS Key Policy for AWS Config
@@ -14,7 +15,7 @@ data "aws_iam_policy_document" "config_kms" {
     effect = "Allow"
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${local.account_id}:root"]
+      identifiers = ["arn:${local.partition}:iam::${local.account_id}:root"]
     }
     actions   = ["kms:*"]
     resources = ["*"]
@@ -38,7 +39,7 @@ data "aws_iam_policy_document" "config_kms" {
     condition {
       test     = "StringEquals"
       variable = "aws:SourceArn"
-      values   = ["arn:aws:config:${local.region}:${local.account_id}:*"]
+      values   = ["arn:${local.partition}:config:${local.region}:${local.account_id}:*"]
     }
   }
 }

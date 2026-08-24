@@ -7,3 +7,5 @@ terraform {
     }
   }
 }
+
+data "aws_partition" "current" {}

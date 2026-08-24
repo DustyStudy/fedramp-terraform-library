@@ -10,6 +10,7 @@
 
 locals {
   account_id     = data.aws_caller_identity.current.account_id
+  partition      = data.aws_partition.current.partition
   has_admin_role = var.admin_role_arn != ""
   has_key_users  = length(var.key_user_role_arns) > 0
 }
@@ -20,7 +21,7 @@ data "aws_iam_policy_document" "cmk" {
     effect = "Allow"
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${local.account_id}:root"]
+      identifiers = ["arn:${local.partition}:iam::${local.account_id}:root"]
     }
     actions   = ["kms:*"]
     resources = ["*"]

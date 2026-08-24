@@ -1,6 +1,7 @@
 locals {
   account_id = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.name
+  partition  = data.aws_partition.current.partition
 }
 
 # KMS Key Policy for CloudTrail
@@ -13,7 +14,7 @@ data "aws_iam_policy_document" "cloudtrail_kms" {
     effect = "Allow"
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${local.account_id}:root"]
+      identifiers = ["arn:${local.partition}:iam::${local.account_id}:root"]
     }
     actions   = ["kms:*"]
     resources = ["*"]
@@ -37,7 +38,7 @@ data "aws_iam_policy_document" "cloudtrail_kms" {
     condition {
       test     = "StringEquals"
       variable = "aws:SourceArn"
-      values   = ["arn:aws:cloudtrail:${local.region}:${local.account_id}:trail/${var.trail_name}"]
+      values   = ["arn:${local.partition}:cloudtrail:${local.region}:${local.account_id}:trail/${var.trail_name}"]
     }
   }
 
@@ -54,7 +55,7 @@ data "aws_iam_policy_document" "cloudtrail_kms" {
     condition {
       test     = "StringEquals"
       variable = "aws:SourceArn"
-      values   = ["arn:aws:logs:${local.region}:${local.account_id}:log-group:${var.trail_name}-logs:*"]
+      values   = ["arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group:${var.trail_name}-logs:*"]
     }
   }
 }
@@ -279,8 +280,15 @@ resource "aws_cloudtrail" "org" {
     include_management_events = true
 
     data_resource {
-      type   = "AWS::S3::Object"
-      values = ["arn:aws:s3"]
+      type = "AWS::S3::Object"
+      # This is CloudTrail's documented partial-ARN form meaning "all S3
+      # buckets in the account" — not a bug, and not a placeholder. The
+      # partition prefix is still interpolated for GovCloud correctness
+      # since every real ARN (including partial ones) is partition-scoped;
+      # AWS's docs don't explicitly confirm this exact partial form
+      # changes in GovCloud, but there's no evidence it's a partition-
+      # invariant magic string either, so this errs toward consistency.
+      values = ["arn:${local.partition}:s3"]
     }
   }
 

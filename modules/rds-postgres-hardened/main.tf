@@ -1,8 +1,10 @@
 locals {
   account_id = data.aws_caller_identity.current.account_id
+  partition  = data.aws_partition.current.partition
 }
 
 data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
 
 # Customer-Managed KMS Key for RDS Storage & Performance Insights
 data "aws_iam_policy_document" "rds_kms" {
@@ -14,7 +16,7 @@ data "aws_iam_policy_document" "rds_kms" {
     effect = "Allow"
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${local.account_id}:root"]
+      identifiers = ["arn:${local.partition}:iam::${local.account_id}:root"]
     }
     actions   = ["kms:*"]
     resources = ["*"]
@@ -103,7 +105,7 @@ resource "aws_iam_role" "rds_monitoring" {
 
 resource "aws_iam_role_policy_attachment" "rds_monitoring" {
   role       = aws_iam_role.rds_monitoring.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+  policy_arn = "arn:${local.partition}:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
 
 # Hardened PostgreSQL RDS Instance

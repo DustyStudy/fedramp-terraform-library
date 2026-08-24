@@ -1,8 +1,10 @@
 locals {
   account_id = data.aws_caller_identity.current.account_id
+  partition  = data.aws_partition.current.partition
 }
 
 data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
 
 # KMS Key for EKS Secrets Envelope Encryption (FedRAMP SC-13/SC-28)
 #
@@ -24,7 +26,7 @@ data "aws_iam_policy_document" "eks_kms" {
     effect = "Allow"
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${local.account_id}:root"]
+      identifiers = ["arn:${local.partition}:iam::${local.account_id}:root"]
     }
     actions   = ["kms:*"]
     resources = ["*"]
@@ -57,7 +59,7 @@ resource "aws_iam_role" "cluster" {
 
 resource "aws_iam_role_policy_attachment" "cluster_policy" {
   role       = aws_iam_role.cluster.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+  policy_arn = "arn:${local.partition}:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
 # Hardened EKS Cluster Resource
