@@ -16,6 +16,9 @@ locals {
 }
 
 data "aws_iam_policy_document" "cmk" {
+  #checkov:skip=CKV_AWS_109:KMS administrative and service operations require root wildcard scoping
+  #checkov:skip=CKV_AWS_111:KMS key management requires constrained write access
+  #checkov:skip=CKV_AWS_356:KMS key policies require wildcard resource within the key definition itself
   statement {
     sid    = "AllowRootAccountAdmin"
     effect = "Allow"

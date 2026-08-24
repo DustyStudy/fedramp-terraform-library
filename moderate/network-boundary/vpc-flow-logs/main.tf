@@ -22,7 +22,13 @@ locals {
 resource "aws_s3_bucket" "flow_log_access_log" {
   #checkov:skip=CKV_AWS_18:This bucket IS the access-log destination for the flow log bucket. A log-destination bucket logging to itself is a circular anti-pattern AWS explicitly advises against, so this is the terminal sink and intentionally has no further logging target.
   #checkov:skip=CKV_AWS_145:S3 server access logs must land in a bucket encrypted with SSE-S3, not SSE-KMS — that's an AWS platform restriction on the access-logging feature itself, not a choice made here.
+  #checkov:skip=CKV_AWS_144:Cross-region replication for log durability is handled at the account/org backup-policy level (see modules/org-governance), not per-bucket in this lean, per-VPC utility module — adding a required replica bucket/region/IAM role here would substantially bloat what's meant to be a simple module.
   bucket = "vpc-flow-logs-access-logs-${local.account_id}-${local.region}-${var.vpc_id}"
+}
+
+resource "aws_s3_bucket_notification" "flow_log_access_log" {
+  bucket      = aws_s3_bucket.flow_log_access_log.id
+  eventbridge = true
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "flow_log_access_log" {
@@ -54,6 +60,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "flow_log_access_log" {
   rule {
     id     = "expire-access-logs"
     status = "Enabled"
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
     expiration {
       days = var.log_retention_days
     }
@@ -154,7 +163,13 @@ resource "aws_kms_alias" "flow_log" {
 }
 
 resource "aws_s3_bucket" "flow_log" {
+  #checkov:skip=CKV_AWS_144:Cross-region replication for log durability is handled at the account/org backup-policy level (see modules/org-governance), not per-bucket in this lean, per-VPC utility module — adding a required replica bucket/region/IAM role here would substantially bloat what's meant to be a simple module.
   bucket = "vpc-flow-logs-${local.account_id}-${local.region}-${var.vpc_id}"
+}
+
+resource "aws_s3_bucket_notification" "flow_log" {
+  bucket      = aws_s3_bucket.flow_log.id
+  eventbridge = true
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "flow_log" {
@@ -196,6 +211,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "flow_log" {
   rule {
     id     = "archive-and-expire"
     status = "Enabled"
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
     transition {
       days          = 90
       storage_class = "STANDARD_IA"
