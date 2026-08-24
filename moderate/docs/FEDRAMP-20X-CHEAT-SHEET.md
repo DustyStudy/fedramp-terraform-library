@@ -94,10 +94,13 @@ That's the single most common misunderstanding driving unnecessary panic.
   Security Indicators (KSIs)** — specific, checkable facts about your
   system (e.g., "is MFA enforced," "are backups encrypted") that get
   verified in a machine-readable way, continuously, instead of written up
-  once and read by a human. Reporting suggests dozens of these indicators
-  grouped into several families — check FedRAMP's current published list
-  directly, since the exact count and grouping has been refined more than
-  once as the program matured.
+  once and read by a human. Exactly how many KSIs exist and how they're
+  grouped is genuinely unsettled — sources from different months of 2026
+  cite anywhere from 46 to 63 individual indicators and anywhere from 9 to
+  12 top-level families, because the count has been revised repeatedly as
+  the program matured through pilot phases. Don't treat any specific
+  number you read (including in this repo) as current — check FedRAMP's
+  live machine-readable KSI document directly.
 
 If your service runs on standard cloud infrastructure you don't own
 physically, 20x is very likely the path built for you. If you run your
