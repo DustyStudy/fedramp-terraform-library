@@ -1,0 +1,14 @@
+# Drop this in as .github/workflows/ci.yml in any plain Terraform repo
+# (fedramp-terraform-library, aws-cloud-security-toolbox, aws-observability-dashboards, orgseed's TF)
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  terraform-ci:
+    uses: DustyStudy/github-actions-ci-templates/.github/workflows/terraform-ci.yml@v1
+    with:
+      working-directory: "."
