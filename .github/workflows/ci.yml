@@ -35,7 +35,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.8.0
+          terraform_version: 1.14.6
 
       - name: Verify Formatting (terraform fmt)
         run: terraform fmt -check -recursive
@@ -60,7 +60,7 @@ jobs:
 
       # Engine 1: Checkov FedRAMP / NIST Benchmark Scan (Blocking Hard Gate)
       - name: Run Checkov SAST
-        uses: bridgecrewio/checkov-action@master
+        uses: bridgecrewio/checkov-action@v12
         with:
           framework: terraform
           output_format: cli,sarif
@@ -69,7 +69,7 @@ jobs:
 
       # Engine 2: Trivy IaC Scanner (Reporting to Code Scanning tab)
       - name: Run Trivy Misconfiguration Scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'config'
           scan-ref: '.'
