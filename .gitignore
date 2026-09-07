@@ -1,0 +1,40 @@
+# Local .terraform directories
+**/.terraform/*
+
+# Terraform lock file for consumer root modules — not meaningful for a
+# module library, so it isn't committed here
+.terraform.lock.hcl
+
+# Terraform state files — may contain sensitive data
+*.tfstate
+*.tfstate.*
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Real tfvars files are almost always environment/account-specific and
+# often contain sensitive values — never commit them. The illustrative
+# example files under high/example-tfvars/ are the deliberate exception.
+*.tfvars
+*.tfvars.json
+!high/example-tfvars/*.tfvars
+
+# Override files are used to override resources in a local dev workflow
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI configuration files
+.terraformrc
+terraform.rc
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
