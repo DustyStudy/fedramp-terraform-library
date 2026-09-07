@@ -4,8 +4,8 @@
 # member-account-baseline/.
 
 module "org_cloudtrail" {
-  source           = "../../modules/org-cloudtrail"
-  organization_id  = var.organization_id
+  source          = "../../modules/org-cloudtrail"
+  organization_id = var.organization_id
 }
 
 module "guardduty_org" {
@@ -17,16 +17,16 @@ module "security_hub_org" {
 }
 
 module "org_scp_boundary" {
-  source                    = "../../modules/org-scp-boundary"
-  policy_name               = "fedramp-moderate-authorization-boundary"
-  approved_regions          = var.approved_regions
-  target_ou_or_account_ids  = var.target_ou_or_account_ids
+  source                   = "../../modules/org-scp-boundary"
+  policy_name              = "fedramp-moderate-authorization-boundary"
+  approved_regions         = var.approved_regions
+  target_ou_or_account_ids = var.target_ou_or_account_ids
 }
 
 module "org_governance" {
-  source                          = "../../modules/org-governance"
-  target_ou_or_account_ids        = var.target_ou_or_account_ids
-  authorized_security_admin_arns  = var.authorized_security_admin_arns
+  source                         = "../../modules/org-governance"
+  target_ou_or_account_ids       = var.target_ou_or_account_ids
+  authorized_security_admin_arns = var.authorized_security_admin_arns
 }
 
 # CIS/Security Hub CloudWatch alarms on the org trail's log group. This
@@ -35,6 +35,6 @@ module "org_governance" {
 # the CloudWatch Logs group receiving its management events) is a
 # management-account resource.
 module "logging_monitoring" {
-  source                     = "../../moderate/logging-monitoring"
+  source                    = "../../moderate/logging-monitoring"
   cloudtrail_log_group_name = module.org_cloudtrail.log_group_name
 }
