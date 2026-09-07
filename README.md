@@ -1,5 +1,8 @@
 # FedRAMP Terraform Library
 
+[![CI](https://github.com/DustyStudy/fedramp-terraform-library/actions/workflows/ci.yml/badge.svg)](https://github.com/DustyStudy/fedramp-terraform-library/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
+
 Reusable Terraform modules that implement common controls and security
 patterns for organizations pursuing **FedRAMP Moderate**, **FedRAMP
 High**, or **FedRAMP 20x** authorization. This is the Terraform
@@ -73,6 +76,14 @@ See `docs/control-mapping.md` for the NIST 800-53/20x KSI mapping per
 module, and `docs/NIST-800-53-REV5-MATRIX.md` for the same information
 organized by control ID instead.
 
+## Examples
+
+Every module above is documented in isolation. **`examples/`** shows a
+realistic set of them composed into an actual management-account and
+member-account baseline — including two duplicate-resource conflicts
+that only showed up once modules were wired together, and how to avoid
+them.
+
 ## Compliance documentation beyond control mapping
 
 Passing a FedRAMP audit takes more than deployed infrastructure. These
@@ -144,6 +155,11 @@ see `CONTRIBUTING.md` for the pattern.
 
 See `CONTRIBUTING.md`. PRs that add control mapping documentation alongside
 new modules are especially welcome.
+
+## Reporting a security issue
+
+See `SECURITY.md` — please don't open a public issue for a security
+finding.
 
 ## License
 
