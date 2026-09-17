@@ -9,7 +9,11 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: "terraform"
-    directory: "/"
+    directories:
+      - "/modules/**"
+      - "/high/**"
+      - "/moderate/**"
+      - "/examples/**"
     schedule:
       interval: "weekly"
     groups:
