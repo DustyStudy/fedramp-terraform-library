@@ -15,7 +15,7 @@ module "incident_notifications" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| IR-4, IR-5, IR-6 | KSI-INR-01, KSI-INR-02 |
+| IR-4, IR-5, IR-6 | KSI-INR-RIR, KSI-INR-AAR |
 
 ## Notes
 

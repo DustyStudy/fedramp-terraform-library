@@ -6,7 +6,7 @@
 #
 # Control mapping:
 #   Rev5 (Moderate/High): SC-12, SC-13, SC-28
-#   FedRAMP 20x: KSI-SVC-02 (encryption at rest)
+#   FedRAMP 20x: KSI-SVC-ASM (key/secret management and rotation)
 
 locals {
   account_id     = data.aws_caller_identity.current.account_id

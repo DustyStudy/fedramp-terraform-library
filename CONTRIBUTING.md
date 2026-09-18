@@ -8,7 +8,7 @@ trustworthy reference — please keep a few things in mind.
 - **Map every module to its control(s) or KSI(s).** A module without a
   mapping in `docs/control-mapping.md` isn't useful to someone building an
   SSP. State the NIST 800-53 Rev5 control ID (e.g. `AC-2`, `AU-6`) or the
-  FedRAMP 20x KSI ID (e.g. `KSI-MLA-01`) in a comment block at the top of
+  FedRAMP 20x KSI ID (e.g. `KSI-MLA-OSM`) in a comment block at the top of
   `main.tf` and in the docs table.
 - **No hardcoded account IDs, ARNs, or secrets.** Use variables, data
   sources, or Secrets Manager references.

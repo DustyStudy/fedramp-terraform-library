@@ -16,7 +16,7 @@ module "vpc_flow_logs" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| SC-7, AU-2, AU-12 | KSI-CNBC-02, KSI-MLA-01 |
+| SC-7, AU-2, AU-12 | KSI-CNA-ULN, KSI-MLA-LET |
 
 ## Notes
 

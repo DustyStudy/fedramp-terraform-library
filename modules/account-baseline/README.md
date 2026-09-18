@@ -22,7 +22,7 @@ module "account_baseline" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| AC-2, IA-5, MP-2, CM-7, SC-28 | KSI-IAM-01, KSI-SVC-01 |
+| AC-2, IA-5, MP-2, CM-7, SC-28 | KSI-IAM-APM, KSI-SVC-SIN |
 
 ## Notes
 

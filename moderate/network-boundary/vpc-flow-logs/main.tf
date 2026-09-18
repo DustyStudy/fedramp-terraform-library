@@ -9,7 +9,7 @@
 #
 # Control mapping:
 #   Rev5 (Moderate/High): SC-7, AU-2, AU-12
-#   FedRAMP 20x: KSI-CNBC-02 (network boundary monitoring), KSI-MLA-01 (comprehensive logging)
+#   FedRAMP 20x: KSI-CNA-ULN (network traffic flow controls), KSI-MLA-LET (comprehensive logging)
 
 locals {
   account_id = data.aws_caller_identity.current.account_id

@@ -16,7 +16,7 @@ module "config_conformance_pack" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| CM-2, CM-6, CM-8, CA-7, RA-5 | KSI-CNBC-01, KSI-CNBC-02 |
+| CM-2, CM-6, CM-8, CA-7, RA-5 | KSI-SVC-ACM, KSI-MLA-EVC |
 
 ## Notes
 

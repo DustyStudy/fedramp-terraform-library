@@ -20,7 +20,7 @@ module "fips_vpc_endpoints" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| AC-3, SC-7, SC-8, SC-13 | KSI-CNBC-02 |
+| AC-3, SC-7, SC-8, SC-13 | KSI-CNA-RNT, KSI-SVC-VCM |
 
 ## Notes
 

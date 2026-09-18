@@ -10,7 +10,7 @@
 #
 # Control mapping:
 #   Rev5 (Moderate/High): SC-7, CM-7
-#   FedRAMP 20x: KSI-CNBC-02 (network boundary controls)
+#   FedRAMP 20x: KSI-CNA-MAT (minimal attack surface)
 
 resource "aws_default_security_group" "this" {
   vpc_id = var.vpc_id

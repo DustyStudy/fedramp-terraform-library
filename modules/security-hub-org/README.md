@@ -16,7 +16,7 @@ module "security_hub_org" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| CA-7, RA-5, SI-4 | KSI-MLA-04 |
+| CA-7, RA-5, SI-4 | KSI-MLA-EVC, KSI-CNA-EIS |
 
 ## Notes
 

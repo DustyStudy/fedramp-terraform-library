@@ -21,7 +21,7 @@ module "waf_hardened" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| SC-5, SI-3, AU-2 | KSI-CNBC-02 |
+| SC-5, SI-3, AU-2 | KSI-CNA-RVP, KSI-CNA-MAT |
 
 ## Notes
 

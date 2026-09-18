@@ -19,7 +19,7 @@ module "ssm_patching_hardened" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| SI-2, AU-12 | KSI-SVC-01 |
+| SI-2, AU-12 | KSI-SVC-EIS |
 
 ## Notes
 

@@ -7,7 +7,7 @@
 #
 # Control mapping:
 #   Rev5 (Moderate/High): IR-4, IR-5, IR-6
-#   FedRAMP 20x: KSI-INR-01 (incident detection capability), KSI-INR-02 (incident response process)
+#   FedRAMP 20x: KSI-INR-RIR (review effectiveness of documented IR procedures), KSI-INR-AAR (after-action reports)
 
 resource "aws_sns_topic" "incident_notifications" {
   name              = "security-incident-notifications"

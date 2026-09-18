@@ -20,7 +20,7 @@ module "org_governance" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| AC-2, AC-4, AU-9, CP-9, MP-2 | KSI-IAM-02, KSI-CNBC-01 |
+| AC-2, AC-4, AU-9, CP-9, MP-2 | KSI-IAM-ELP, KSI-RPL-ABO |
 
 ## Notes
 

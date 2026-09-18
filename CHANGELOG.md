@@ -18,6 +18,22 @@ FedRAMP expects.
   (`docs/COVERAGE-GAPS.md`), POA&M starter template
   (`docs/POAM-TEMPLATE.md`), and continuous monitoring mapping
   (`docs/CONTINUOUS-MONITORING.md`)
+- `docs/FEDRAMP-20X-CHEAT-SHEET.md` — plain-language rundown of the 2026
+  "Consolidated Rules" terminology and timeline changes. This file was
+  already referenced from two READMEs before it existed; it's now real.
+- `fedramp-20x/ksi-cmt/`, `ksi-rpl/`, `ksi-piy/`, `ksi-scr/`, `ksi-ced/` —
+  5 new KSI category folders, matching the finalized 10-cluster structure
+  FedRAMP published for the 2026-06-24 20x Class B launch
+
+### Changed
+- Retired `fedramp-20x/ksi-cnbc/`: `KSI-CNBC` (Configuration and Network
+  Boundary Controls) does not exist in FedRAMP's finalized 2026 KSI
+  structure. Its scope split between `KSI-CNA` (network/traffic controls)
+  and `KSI-SVC` (configuration drift, encryption). Remapped every
+  `docs/control-mapping.md` entry that previously pointed to `KSI-CNBC-*`,
+  and replaced placeholder numeric KSI IDs (`KSI-MLA-01`, etc.) across
+  that file with FedRAMP's actual mnemonic indicator codes
+  (`KSI-MLA-OSM`, etc.) where a page-level source could confirm them
 
 ## 2026-08-23
 

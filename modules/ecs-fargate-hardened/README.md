@@ -18,7 +18,7 @@ module "ecs_fargate_hardened" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| AU-12, SC-13 | KSI-MLA-01 |
+| AU-12, SC-13 | KSI-MLA-LET |
 
 ## Notes
 

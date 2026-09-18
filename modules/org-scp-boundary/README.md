@@ -20,7 +20,7 @@ module "org_scp_boundary" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| AC-3, AC-4, AC-6, SC-7, SC-8 | KSI-CNBC-01, KSI-CNBC-02 |
+| AC-3, AC-4, AC-6, SC-7, SC-8 | KSI-CNA-RNT, KSI-CNA-ULN, KSI-IAM-ELP |
 
 ## Notes
 
