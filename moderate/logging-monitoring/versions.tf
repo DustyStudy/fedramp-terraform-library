@@ -6,7 +6,7 @@ terraform {
       source = "hashicorp/aws"
       # See modules/org-cloudtrail/versions.tf for why this is pinned
       # below v6.0 (data source attribute renames).
-      version = ">= 5.0, < 6.0"
+      version = ">= 5.0, < 6.65"
     }
   }
 }
