@@ -15,7 +15,7 @@ module "iam_password_policy" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| IA-5(1), AC-2, AC-7 | KSI-IAM-01, KSI-IAM-02 |
+| IA-5(1), AC-2, AC-7 | KSI-IAM-APM, KSI-IAM-AAM |
 
 ## Notes
 

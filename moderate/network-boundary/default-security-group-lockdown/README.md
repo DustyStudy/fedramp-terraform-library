@@ -16,7 +16,7 @@ module "default_sg_lockdown" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| SC-7, CM-7 | KSI-CNBC-02 |
+| SC-7, CM-7 | KSI-CNA-MAT |
 
 ## Notes
 

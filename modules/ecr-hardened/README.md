@@ -17,7 +17,7 @@ module "ecr_hardened" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| RA-5, SC-28, SC-12 | KSI-SVC-02 |
+| RA-5, SC-28, SC-12 | KSI-SVC-SIN, KSI-SVC-VRI |
 
 ## Notes
 

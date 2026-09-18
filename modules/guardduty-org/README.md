@@ -15,7 +15,7 @@ module "guardduty_org" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| SI-4, IR-4, RA-5 | KSI-MLA-03, KSI-INR-01 |
+| SI-4, IR-4, RA-5 | KSI-CNA-EIS, KSI-INR-RPI |
 
 ## Notes
 

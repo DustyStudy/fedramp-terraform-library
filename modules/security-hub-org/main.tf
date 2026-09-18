@@ -5,7 +5,7 @@
 #
 # Control mapping:
 #   Rev5 (Moderate/High): CA-7, RA-5, SI-4
-#   FedRAMP 20x: KSI-MLA-04 (continuous security posture monitoring)
+#   FedRAMP 20x: KSI-MLA-EVC (configuration persistently evaluated/tested), KSI-CNA-EIS (automated security assessment/enforcement)
 
 resource "aws_securityhub_account" "this" {
   enable_default_standards = true

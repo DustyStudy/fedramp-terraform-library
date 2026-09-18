@@ -9,7 +9,7 @@
 #
 # Control mapping:
 #   Rev5 (Moderate/High): IA-5(1), AC-2, AC-7
-#   FedRAMP 20x: KSI-IAM-01 (strong authentication), KSI-IAM-02 (credential lifecycle)
+#   FedRAMP 20x: KSI-IAM-APM (strong/passwordless authentication), KSI-IAM-AAM (account lifecycle automation)
 
 resource "aws_iam_account_password_policy" "this" {
   minimum_password_length        = var.minimum_password_length

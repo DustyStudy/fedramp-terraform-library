@@ -38,7 +38,7 @@ against your organization's current SSP and your 3PAO's expectations.
 modules/              Shared baseline modules used across all three tracks
 moderate/             Rev5 Moderate baseline, by control family
 high/                 Rev5 High — reuses moderate/ with tfvars overrides
-fedramp-20x/          KSI-based cross-reference (CNA, IAM, MLA, CNBC, SVC, INR)
+fedramp-20x/          KSI-based cross-reference (CNA, IAM, MLA, SVC, INR, CMT, RPL, PIY, SCR, CED)
 docs/                 Control-to-module cross-reference
 ```
 

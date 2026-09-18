@@ -20,17 +20,17 @@ module "logging_monitoring" {
 
 | Alarm | Rev5 Controls | 20x KSI |
 |---|---|---|
-| Root account usage | AC-6(5), AU-6 | KSI-IAM-02, KSI-MLA-01 |
-| Unauthorized API calls | AU-6, SI-4 | KSI-MLA-04 |
-| Console sign-in without MFA | IA-2(1), AU-6 | KSI-IAM-01 |
-| IAM policy changes | AC-6, AU-6 | KSI-IAM-03 |
-| CloudTrail config changes | AU-12, AU-6 | KSI-MLA-01 |
-| Console auth failures | AU-6, SI-4 | KSI-MLA-04 |
-| CMK disable/scheduled deletion | SC-12, SC-28 | KSI-CNBC-02 |
-| S3 bucket policy changes | AC-3, AU-6 | KSI-CNBC-01 |
-| Config configuration changes | CM-6, AU-6 | KSI-CNBC-01 |
-| Security group changes | CM-6, SC-7 | KSI-CNBC-02 |
-| NACL changes | CM-6, SC-7 | KSI-CNBC-02 |
-| Network gateway changes | SC-7, AU-6 | KSI-CNBC-02 |
-| Route table changes | SC-7, AU-6 | KSI-CNBC-02 |
-| VPC changes | SC-7, CM-6 | KSI-CNBC-02 |
+| Root account usage | AC-6(5), AU-6 | KSI-IAM-SUS, KSI-MLA-RVL |
+| Unauthorized API calls | AU-6, SI-4 | KSI-MLA-RVL |
+| Console sign-in without MFA | IA-2(1), AU-6 | KSI-IAM-APM |
+| IAM policy changes | AC-6, AU-6 | KSI-IAM-JIT |
+| CloudTrail config changes | AU-12, AU-6 | KSI-MLA-LET |
+| Console auth failures | AU-6, SI-4 | KSI-IAM-SUS |
+| CMK disable/scheduled deletion | SC-12, SC-28 | KSI-SVC-ASM |
+| S3 bucket policy changes | AC-3, AU-6 | KSI-SVC-ACM |
+| Config configuration changes | CM-6, AU-6 | KSI-SVC-ACM |
+| Security group changes | CM-6, SC-7 | KSI-CNA-ULN |
+| NACL changes | CM-6, SC-7 | KSI-CNA-ULN |
+| Network gateway changes | SC-7, AU-6 | KSI-CNA-RNT |
+| Route table changes | SC-7, AU-6 | KSI-CNA-ULN |
+| VPC changes | SC-7, CM-6 | KSI-CNA-RNT |

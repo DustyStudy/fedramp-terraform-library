@@ -17,7 +17,7 @@ module "org_cloudtrail" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| AU-2, AU-3, AU-6, AU-9, AU-11, AU-12, SC-28 | KSI-MLA-01, KSI-MLA-02 |
+| AU-2, AU-3, AU-6, AU-9, AU-11, AU-12, SC-28 | KSI-MLA-OSM, KSI-MLA-LET |
 
 ## Notes
 

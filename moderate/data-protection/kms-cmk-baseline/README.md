@@ -18,7 +18,7 @@ module "app_data_key" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| SC-12, SC-13, SC-28 | KSI-SVC-02 |
+| SC-12, SC-13, SC-28 | KSI-SVC-ASM |
 
 ## Notes
 

@@ -11,8 +11,8 @@
 #
 # Control mapping:
 #   Rev5 (Moderate/High): AU-6, AU-6(1), AU-12, SI-4, CA-7, IR-4
-#   FedRAMP 20x: KSI-MLA-01 (comprehensive logging), KSI-MLA-04 (continuous
-#     security posture monitoring)
+#   FedRAMP 20x: KSI-MLA-LET (comprehensive logging), KSI-MLA-RVL (persistent
+#     log review and audit)
 
 resource "aws_sns_topic" "cis_alarms" {
   name              = "cis-benchmark-alarms"

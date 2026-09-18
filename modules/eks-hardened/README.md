@@ -19,7 +19,7 @@ module "eks_hardened" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| AU-2, SC-7, SC-13 | KSI-MLA-01, KSI-CNBC-02 |
+| AU-2, SC-7, SC-13 | KSI-MLA-LET, KSI-CNA-RNT, KSI-SVC-SIN |
 
 ## Notes
 

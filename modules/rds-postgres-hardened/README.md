@@ -22,7 +22,7 @@ module "rds_postgres_hardened" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| CP-9, CP-10, SC-8, SC-12, SC-28, IA-5 | KSI-SVC-02 |
+| CP-9, CP-10, SC-8, SC-12, SC-28, IA-5 | KSI-SVC-SIN, KSI-SVC-VCM |
 
 ## Notes
 

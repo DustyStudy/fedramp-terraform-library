@@ -24,7 +24,7 @@ module "network_perimeter_vpc" {
 
 | Rev5 | 20x KSI |
 |---|---|
-| AU-12, SC-7, CM-7 | KSI-CNBC-02, KSI-MLA-01 |
+| AU-12, SC-7, CM-7 | KSI-CNA-RNT, KSI-CNA-ULN, KSI-MLA-LET |
 
 ## Notes
 

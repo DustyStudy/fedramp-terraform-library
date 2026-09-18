@@ -29,11 +29,15 @@ against your organization's current SSP and your 3PAO's expectations.
   (longer log retention, stricter crypto, broader MFA enforcement) via
   `.tfvars` overrides rather than duplicating module code.
 - **`fedramp-20x/`** is *not* a control baseline. FedRAMP 20x
-  authorizations are validated against machine-readable **Key Security
-  Indicators (KSIs)** — a fundamentally different assessment model that is
-  still being piloted. See `fedramp-20x/README.md` for current status and
-  a cross-reference of which existing modules already satisfy each KSI
-  category.
+  certifications are validated against machine-readable **Key Security
+  Indicators (KSIs)** — a fundamentally different assessment model.
+  FedRAMP's "Consolidated Rules for 2026" moved 20x from pilot to a
+  generally available certification path (effective 2026-06-24) and
+  finalized 10 KSI clusters. See `fedramp-20x/README.md` for the current
+  cluster list and a cross-reference of which existing modules already
+  satisfy each one, and `docs/FEDRAMP-20X-CHEAT-SHEET.md` for the 2026
+  terminology/timeline changes (Authorization → Certification, Class
+  B/C/D).
 
 ## Structure
 
@@ -41,7 +45,7 @@ against your organization's current SSP and your 3PAO's expectations.
 modules/              Shared baseline modules used across all three tracks
 moderate/             Rev5 Moderate baseline, by control family
 high/                 Rev5 High — reuses moderate/ with tfvars overrides
-fedramp-20x/          KSI-based cross-reference (CNA, IAM, MLA, CNBC, SVC, INR)
+fedramp-20x/          KSI-based cross-reference (CNA, IAM, MLA, SVC, INR, CMT, RPL, PIY, SCR, CED)
 docs/                 Control-to-module cross-reference
 ```
 

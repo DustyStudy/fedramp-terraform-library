@@ -14,7 +14,7 @@
 #
 # Control mapping:
 #   Rev5 (Moderate/High): SI-4, IR-4, RA-5
-#   FedRAMP 20x: KSI-MLA-03 (threat detection), KSI-INR-01 (incident detection capability)
+#   FedRAMP 20x: KSI-CNA-EIS (automated security assessment/enforcement), KSI-INR-RPI (pattern review feeding incident response)
 
 resource "aws_guardduty_detector" "this" {
   enable                       = true
