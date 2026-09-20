@@ -1,9 +1,11 @@
 locals {
   account_id = data.aws_caller_identity.current.account_id
+  region     = data.aws_region.current.name
   partition  = data.aws_partition.current.partition
 }
 
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 data "aws_partition" "current" {}
 
 # KMS Key for EKS Secrets Envelope Encryption (FedRAMP SC-13/SC-28)
@@ -30,6 +32,25 @@ data "aws_iam_policy_document" "eks_kms" {
     }
     actions   = ["kms:*"]
     resources = ["*"]
+  }
+
+  # CloudWatch Logs encrypts the control-plane log group as the logs
+  # service, not as the IAM principal that created it.
+  statement {
+    sid    = "AllowCloudWatchLogsEncrypt"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${local.region}.amazonaws.com"]
+    }
+    actions   = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
+    resources = ["*"]
+
+    condition {
+      test     = "ArnLike"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values   = ["arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group:/aws/eks/${var.cluster_name}/cluster"]
+    }
   }
 }
 
@@ -62,6 +83,14 @@ resource "aws_iam_role_policy_attachment" "cluster_policy" {
   policy_arn = "arn:${local.partition}:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
+# Control-plane log group. If this isn't created first, EKS auto-creates
+# it with no encryption and no retention limit (AU-9 / AU-11 / SC-28).
+resource "aws_cloudwatch_log_group" "cluster" {
+  name              = "/aws/eks/${var.cluster_name}/cluster"
+  retention_in_days = var.log_retention_days
+  kms_key_id        = aws_kms_key.eks.arn
+}
+
 # Hardened EKS Cluster Resource
 resource "aws_eks_cluster" "this" {
   name     = var.cluster_name
@@ -86,5 +115,8 @@ resource "aws_eks_cluster" "this" {
     resources = ["secrets"]
   }
 
-  depends_on = [aws_iam_role_policy_attachment.cluster_policy]
+  depends_on = [
+    aws_iam_role_policy_attachment.cluster_policy,
+    aws_cloudwatch_log_group.cluster,
+  ]
 }
