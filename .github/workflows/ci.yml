@@ -6,9 +6,10 @@ on:
   pull_request:
     branches: [ main, master ]
 
+# Least privilege by default; the one job that uploads SARIF raises
+# security-events itself.
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   secret-scan:
@@ -16,12 +17,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Run Gitleaks Secret Scanner
-        uses: gitleaks/gitleaks-action@v3
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -30,10 +32,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: 1.14.6
 
@@ -41,7 +45,7 @@ jobs:
         run: terraform fmt -check -recursive
 
       - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v6
+        uses: terraform-linters/setup-tflint@1cf010d3c7aef302051ccdb68c14c5dc2efa34ef # v6
         with:
           tflint_version: latest
 
@@ -53,14 +57,19 @@ jobs:
   sast-security-scan:
     name: Multi-Engine SAST (Checkov & Trivy)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     needs: [secret-scan, syntax-and-lint]
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       # Engine 1: Checkov FedRAMP / NIST Benchmark Scan (Blocking Hard Gate)
       - name: Run Checkov SAST
-        uses: bridgecrewio/checkov-action@v12
+        uses: bridgecrewio/checkov-action@444c9db6fa75e2d9c19ebf1fde7322089be9009e # v12
         with:
           framework: terraform
           output_format: cli,sarif
@@ -69,7 +78,7 @@ jobs:
 
       # Engine 2: Trivy IaC Scanner (Reporting to Code Scanning tab)
       - name: Run Trivy Misconfiguration Scan
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'config'
           scan-ref: '.'
@@ -79,7 +88,7 @@ jobs:
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy Scan Results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4
         if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: 'trivy-results.sarif'
