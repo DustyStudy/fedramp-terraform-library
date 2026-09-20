@@ -84,6 +84,32 @@ resource "aws_s3_bucket_public_access_block" "patch_logs" {
   restrict_public_buckets = true
 }
 
+# Patch output can include package and host detail: require TLS (SC-8).
+data "aws_iam_policy_document" "patch_logs_bucket" {
+  statement {
+    sid       = "DenyInsecureTransport"
+    effect    = "Deny"
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.patch_logs.arn, "${aws_s3_bucket.patch_logs.arn}/*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "patch_logs" {
+  bucket = aws_s3_bucket.patch_logs.id
+  policy = data.aws_iam_policy_document.patch_logs_bucket.json
+}
+
 # Lifecycle Management for Patch Log Retention & Multipart Cleanup (CKV2_AWS_61 / CKV_AWS_300)
 resource "aws_s3_bucket_lifecycle_configuration" "patch_logs" {
   bucket = aws_s3_bucket.patch_logs.id

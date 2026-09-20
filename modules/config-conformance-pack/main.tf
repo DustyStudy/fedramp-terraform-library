@@ -56,6 +56,7 @@ resource "aws_s3_bucket" "config_access_log" {
   #checkov:skip=CKV_AWS_18:Access log bucket is the terminal sink and cannot log to itself
   #checkov:skip=CKV_AWS_144:Cross-region replication not required for access logs
   #checkov:skip=CKV2_AWS_62:Access log bucket does not require event notifications
+  #checkov:skip=CKV_AWS_145:S3 server access log destinations only support SSE-S3, not SSE-KMS
   bucket = "${local.bucket_name}-access-logs"
 }
 
@@ -74,14 +75,63 @@ resource "aws_s3_bucket_versioning" "config_access_log" {
   }
 }
 
+# S3 server access logging cannot deliver to a bucket whose default
+# encryption is SSE-KMS (an AWS platform restriction on the feature), so
+# this terminal sink uses SSE-S3. Log delivery would otherwise fail silently.
 resource "aws_s3_bucket_server_side_encryption_configuration" "config_access_log" {
   bucket = aws_s3_bucket.config_access_log.id
   rule {
     apply_server_side_encryption_by_default {
-      kms_master_key_id = aws_kms_key.config.arn
-      sse_algorithm     = "aws:kms"
+      sse_algorithm = "AES256"
     }
   }
+}
+
+data "aws_iam_policy_document" "config_access_log_bucket" {
+  statement {
+    sid    = "S3ServerAccessLogsPolicy"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["logging.s3.amazonaws.com"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.config_access_log.arn}/*"]
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = [aws_s3_bucket.config.arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+
+  statement {
+    sid       = "DenyInsecureTransport"
+    effect    = "Deny"
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.config_access_log.arn, "${aws_s3_bucket.config_access_log.arn}/*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "config_access_log" {
+  bucket = aws_s3_bucket.config_access_log.id
+  policy = data.aws_iam_policy_document.config_access_log_bucket.json
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "config_access_log" {
@@ -125,6 +175,33 @@ resource "aws_s3_bucket_logging" "config" {
   bucket        = aws_s3_bucket.config.id
   target_bucket = aws_s3_bucket.config_access_log.id
   target_prefix = "config-bucket-logs/"
+
+  depends_on = [aws_s3_bucket_policy.config_access_log]
+}
+
+data "aws_iam_policy_document" "config_bucket" {
+  statement {
+    sid       = "DenyInsecureTransport"
+    effect    = "Deny"
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.config.arn, "${aws_s3_bucket.config.arn}/*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "config" {
+  bucket = aws_s3_bucket.config.id
+  policy = data.aws_iam_policy_document.config_bucket.json
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "config" {

@@ -13,3 +13,9 @@ variable "private_subnet_ids" {
   description = "Private Subnet IDs for the EKS Cluster"
   type        = list(string)
 }
+
+variable "log_retention_days" {
+  description = "Retention period, in days, for the encrypted EKS control-plane log group"
+  type        = number
+  default     = 365
+}

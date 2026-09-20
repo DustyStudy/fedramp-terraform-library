@@ -2,6 +2,7 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.name
   partition  = data.aws_partition.current.partition
+  trail_arn  = "arn:${data.aws_partition.current.partition}:cloudtrail:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:trail/${var.trail_name}"
 }
 
 # KMS Key Policy for CloudTrail
@@ -27,7 +28,7 @@ data "aws_iam_policy_document" "cloudtrail_kms" {
       type        = "Service"
       identifiers = ["cloudtrail.amazonaws.com"]
     }
-    actions   = ["kms:GenerateDataKey*", "kms:DescribeKey"]
+    actions   = ["kms:GenerateDataKey*", "kms:Decrypt", "kms:DescribeKey"]
     resources = ["*"]
 
     condition {
@@ -72,11 +73,39 @@ resource "aws_sns_topic" "cloudtrail_alerts" {
   kms_master_key_id = aws_kms_key.cloudtrail.id
 }
 
+# CloudTrail refuses to use a topic it isn't allowed to publish to, and
+# without a source condition any account's trail could publish here.
+data "aws_iam_policy_document" "cloudtrail_alerts_topic" {
+  statement {
+    sid       = "AllowCloudTrailPublish"
+    effect    = "Allow"
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.cloudtrail_alerts.arn]
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+      values   = [local.trail_arn]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "cloudtrail_alerts" {
+  arn    = aws_sns_topic.cloudtrail_alerts.arn
+  policy = data.aws_iam_policy_document.cloudtrail_alerts_topic.json
+}
+
 # --- Trail Access Log Bucket ---
 resource "aws_s3_bucket" "trail_access_log" {
   #checkov:skip=CKV_AWS_18:Access log bucket is the terminal sink and cannot log to itself
   #checkov:skip=CKV_AWS_144:Cross-region replication not required for access logs
   #checkov:skip=CKV2_AWS_62:Access log bucket does not require event notifications
+  #checkov:skip=CKV_AWS_145:S3 server access log destinations only support SSE-S3, not SSE-KMS
   bucket = "${var.trail_name}-access-logs-${local.account_id}-${local.region}"
 }
 
@@ -95,14 +124,63 @@ resource "aws_s3_bucket_versioning" "trail_access_log" {
   }
 }
 
+# S3 server access logging cannot deliver to a bucket whose default
+# encryption is SSE-KMS (an AWS platform restriction on the feature), so
+# this terminal sink uses SSE-S3. Log delivery would otherwise fail silently.
 resource "aws_s3_bucket_server_side_encryption_configuration" "trail_access_log" {
   bucket = aws_s3_bucket.trail_access_log.id
   rule {
     apply_server_side_encryption_by_default {
-      kms_master_key_id = aws_kms_key.cloudtrail.arn
-      sse_algorithm     = "aws:kms"
+      sse_algorithm = "AES256"
     }
   }
+}
+
+data "aws_iam_policy_document" "trail_access_log_bucket" {
+  statement {
+    sid    = "S3ServerAccessLogsPolicy"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["logging.s3.amazonaws.com"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.trail_access_log.arn}/*"]
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = [aws_s3_bucket.trail.arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+
+  statement {
+    sid       = "DenyInsecureTransport"
+    effect    = "Deny"
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.trail_access_log.arn, "${aws_s3_bucket.trail_access_log.arn}/*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "trail_access_log" {
+  bucket = aws_s3_bucket.trail_access_log.id
+  policy = data.aws_iam_policy_document.trail_access_log_bucket.json
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "trail_access_log" {
@@ -146,6 +224,8 @@ resource "aws_s3_bucket_logging" "trail" {
   bucket        = aws_s3_bucket.trail.id
   target_bucket = aws_s3_bucket.trail_access_log.id
   target_prefix = "trail-logs/"
+
+  depends_on = [aws_s3_bucket_policy.trail_access_log]
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "trail" {
@@ -196,6 +276,14 @@ data "aws_iam_policy_document" "s3_cloudtrail_policy" {
     }
     actions   = ["s3:GetBucketAcl"]
     resources = [aws_s3_bucket.trail.arn]
+
+    # Without a source condition, any AWS account's CloudTrail trail could
+    # be pointed at this bucket (confused deputy). Pin to this trail.
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+      values   = [local.trail_arn]
+    }
   }
 
   statement {
@@ -211,6 +299,29 @@ data "aws_iam_policy_document" "s3_cloudtrail_policy" {
       test     = "StringEquals"
       variable = "s3:x-amz-acl"
       values   = ["bucket-owner-full-control"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+      values   = [local.trail_arn]
+    }
+  }
+
+  statement {
+    sid       = "DenyInsecureTransport"
+    effect    = "Deny"
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.trail.arn, "${aws_s3_bucket.trail.arn}/*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
     }
   }
 }
@@ -292,5 +403,5 @@ resource "aws_cloudtrail" "org" {
     }
   }
 
-  depends_on = [aws_s3_bucket_policy.trail]
+  depends_on = [aws_s3_bucket_policy.trail, aws_sns_topic_policy.cloudtrail_alerts]
 }

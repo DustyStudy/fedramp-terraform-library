@@ -12,6 +12,40 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Security
+- `modules/org-cloudtrail`: the trail bucket policy now pins CloudTrail's
+  write and ACL-check statements to this trail's ARN (`aws:SourceArn`), so
+  another account's trail can no longer deliver into the audit bucket, and
+  denies non-TLS access. The access-log bucket now uses SSE-S3 (S3 server
+  access logging cannot deliver to an SSE-KMS bucket, so logs were being
+  dropped silently) and has the log-delivery and TLS-only bucket policy it
+  was missing. The alert topic gains the topic policy CloudTrail requires,
+  and the key policy allows `kms:Decrypt` for it.
+- `modules/config-conformance-pack`: same access-log bucket fix (SSE-S3 +
+  log-delivery policy), and TLS-only policies on both buckets.
+- `modules/ssm-patching-hardened`: TLS-only bucket policy on patch logs.
+- `modules/waf-hardened`: WAF logging now redacts the `authorization` and
+  `cookie` headers so credentials/session tokens are not written to the
+  log group in cleartext.
+- `modules/eks-hardened`: control-plane logs go to a module-managed,
+  KMS-encrypted log group with bounded retention (new
+  `log_retention_days`, default 365). Previously EKS auto-created an
+  unencrypted, never-expiring group.
+- `modules/guardduty-org`, `moderate/incident-response/incident-notifications`,
+  `moderate/logging-monitoring`, `moderate/iam-access-control`: SNS topics
+  moved off the AWS-managed `alias/aws/sns` key, which EventBridge and
+  CloudWatch cannot publish to (notifications were silently dropped), onto
+  customer-managed keys. Topic policies now carry `aws:SourceArn` /
+  `aws:SourceAccount` conditions.
+- `moderate/iam-access-control`: the root-usage alert was a CloudWatch
+  alarm on a custom metric nothing emitted, so it could never fire. It is
+  now an EventBridge rule on root activity, as the README describes.
+- `modules/org-scp-boundary`: also denies the current-name GuardDuty and
+  Security Hub administrator-disassociation actions
+  (`...FromAdministratorAccount`, distinct from the legacy `...FromMasterAccount`
+  names), member deletion/stop-monitoring, `securityhub:BatchDisableStandards`
+  and `cloudtrail:PutEventSelectors`.
+
 ### Added
 - Compliance documentation: Customer Responsibility Matrix
   (`docs/CUSTOMER-RESPONSIBILITY-MATRIX.md`), coverage gap analysis

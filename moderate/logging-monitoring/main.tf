@@ -14,9 +14,57 @@
 #   FedRAMP 20x: KSI-MLA-LET (comprehensive logging), KSI-MLA-RVL (persistent
 #     log review and audit)
 
+data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
+
+
+# SNS topics encrypted with the AWS-managed key (alias/aws/sns) silently
+# drop messages from cloudwatch.amazonaws.com: that key's policy can't be edited to
+# allow the service to use it. A customer-managed key whose policy trusts
+# the publishing service is required for the notification path to work.
+data "aws_iam_policy_document" "cis_alarms_kms" {
+  #checkov:skip=CKV_AWS_109:KMS administrative operations require root account wildcard
+  #checkov:skip=CKV_AWS_111:KMS key management requires write access for key admins
+  #checkov:skip=CKV_AWS_356:KMS key policies require wildcard resource within the key definition itself
+  statement {
+    sid    = "AllowRootAccountAdmin"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowCloudWatchAlarmsPublish"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com"]
+    }
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey*"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+}
+
+resource "aws_kms_key" "cis_alarms" {
+  description             = "KMS key for the CIS benchmark alarm SNS topic"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.cis_alarms_kms.json
+}
+
 resource "aws_sns_topic" "cis_alarms" {
   name              = "cis-benchmark-alarms"
-  kms_master_key_id = "alias/aws/sns"
+  kms_master_key_id = aws_kms_key.cis_alarms.arn
 }
 
 data "aws_iam_policy_document" "cis_alarms_topic" {
@@ -28,6 +76,13 @@ data "aws_iam_policy_document" "cis_alarms_topic" {
       identifiers = ["cloudwatch.amazonaws.com"]
     }
     resources = [aws_sns_topic.cis_alarms.arn]
+
+    # Only alarms in this account may publish (confused-deputy guard).
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
   }
 }
 
