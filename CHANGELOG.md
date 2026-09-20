@@ -45,6 +45,9 @@ FedRAMP expects.
   (`...FromAdministratorAccount`, distinct from the legacy `...FromMasterAccount`
   names), member deletion/stop-monitoring, `securityhub:BatchDisableStandards`
   and `cloudtrail:PutEventSelectors`.
+- CI: third-party actions pinned to commit SHAs, checkouts no longer
+  persist the token, and `security-events: write` is scoped to the one job
+  that uploads SARIF.
 
 ### Added
 - Compliance documentation: Customer Responsibility Matrix
