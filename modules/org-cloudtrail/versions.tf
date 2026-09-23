@@ -9,7 +9,7 @@ terraform {
       # attribute became `region`). If you're already on the v6 provider
       # line, update the attribute references accordingly before removing
       # this ceiling.
-      version = ">= 5.0, < 6.65"
+      version = ">= 5.0, < 6.66"
     }
   }
 }
