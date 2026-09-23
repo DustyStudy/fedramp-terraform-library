@@ -11,7 +11,7 @@ before treating anything here as current.
 | Old term | New term (2026) |
 |---|---|
 | FedRAMP Authorization | FedRAMP **Certification** |
-| Low / Moderate / High baseline | Certification **Class B / C / D** |
+| Low / Moderate / High baseline | Rev5 Certification **Class B / C / D** — loosely aligned, *not* a rename. FedRAMP: "There is not a direct correlation between FedRAMP Certification Class and Impact Level." Agencies still categorize their own systems Low/Moderate/High under FIPS 199. |
 | Rev5 control-by-control narrative | **Key Security Indicators (KSIs)** — outcome-based, machine-readable |
 | FedRAMP Ready | Legacy pathway, closing — see timeline below |
 

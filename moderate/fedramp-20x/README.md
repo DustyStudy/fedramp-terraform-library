@@ -8,8 +8,7 @@ narrative.
 
 **Terminology update (2026):** FedRAMP finalized a major overhaul (the
 "Consolidated Rules for 2026" / CR26). "FedRAMP Authorization" is now
-"FedRAMP Certification," and Low/Moderate/High baselines are now
-Certification Classes B/C/D. See `../../docs/FEDRAMP-20X-CHEAT-SHEET.md`
+"FedRAMP Certification," and certifications are organized into Classes A–D. Rev5 Classes B/C/D loosely align with the old Low/Moderate/High baselines, but FedRAMP states there is no direct correlation between a Class and an impact level. See `../../docs/FEDRAMP-20X-CHEAT-SHEET.md`
 for a plain-language rundown of what changed.
 
 **Update — the KSI category list below is now resolved.** An earlier
