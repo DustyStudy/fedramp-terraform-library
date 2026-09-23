@@ -37,8 +37,8 @@ That's the single most common misunderstanding driving unnecessary panic.
   submissions have a cutoff in 2027. These aren't hypothetical — they're
   in motion now.
 - **The "High" question isn't solved yet.** FedRAMP 20x was built with
-  cloud-native SaaS in mind. The most demanding tier (formerly "High," now
-  "Class D") still requires the older Rev5 process, and there's genuine
+  cloud-native SaaS in mind. The most demanding tier (Class D, the closest
+  counterpart to the former High baseline) still requires the older Rev5 process, and there's genuine
   open uncertainty — even among FedRAMP's own staff, publicly — about how
   the automation-first model extends to organizations running physical
   infrastructure.
@@ -56,7 +56,7 @@ That's the single most common misunderstanding driving unnecessary panic.
 | You used to hear | Now it's called | What actually changed |
 |---|---|---|
 | FedRAMP Authorized / Authorization | **FedRAMP Certified / Certification** | Just the label. Same underlying assessment concept. Agencies still separately issue their own "Authority to Operate" (ATO) — that word hasn't changed. |
-| Low / Moderate / High (impact levels) | **Certification Class B / C / D** (with Class A as a new entry tier) | Important nuance: a Class is *not* a repackaged impact level. It describes how much evidence and reporting depth a cloud service commits to — not how sensitive the data it's allowed to hold is. Agencies still categorize their own systems as Low/Moderate/High separately; the two labels aren't meant to be read as equivalent. |
+| Low / Moderate / High (impact levels) | **Certification Classes A–D** — loosely aligned with the old levels, not renamed from them | Important nuance: a Class is *not* a repackaged impact level. It describes how much evidence and reporting depth a cloud service commits to — not how sensitive the data it's allowed to hold is. Agencies still categorize their own systems as Low/Moderate/High separately; the two labels aren't meant to be read as equivalent. In FedRAMP's words, "There is not a direct correlation between FedRAMP Certification Class and Impact Level." |
 | 3PAO (Third Party Assessment Organization) | **FedRAMP Recognized Assessor** | Same idea — an independent assessor — new name, and a stricter rule that the assessor can't also be the same firm that advised you on getting ready. |
 | Continuous Monitoring (ConMon) | **Collaborative Continuous Monitoring** | Same spirit (ongoing evidence, not just a point-in-time check), formalized with new specific deliverables (see below). |
 | Significant Change Request (SCR) | **Significant Change Notification (SCN)** in some contexts | Philosophy shift from "ask permission" toward "notify," though exact terminology varies by which specific rule you're looking at — verify current usage for your situation. |
@@ -67,11 +67,18 @@ That's the single most common misunderstanding driving unnecessary panic.
   foot in the door using evidence it already has (like an existing SOC 2
   audit) instead of starting from zero. Time-limited — you're expected to
   move up to B, C, or D within a couple of years, not stay here forever.
-- **Class B** — replaces what used to be called "Low."
-- **Class C** — replaces what used to be called "Moderate."
-- **Class D** — replaces what used to be called "High." This is the one
-  still stuck on the older Rev5 process, still requires a federal agency
-  to sponsor you, and is the most demanding tier by far.
+- **Class B / C / D** — progressively more assurance, reporting, and
+  automation. These are *not* renamed impact levels. For Rev5, the Class
+  B / C / D control baselines are built from the NIST SP 800-53B Low /
+  Moderate / High baselines, so the *control sets* line up closely, but
+  FedRAMP: "There is not a direct correlation between FedRAMP Certification Class and Impact Level."
+  Providers tailor baselines, and agencies still categorize their own
+  systems (FIPS 199) and decide what a class is adequate for. FedRAMP's
+  own agency-use guidance: Class B covers most Low and some Moderate/High
+  needs; Class C most Low and Moderate plus some High; Class D most use
+  cases regardless of impact level (not classified systems).
+- **Class D** — the most demanding tier. It is still Rev5-only today (20x
+  Class D is slated for 2027) and requires a federal agency to sponsor you.
 
 ## Two ways to get certified
 
@@ -82,7 +89,7 @@ That's the single most common misunderstanding driving unnecessary panic.
   agency willing to sponsor a brand-new vendor).
 - **Agency Path** — the traditional route. A federal agency reviews you
   first and sponsors your certification. Still the only path available
-  for Class D ("High").
+  for Class D.
 
 ## FedRAMP 20x vs. FedRAMP Rev5 — the actual difference
 
@@ -104,7 +111,7 @@ That's the single most common misunderstanding driving unnecessary panic.
 
 If your service runs on standard cloud infrastructure you don't own
 physically, 20x is very likely the path built for you. If you run your
-own data centers, or need the "High" tier, you're still on Rev5 for now.
+own data centers, or need Class D, you're still on Rev5 for now.
 
 ## Timeline (verify current dates before relying on these)
 
@@ -116,7 +123,7 @@ own data centers, or need the "High" tier, you're still on Rev5 for now.
 | Aug 2026 | First 20x submission pipelines opened |
 | Jan 1, 2027 | CR26 becomes mandatory for everyone, including existing Rev5 holders |
 | ~Mid-2027 | New Rev5 applications close (Rev5 doesn't disappear immediately, but the door for *new* Rev5 submissions does) |
-| FY2027 (targeted) | Class D ("High") pilot for the 20x model |
+| FY2027 (targeted) | Class D pilot for the 20x model |
 | Through ~2028 | Rev5 expected to fully sunset — exact date has shifted before and may again |
 
 ## What this actually means day-to-day for an engineering team
