@@ -8,4 +8,6 @@ terraform {
   }
 }
 
-provider "aws" {}
+provider "aws" {
+  use_fips_endpoint = var.use_fips_endpoint
+}

@@ -9,6 +9,7 @@ terraform {
 }
 
 provider "aws" {
+  use_fips_endpoint = var.use_fips_endpoint
   # Credentials for the AWS Organizations *management* account.
   # Do not point this at a member account — org-wide resources
   # (organization trail, GuardDuty/Security Hub auto-enrollment, SCPs)

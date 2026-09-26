@@ -12,6 +12,11 @@ variable "trail_name" {
   type        = string
   default     = "org-security-trail"
   description = "Name for the organization trail."
+
+  validation {
+    condition     = !can(regex("\\.", var.trail_name))
+    error_message = "trail_name must not contain dots: S3 FIPS endpoints are virtual-hosted and do not support dotted bucket names."
+  }
 }
 
 variable "log_retention_days" {

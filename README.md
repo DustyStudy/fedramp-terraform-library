@@ -27,9 +27,8 @@ against your organization's current SSP and your 3PAO's expectations.
 - **`moderate/`** and **`high/`** map to the NIST SP 800-53 Rev5 control
   baselines. High reuses Moderate's modules with tighter values rather
   than duplicating module code: longer log and backup retention, a
-  dedicated EBS CMK, a 16-character password minimum, and AWS API calls to
-  FIPS endpoints (`use_fips_endpoint = true`; Class D MUST use validated
-  crypto under `CMU-CSO-UVM`).
+  dedicated EBS CMK, and a 16-character password minimum. Both tracks
+  send AWS API calls to FIPS endpoints (see [FIPS endpoints](#fips-endpoints)).
 - **`fedramp-20x/`** is *not* a control baseline. FedRAMP 20x
   certifications are validated against machine-readable **Key Security
   Indicators (KSIs)** — a fundamentally different assessment model.
@@ -108,6 +107,28 @@ docs are aimed at that gap directly:
   providers report vulnerabilities under VDR/VER instead
 - **`CHANGELOG.md`** — change history, in the spirit of the documentation
   discipline FedRAMP's Significant Change Notification (SCN) rules expect
+
+## FIPS endpoints
+
+Every root configuration in this repo (`moderate/`, `high/`, `examples/`) sets
+`use_fips_endpoint = var.use_fips_endpoint` on the AWS provider, defaulting to
+`true`, so all Terraform API calls go to FIPS 140 validated endpoints. Under
+FedRAMP's `CMU-CSO-UVM`, validated crypto is a MUST for Class D and a SHOULD for
+Class C.
+
+- **Calling the modules from your own root?** Modules don't configure
+  providers, so set `use_fips_endpoint = true` in your own `provider "aws"`
+  block (or export `AWS_USE_FIPS_ENDPOINT=true`).
+- **Coverage checked:** every service these modules call resolves to a FIPS
+  endpoint in us-east-1, us-west-2, us-gov-west-1 and us-gov-east-1. This was
+  checked against the AWS SDK's endpoint rules and DNS, including S3 and S3
+  Control. In GovCloud, the FIPS endpoints for many services are the standard
+  regional hostnames ([AWS FIPS endpoints](https://aws.amazon.com/compliance/fips/)).
+- **S3 bucket names must not contain dots.** S3 FIPS endpoints are
+  virtual-hosted only. `trail_name` and `config_bucket_name` validate this.
+- FIPS endpoints protect the API channel. Data-plane TLS (load balancers,
+  databases, your application) is configured separately; see
+  `modules/fips-vpc-endpoints` and `docs/COVERAGE-GAPS.md`.
 
 ## A Terraform-specific note
 
