@@ -17,6 +17,9 @@ resource "aws_ebs_default_kms_key" "this" {
 }
 
 # IAM password policy — NIST SP 800-63B-4 defaults (see modules/iam-password-policy for rationale)
+# Trivy AWS-0058..0061 require composition rules (CIS-era); NIST SP 800-63B-4, cited by
+# FedRAMP IA-5 guidance, says verifiers SHALL NOT impose them. Opt in via require_* variables.
+#trivy:ignore:AVD-AWS-0058 trivy:ignore:AVD-AWS-0059 trivy:ignore:AVD-AWS-0060 trivy:ignore:AVD-AWS-0061
 resource "aws_iam_account_password_policy" "strict" {
   #checkov:skip=CKV_AWS_9:NIST SP 800-63B-4 (cited by FedRAMP IA-5 guidance) says verifiers SHALL NOT require periodic password changes; expiry is opt-in via max_password_age
   #checkov:skip=CKV_AWS_11:NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules; opt-in via require_lowercase_characters
