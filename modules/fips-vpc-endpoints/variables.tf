@@ -26,14 +26,12 @@ variable "route_table_ids" {
 
 variable "fips_endpoint_services" {
   description = <<-EOT
-    List of AWS services that have a dedicated FIPS-suffixed VPC endpoint
-    service name (e.g. 'kms-fips' resolves to
-    com.amazonaws.<region>.kms-fips). Verified against AWS's own
-    PrivateLink service list — https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-support.html
-    — as of this writing, that's a short list; most services do NOT have
-    a separate FIPS-suffixed endpoint (see standard_endpoint_services
-    below). Re-verify against that page before adding entries, since this
-    list has grown over time and will keep changing.
+    FIPS-suffixed VPC endpoint services to create (e.g. 'kms-fips' resolves
+    to com.amazonaws.<region>.kms-fips). The default covers kms, ec2 and sts.
+    AWS publishes many more -fips service names (s3-fips, sqs-fips,
+    dynamodb-fips, rds-fips, ebs-fips, ...) — add any your workload uses,
+    after confirming availability in your region:
+    https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-support.html
   EOT
   type        = list(string)
   default = [

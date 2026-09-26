@@ -151,7 +151,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "config_access_log" {
 
 # --- Main Config S3 Bucket ---
 resource "aws_s3_bucket" "config" {
-  #checkov:skip=CKV_AWS_144:Replication managed via regional disaster recovery baseline
+  #checkov:skip=CKV_AWS_144:Cross-region replication is NOT configured by this module. If your contingency plan needs off-site log copies, add S3 replication, or tag the bucket Backup=true (versioning required) and set org-governance copy_destination_region
   #checkov:skip=CKV2_AWS_62:Config delivery mechanism writes directly without notifications
   bucket = local.bucket_name
 }

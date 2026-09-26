@@ -52,9 +52,11 @@ this repo" for "we're FedRAMP ready."
   services this repo directly touches (RDS, S3 buckets it creates). If you
   add other data stores or internal services, you're responsible for their
   TLS configuration too.
-- `fips-vpc-endpoints` only has genuine FIPS-suffixed endpoints for `kms`,
-  `ec2`, and `sts` — see that module's `variables.tf` for why the rest
-  aren't actually FIPS-specific endpoints.
+- `fips-vpc-endpoints` creates FIPS-suffixed endpoints only for `kms`, `ec2`,
+  and `sts` by default. AWS offers many more (`s3-fips`, `sqs-fips`,
+  `dynamodb-fips`, ...); add the ones your workload uses. The services in
+  `standard_endpoint_services` (`secretsmanager`, `ssm`, `logs`, ...) have no
+  `-fips` endpoint service name.
 - No web application firewall coverage beyond what `waf-hardened` attaches
   to — a WAF is only as good as what it's actually in front of.
 - No explicit data classification or data loss prevention (DLP) tooling.

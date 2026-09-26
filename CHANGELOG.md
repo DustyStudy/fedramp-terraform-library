@@ -3,14 +3,54 @@
 All notable changes to this repo are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-Significant infrastructure changes to a live FedRAMP-authorized system
-require going through FedRAMP's Significant Change Request (SCR) process
+Significant infrastructure changes to a live FedRAMP-certified system
+fall under FedRAMP's Significant Change Notification (SCN) rules
 — see `docs/CONTINUOUS-MONITORING.md`. Keeping this changelog current is
 good practice regardless of whether you're tracking against a live
 authorization, since it mirrors the change-documentation discipline
 FedRAMP expects.
 
 ## [Unreleased]
+
+### Fixed (FedRAMP accuracy audit, 2026-09-26)
+- **IA-5 password policy now follows NIST SP 800-63B-4**, which FedRAMP's IA-5
+  guidance points to. `iam-password-policy` and `account-baseline` default to a
+  15-character minimum, no composition rules, and no periodic expiry;
+  800-63B-4 says verifiers "SHALL NOT impose other composition rules" and "SHALL
+  NOT require subscribers to change passwords periodically". Composition rules
+  and `max_password_age` are opt-in variables. Removed variable descriptions
+  claiming "FedRAMP requires >= 14 / <= 60 or 90 days / >= 24" (FedRAMP assigns
+  none of those). **Behavior change:** existing deployments drop composition
+  rules and expiry unless you set the new variables.
+- **Backup policy couldn't run:** it targeted `FedRAMPComplianceVault`, which
+  nothing created. `account-baseline` now creates it (CMK-encrypted, rotation
+  on; `create_backup_vault`), and `org-governance` takes `backup_vault_name`.
+  Added a real cross-region copy (`copy_destination_region`), because the policy
+  said "cross-region compliance" but had no copy action. Corrected
+  `backup_regions` (it sets where the plan runs, not replication) and the
+  retention description (FedRAMP assigns no CP-9 value). Added a >= 120-day
+  retention validation for AWS's cold-storage minimum.
+- **FIPS endpoints:** the `high/` roots now set `use_fips_endpoint = true`
+  (variable), since Class D MUST use validated crypto (`CMU-CSO-UVM`). Corrected
+  the claim that only kms/ec2/sts have FIPS VPC endpoint service names: AWS
+  lists many more (s3-fips, sqs-fips, dynamodb-fips, ...).
+- Rewrote `docs/CONTINUOUS-MONITORING.md` for CR26 (quarterly CCM, VDR
+  timeframes, SCN); it still described the pre-2026 monthly POA&M model.
+  `POAM-TEMPLATE.md` is marked legacy (VER replaces provider POA&Ms).
+- Checkov CKV_AWS_144 skips no longer claim replication is "handled" by the org
+  backup policy or a DR baseline.
+- Removed stale copies `moderate/docs/` and `moderate/fedramp-20x/` (they
+  floated a nonexistent `KSI-AFR` cluster), and replaced `moderate/README.md`,
+  an old copy of the root README, with a Moderate-track README.
+- README: the High track description now matches what it changes.
+- **`guardduty-org` failed `terraform validate` on every AWS provider v6
+  release** the module allows: v6 removed `auto_enable` and made
+  `auto_enable_organization_members` required. The module now sets it from a
+  new `auto_enable_organization_members` variable (default `NEW`, matching the
+  old behavior; `ALL` also covers existing members). `auto_enable = false`
+  must now be paired with `"NONE"`, and a precondition says so. This also
+  fixes `examples/management-account-baseline`.
+
 
 ### Security
 - `modules/org-cloudtrail`: the trail bucket policy now pins CloudTrail's

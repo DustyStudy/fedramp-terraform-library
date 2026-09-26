@@ -12,3 +12,8 @@ output "iam_password_policy_expire_passwords" {
   description = "Indicates whether passwords expire according to the IAM password policy"
   value       = aws_iam_account_password_policy.strict.expire_passwords
 }
+
+output "backup_vault_arn" {
+  description = "ARN of the AWS Backup vault (null when create_backup_vault = false)"
+  value       = var.create_backup_vault ? aws_backup_vault.this[0].arn : null
+}

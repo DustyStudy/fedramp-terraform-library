@@ -50,7 +50,7 @@ resource "aws_kms_key" "ssm" {
 # S3 Bucket for Patch Execution Logs with SSE-KMS
 resource "aws_s3_bucket" "patch_logs" {
   #checkov:skip=CKV_AWS_18:Access logging target can be configured at centralized log sink
-  #checkov:skip=CKV_AWS_144:Cross-region replication managed at account baseline level
+  #checkov:skip=CKV_AWS_144:Cross-region replication is NOT configured by this module. If your contingency plan needs off-site log copies, add S3 replication, or tag the bucket Backup=true (versioning required) and set org-governance copy_destination_region
   #checkov:skip=CKV_AWS_145:KMS CMK encryption enforced below
   #checkov:skip=CKV_AWS_21:Versioning enabled below
   #checkov:skip=CKV2_AWS_62:Event notifications are not required for internal SSM patch command logs

@@ -13,6 +13,7 @@ module "org_governance" {
   target_ou_or_account_ids  = ["ou-xxxx-xxxxxxxx"]
   backup_retention_days     = 365
   backup_regions            = ["us-east-1", "us-west-2"]
+  copy_destination_region   = "" # set to copy every backup to another region
 }
 ```
 
@@ -24,6 +25,17 @@ module "org_governance" {
 
 ## Notes
 
+- **The target vault must exist first.** The backup policy writes to
+  `backup_vault_name` (default `FedRAMPComplianceVault`) in every member
+  account and every region in `backup_regions`. Create it with
+  `modules/account-baseline` (`create_backup_vault = true`, the default),
+  deployed per account and region. Otherwise backup jobs fail.
+- `backup_regions` sets where the plan *runs*; it does not copy backups
+  between regions. Set `copy_destination_region` for a cross-region copy (the
+  destination vault must exist there too).
+- FedRAMP assigns no CP-9 retention value: `backup_retention_days` comes from
+  your own contingency plan. It must be at least 120 (cold storage at day 30
+  plus AWS's 90-day cold-storage minimum).
 - The centralized backup policy sets schedule and retention only — it
   does **not** enable AWS Backup Vault Lock (immutable/WORM backups).
   Vault Lock is a separate, deliberate step (it has an irreversible

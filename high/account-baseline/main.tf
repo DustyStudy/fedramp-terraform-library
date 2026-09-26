@@ -32,7 +32,7 @@ module "account_baseline" {
 
   kms_key_arn               = aws_kms_key.ebs.arn
   minimum_password_length   = 16
-  max_password_age          = 60
+  max_password_age          = 0 # NIST SP 800-63B-4: no periodic expiry
   password_reuse_prevention = 24
   manage_default_vpc        = var.manage_default_vpc
 }

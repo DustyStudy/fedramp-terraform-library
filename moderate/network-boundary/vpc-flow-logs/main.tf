@@ -22,7 +22,7 @@ locals {
 resource "aws_s3_bucket" "flow_log_access_log" {
   #checkov:skip=CKV_AWS_18:This bucket IS the access-log destination for the flow log bucket. A log-destination bucket logging to itself is a circular anti-pattern AWS explicitly advises against, so this is the terminal sink and intentionally has no further logging target.
   #checkov:skip=CKV_AWS_145:S3 server access logs must land in a bucket encrypted with SSE-S3, not SSE-KMS — that's an AWS platform restriction on the access-logging feature itself, not a choice made here.
-  #checkov:skip=CKV_AWS_144:Cross-region replication for log durability is handled at the account/org backup-policy level (see modules/org-governance), not per-bucket in this lean, per-VPC utility module — adding a required replica bucket/region/IAM role here would substantially bloat what's meant to be a simple module.
+  #checkov:skip=CKV_AWS_144:Cross-region replication is NOT configured by this module. If your contingency plan needs off-site log copies, add S3 replication, or tag the bucket Backup=true (versioning required) and set org-governance copy_destination_region
   bucket = "vpc-flow-logs-access-logs-${local.account_id}-${local.region}-${var.vpc_id}"
 }
 
@@ -163,7 +163,7 @@ resource "aws_kms_alias" "flow_log" {
 }
 
 resource "aws_s3_bucket" "flow_log" {
-  #checkov:skip=CKV_AWS_144:Cross-region replication for log durability is handled at the account/org backup-policy level (see modules/org-governance), not per-bucket in this lean, per-VPC utility module — adding a required replica bucket/region/IAM role here would substantially bloat what's meant to be a simple module.
+  #checkov:skip=CKV_AWS_144:Cross-region replication is NOT configured by this module. If your contingency plan needs off-site log copies, add S3 replication, or tag the bucket Backup=true (versioning required) and set org-governance copy_destination_region
   bucket = "vpc-flow-logs-${local.account_id}-${local.region}-${var.vpc_id}"
 }
 

@@ -1,5 +1,7 @@
 locals {
-  partition = data.aws_partition.current.partition
+  # $account is AWS Backup Organizations Policy's per-account placeholder.
+  copy_destination_vault_arn = "arn:${local.partition}:backup:${var.copy_destination_region}:$account:backup-vault:${var.backup_vault_name}"
+  partition                  = data.aws_partition.current.partition
 }
 
 # --- 1. Workload Perimeter SCP (Root User, Direct IGW, Local IAM Users, S3 Object Lock) ---
@@ -92,7 +94,7 @@ resource "aws_organizations_policy" "ai_opt_out" {
 # --- 3. Centralized Backup Policy (WORM / CP-9) ---
 resource "aws_organizations_policy" "backup_policy" {
   name        = "fedramp-centralized-backup-policy"
-  description = "Enforces automated daily backups and cross-region compliance"
+  description = var.copy_destination_region == "" ? "Enforces automated daily backups" : "Enforces automated daily backups with a cross-region copy"
   type        = "BACKUP_POLICY"
   content = jsonencode({
     plans = {
@@ -101,7 +103,7 @@ resource "aws_organizations_policy" "backup_policy" {
           "@@assign" = var.backup_regions
         },
         rules = {
-          DailyRule = {
+          DailyRule = merge({
             schedule_expression = {
               "@@assign" = "cron(0 5 ? * * *)"
             },
@@ -120,9 +122,28 @@ resource "aws_organizations_policy" "backup_policy" {
               }
             },
             target_backup_vault_name = {
-              "@@assign" = "FedRAMPComplianceVault"
+              "@@assign" = var.backup_vault_name
             }
-          }
+            },
+            # Cross-region copy (CP-6 / CP-9(8)-style off-site copy) only when a
+            # destination region is set. The destination vault must already
+            # exist in that region in every member account (see
+            # modules/account-baseline, create_backup_vault).
+            var.copy_destination_region == "" ? {} : {
+              copy_actions = {
+                (local.copy_destination_vault_arn) = {
+                  target_backup_vault_arn = {
+                    "@@assign" = local.copy_destination_vault_arn
+                  }
+                  lifecycle = {
+                    delete_after_days = {
+                      "@@assign" = var.backup_retention_days
+                    }
+                  }
+                }
+              }
+            }
+          )
         },
         selections = {
           tags = {
