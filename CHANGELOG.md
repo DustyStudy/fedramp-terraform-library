@@ -12,6 +12,19 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Changed
+- **FIPS endpoints everywhere.** Every root configuration (`moderate/`, `high/`,
+  `examples/`) now sets `use_fips_endpoint = var.use_fips_endpoint` (default
+  `true`), not only `high/`. Coverage was checked against the AWS SDK's endpoint
+  rules and DNS in us-east-1, us-west-2, us-gov-west-1 and us-gov-east-1 for
+  every service the modules call. A debug-logged plan confirmed the provider
+  calls `sts-fips.us-east-1.amazonaws.com`. New README section on FIPS
+  endpoints, including what to set when calling the modules from your own
+  root.
+- `trail_name` and `config_bucket_name` now reject dots, because S3 FIPS
+  endpoints are virtual-hosted and don't support dotted bucket names.
+
+
 ### Fixed (FedRAMP accuracy audit, 2026-09-26)
 - **IA-5 password policy now follows NIST SP 800-63B-4**, which FedRAMP's IA-5
   guidance points to. `iam-password-policy` and `account-baseline` default to a

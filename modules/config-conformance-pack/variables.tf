@@ -2,6 +2,11 @@ variable "config_bucket_name" {
   type        = string
   default     = ""
   description = "Name for the S3 bucket storing AWS Config snapshots and history. Leave blank to auto-generate a name."
+
+  validation {
+    condition     = !can(regex("\\.", var.config_bucket_name))
+    error_message = "config_bucket_name must not contain dots: S3 FIPS endpoints are virtual-hosted and do not support dotted bucket names."
+  }
 }
 
 variable "conformance_pack_template" {
