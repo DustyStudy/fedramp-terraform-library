@@ -25,12 +25,14 @@ module "fips_vpc_endpoints" {
 ## Notes
 
 - **Read this before assuming "FIPS module" means "FIPS everywhere."**
-  Only `kms`, `ec2`, and `sts` (`fips_endpoint_services`) have a genuine,
-  separate FIPS-suffixed VPC endpoint service name
-  (`com.amazonaws.<region>.kms-fips`, etc.) as of this writing. Everything
-  in `standard_endpoint_services` (`secretsmanager`, `ssm`, `logs`, and
-  others used for typical SSM/Session-Manager connectivity) does **not**
-  have a distinct FIPS endpoint — where AWS offers FIPS access to those
+  By default the module creates FIPS-suffixed endpoints for `kms`, `ec2`,
+  and `sts` (`fips_endpoint_services`). AWS publishes many more `-fips`
+  VPC endpoint service names (e.g. `s3-fips`, `sqs-fips`, `dynamodb-fips`,
+  `rds-fips`; see the [PrivateLink list](https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-support.html)); add the ones your
+  workload uses. Everything in `standard_endpoint_services`
+  (`secretsmanager`, `ssm`, `logs`, and others used for typical
+  SSM/Session-Manager connectivity) does **not** have a distinct FIPS
+  endpoint — where AWS offers FIPS access to those
   services at all, it's through an alternate FIPS-labeled DNS hostname on
   the *same* ordinary endpoint, which is a client/SDK configuration
   choice, not separate infrastructure this module creates.

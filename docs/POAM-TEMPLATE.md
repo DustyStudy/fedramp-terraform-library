@@ -1,5 +1,12 @@
 # Plan of Action & Milestones (POA&M) — Starter Template
 
+> **CR26 status:** under FedRAMP's Consolidated Rules for 2026, providers no longer
+> keep a POA&M for FedRAMP. Vulnerabilities are reported under the VDR/VER rules
+> (monthly `VER-TFR-MHR` report with `VER-RPT-VDT` / `VER-RPT-AVI` fields; mandatory
+> 2026-12-07), and agencies keep POA&Ms only for agency-owned actions. Use this
+> template only for a legacy Rev5 package before your CR26 transition, or for
+> internal tracking.
+
 Every real FedRAMP assessment finds gaps — that's expected, not a failure
 state. A POA&M is how you track a finding from discovery through
 remediation. **This is a lightweight starting point, not a substitute for

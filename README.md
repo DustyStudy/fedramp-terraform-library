@@ -25,9 +25,11 @@ against your organization's current SSP and your 3PAO's expectations.
 ## Why three separate tracks?
 
 - **`moderate/`** and **`high/`** map to the NIST SP 800-53 Rev5 control
-  baselines. High reuses Moderate's modules with tighter variable values
-  (longer log retention, stricter crypto, broader MFA enforcement) via
-  `.tfvars` overrides rather than duplicating module code.
+  baselines. High reuses Moderate's modules with tighter values rather
+  than duplicating module code: longer log and backup retention, a
+  dedicated EBS CMK, a 16-character password minimum, and AWS API calls to
+  FIPS endpoints (`use_fips_endpoint = true`; Class D MUST use validated
+  crypto under `CMU-CSO-UVM`).
 - **`fedramp-20x/`** is *not* a control baseline. FedRAMP 20x
   certifications are validated against machine-readable **Key Security
   Indicators (KSIs)** — a fundamentally different assessment model.
@@ -100,12 +102,12 @@ docs are aimed at that gap directly:
   itself, tested IR/contingency plans, and more), stated plainly rather
   than left implicit
 - **`docs/CONTINUOUS-MONITORING.md`** — how this repo's modules feed
-  FedRAMP's monthly/annual ConMon deliverables, and what ConMon requires
-  that nothing here automates
-- **`docs/POAM-TEMPLATE.md`** — a starting point for tracking findings;
-  get FedRAMP's official POA&M workbook for actual submissions
+  FedRAMP's CR26 continuous monitoring (quarterly CCM reports, VDR
+  timeframes, SCN), and what it requires that nothing here automates
+- **`docs/POAM-TEMPLATE.md`** — legacy Rev5 finding tracker; under CR26,
+  providers report vulnerabilities under VDR/VER instead
 - **`CHANGELOG.md`** — change history, in the spirit of the documentation
-  discipline FedRAMP's Significant Change Request process expects
+  discipline FedRAMP's Significant Change Notification (SCN) rules expect
 
 ## A Terraform-specific note
 

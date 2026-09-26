@@ -41,7 +41,15 @@ resource "aws_guardduty_detector" "this" {
 
 resource "aws_guardduty_organization_configuration" "this" {
   detector_id = aws_guardduty_detector.this.id
-  auto_enable = var.auto_enable
+  # AWS provider v6 removed auto_enable; auto_enable_organization_members is required.
+  auto_enable_organization_members = var.auto_enable_organization_members
+
+  lifecycle {
+    precondition {
+      condition     = var.auto_enable || var.auto_enable_organization_members == "NONE"
+      error_message = "auto_enable = false now requires auto_enable_organization_members = \"NONE\" (AWS provider v6 removed auto_enable)."
+    }
+  }
 
   datasources {
     s3_logs {

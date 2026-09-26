@@ -13,13 +13,20 @@ variable "auto_enable" {
   type        = bool
   default     = true
   description = <<-EOT
-    Automatically enable GuardDuty for new accounts joining the
-    organization. This module uses the long-standing `auto_enable`
-    boolean argument. The underlying GuardDuty API also supports a
-    newer, more granular `AutoEnableOrganizationMembers` setting
-    (NEW/ALL/NONE) — if your AWS provider version exposes an equivalent
-    argument on aws_guardduty_organization_configuration, check current
-    provider docs and consider using it instead for finer control over
-    existing vs. new member accounts.
+    Deprecated: AWS provider v6 removed the auto_enable argument. Use
+    auto_enable_organization_members instead. Kept so existing callers
+    still plan; false must be paired with auto_enable_organization_members
+    = "NONE".
   EOT
+}
+
+variable "auto_enable_organization_members" {
+  type        = string
+  default     = "NEW"
+  description = "GuardDuty auto-enablement for member accounts: NEW (accounts that join later; matches the old auto_enable = true behavior), ALL (existing members too), or NONE."
+
+  validation {
+    condition     = contains(["ALL", "NEW", "NONE"], var.auto_enable_organization_members)
+    error_message = "auto_enable_organization_members must be ALL, NEW, or NONE."
+  }
 }

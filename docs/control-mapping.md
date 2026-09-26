@@ -42,7 +42,7 @@ for either.
 | `ecr-hardened` | RA-5, SC-28, SC-12 | KSI-SVC-SIN, KSI-SVC-VRI | KMS-encrypted repository, tag immutability, scan-on-push. Whoever pushes/pulls images needs KMS grants added separately — see module README |
 | `ecs-fargate-hardened` | AU-12, SC-13 | KSI-MLA-LET | Container Insights, KMS-encrypted logs + ECS Exec session logging |
 | `eks-hardened` | AU-2, SC-7, SC-13 | KSI-MLA-LET, KSI-CNA-RNT, KSI-SVC-SIN | KMS secrets envelope encryption, all 5 control-plane log types, private-only API endpoint |
-| `fips-vpc-endpoints` | AC-3, SC-7, SC-8, SC-13 | KSI-CNA-RNT, KSI-SVC-VCM | Only `kms`, `ec2`, `sts` have genuine FIPS-suffixed endpoint names — see module README for why the rest don't |
+| `fips-vpc-endpoints` | AC-3, SC-7, SC-8, SC-13 | KSI-CNA-RNT, KSI-SVC-VCM | Creates `kms`/`ec2`/`sts` FIPS endpoints by default; AWS offers many more `-fips` services — add as needed (see module README) |
 | `network-perimeter-vpc` | AU-12, SC-7, CM-7 | KSI-CNA-RNT, KSI-CNA-ULN, KSI-MLA-LET | 3-tier VPC, Flow Logs to KMS-encrypted CloudWatch Logs, default SG locked to zero rules |
 | `org-governance` | AC-2, AC-4, AU-9, CP-9, MP-2 | KSI-IAM-ELP, KSI-RPL-ABO | Workload-perimeter SCP, AI-services opt-out policy, centralized backup policy (schedule/retention only — no vault lock) |
 | `org-scp-boundary` | AC-3, AC-4, AC-6, SC-7, SC-8 | KSI-CNA-RNT, KSI-CNA-ULN, KSI-IAM-ELP | Region-lock SCP, deny-disable-security-services, insecure-transport deny |
