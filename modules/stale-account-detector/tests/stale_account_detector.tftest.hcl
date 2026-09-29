@@ -138,3 +138,12 @@ run "lambda_is_encrypted_and_has_a_dlq" {
     error_message = "Failed scheduled invocations must land in a dead-letter queue."
   }
 }
+
+run "topic_uses_the_module_cmk" {
+  command = plan
+
+  assert {
+    condition     = aws_sns_topic.report.kms_master_key_id == aws_kms_key.log_encryption.arn
+    error_message = "The SNS topic must be encrypted with the module's customer-managed key, not aws/sns."
+  }
+}

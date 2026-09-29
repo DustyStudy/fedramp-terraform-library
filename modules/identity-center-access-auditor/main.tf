@@ -9,8 +9,10 @@ data "archive_file" "lambda_zip" {
 }
 
 resource "aws_sns_topic" "audit" {
-  name              = "${var.name_prefix}-identity-center-audit"
-  kms_master_key_id = "alias/aws/sns"
+  name = "${var.name_prefix}-identity-center-audit"
+  # The module's own CMK (AWS-0136); the Lambda role already holds
+  # GenerateDataKey/Decrypt on it, which publishing needs.
+  kms_master_key_id = aws_kms_key.log_encryption.arn
 }
 
 resource "aws_sns_topic_subscription" "email" {

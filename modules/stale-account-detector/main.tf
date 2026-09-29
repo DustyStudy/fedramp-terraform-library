@@ -43,8 +43,10 @@ locals {
 # SNS + KMS
 # ---------------------------------------------------------------------
 resource "aws_sns_topic" "report" {
-  name              = "${var.name_prefix}-stale-account-report"
-  kms_master_key_id = "alias/aws/sns"
+  name = "${var.name_prefix}-stale-account-report"
+  # The module's own CMK (AWS-0136); the Lambda role already holds
+  # GenerateDataKey/Decrypt on it, which publishing needs.
+  kms_master_key_id = aws_kms_key.log_encryption.arn
 }
 
 resource "aws_sns_topic_subscription" "email" {

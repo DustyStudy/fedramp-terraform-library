@@ -106,3 +106,12 @@ run "runs_daily_with_encrypted_logs" {
     error_message = "Failed scheduled invocations must land in a dead-letter queue."
   }
 }
+
+run "topic_uses_the_module_cmk" {
+  command = plan
+
+  assert {
+    condition     = aws_sns_topic.audit.kms_master_key_id == aws_kms_key.log_encryption.arn
+    error_message = "The SNS topic must be encrypted with the module's customer-managed key, not aws/sns."
+  }
+}
