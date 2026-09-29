@@ -163,6 +163,10 @@ resource "aws_cloudwatch_event_target" "root_usage" {
 }
 
 # Permission Boundary Policy
+# A permissions boundary is a ceiling, not a grant: s3:* here caps what the
+# developer's identity policy can allow, scoped to this account's ARNs, and the
+# Deny statements below carve out the dangerous actions.
+#trivy:ignore:AVD-AWS-0345
 data "aws_iam_policy_document" "developer_permission_boundary" {
   #checkov:skip=CKV_AWS_107:Credentials exposure is prevented via explicit Deny blocks below
   #checkov:skip=CKV_AWS_108:Data exfiltration is mitigated by boundary scoping
