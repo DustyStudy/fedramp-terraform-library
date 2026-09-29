@@ -5,9 +5,7 @@
 
 Reusable Terraform modules that implement common controls and security
 patterns for organizations pursuing **FedRAMP Moderate**, **FedRAMP
-High**, or **FedRAMP 20x** authorization. This is the Terraform
-counterpart to [fedramp-cfn-library](https://github.com/DustyStudy/fedramp-cfn-library):
-same scope, same disclaimer, same track structure, different tool.
+High**, or **FedRAMP 20x** authorization.
 
 **At a glance**
 
