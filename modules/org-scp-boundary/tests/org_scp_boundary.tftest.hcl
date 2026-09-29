@@ -79,3 +79,37 @@ run "attaches_to_every_target" {
     error_message = "The policy must be a service control policy."
   }
 }
+
+run "imdsv2_is_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = length([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if startswith(s.Sid, "Deny") && strcontains(s.Sid, "IMDS")]) == 0
+    error_message = "IMDSv2 enforcement must stay opt-in, so existing launch templates keep working."
+  }
+}
+
+run "imdsv2_denies_launch_and_downgrade" {
+  command = plan
+
+  variables {
+    require_imdsv2 = true
+  }
+
+  assert {
+    condition     = one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == "DenyLaunchWithoutIMDSv2"]).Condition.StringNotEquals["ec2:MetadataHttpTokens"] == "required"
+    error_message = "With require_imdsv2, launching an instance without HttpTokens = required must be denied."
+  }
+
+  assert {
+    condition     = one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == "DenyDowngradeToIMDSv1"]).Action == "ec2:ModifyInstanceMetadataOptions"
+    error_message = "With require_imdsv2, switching an instance back to IMDSv1 must be denied."
+  }
+
+  # SCPs are capped at 5,120 characters. AWS counts the policy without
+  # insignificant whitespace, which is what jsonencode produces.
+  assert {
+    condition     = length(jsonencode(jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json))) <= 5120
+    error_message = "With every statement enabled, the SCP must stay within the 5,120-character limit."
+  }
+}

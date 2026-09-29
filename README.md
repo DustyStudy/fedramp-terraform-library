@@ -90,6 +90,7 @@ docs/                 Control-to-module cross-reference
 | `guardduty-org` | GuardDuty with organization auto-enrollment, findings routed to SNS |
 | `security-hub-org` | Security Hub with default standards + organization auto-enrollment |
 | `iam-password-policy` | Account-wide IAM password policy |
+| `identity-center-access-auditor` | Daily detective audit of IAM Identity Center: admin or wildcard permission sets, direct-to-user assignments, unused permission sets |
 | `account-baseline` | EBS default encryption, S3 account public access block, optional default-VPC/SG lockdown |
 | `ecr-hardened` | KMS-encrypted ECR repository, tag immutability, scan-on-push |
 | `ecs-fargate-hardened` | ECS cluster with Container Insights and KMS-encrypted logging (incl. ECS Exec) |
@@ -97,8 +98,9 @@ docs/                 Control-to-module cross-reference
 | `fips-vpc-endpoints` | VPC interface endpoints: see the module's `variables.tf` for which services genuinely have FIPS-suffixed endpoints and which don't |
 | `network-perimeter-vpc` | 3-tier VPC with KMS-encrypted Flow Logs and a locked-down default security group |
 | `org-governance` | Workload-perimeter SCP, AI-services opt-out policy, centralized backup policy |
-| `org-scp-boundary` | Region-lock SCP, security-service protection, insecure-transport deny |
+| `org-scp-boundary` | Region-lock SCP, security-service protection, insecure-transport deny, optional IMDSv2 enforcement |
 | `rds-postgres-hardened` | Multi-AZ PostgreSQL with enforced TLS, KMS encryption, managed master password |
+| `stale-account-detector` | Weekly CloudTrail Lake query for organization accounts with no activity in N days |
 | `ssm-patching-hardened` | Automated patch baseline, weekly maintenance window, KMS-encrypted patch logs |
 | `waf-hardened` | Regional WAFv2 with AWS-managed rule groups, rate limiting, KMS-encrypted logging |
 | `moderate/iam-access-control` | Access Analyzer, permission boundary, enforced-MFA group, root usage alerting |

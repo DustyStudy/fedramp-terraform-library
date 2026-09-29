@@ -20,3 +20,14 @@ variable "target_ou_or_account_ids" {
   type        = list(string)
   default     = []
 }
+
+variable "require_imdsv2" {
+  description = <<-EOT
+    Add statements that deny launching an EC2 instance without IMDSv2
+    (HttpTokens = required) and deny switching an instance back to IMDSv1.
+    Off by default: turning it on breaks any launch template, AMI pipeline
+    or tool that still sets HttpTokens to optional.
+  EOT
+  type        = bool
+  default     = false
+}

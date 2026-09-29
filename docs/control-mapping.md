@@ -26,6 +26,8 @@ definitions before using it in an SSP.
 | `guardduty-org` | SI-4, IR-4 | KSI-CNA-EIS, KSI-INR-RPI |
 | `security-hub-org` | CA-7, RA-5, SI-4 | KSI-MLA-EVC, KSI-CNA-EIS |
 | `iam-password-policy` | IA-5, AC-2, AC-7 | KSI-IAM-APM, KSI-IAM-AAM |
+| `identity-center-access-auditor` | AC-2, AC-6, AC-6(7) | KSI-IAM-ELP, KSI-IAM-AAM |
+| `stale-account-detector` | AC-2, AC-2(3), CM-8 | KSI-IAM-AAM |
 
 **Note on native resources vs. workarounds:** `iam-password-policy` and
 `guardduty-org` use native Terraform resources (`aws_iam_account_password_policy`,
@@ -45,7 +47,7 @@ for either.
 | `fips-vpc-endpoints` | AC-3, SC-7, SC-8, SC-13 | KSI-CNA-RNT, KSI-SVC-VCM | Creates `kms`/`ec2`/`sts` FIPS endpoints by default; AWS offers many more `-fips` services — add as needed (see module README) |
 | `network-perimeter-vpc` | AU-12, SC-7, CM-7 | KSI-CNA-RNT, KSI-CNA-ULN, KSI-MLA-LET | 3-tier VPC, Flow Logs to KMS-encrypted CloudWatch Logs, default SG locked to zero rules |
 | `org-governance` | AC-2, AC-4, AU-9, CP-9, MP-2 | KSI-IAM-ELP, KSI-RPL-ABO | Workload-perimeter SCP, AI-services opt-out policy, centralized backup policy (schedule/retention only — no vault lock) |
-| `org-scp-boundary` | AC-3, AC-4, AC-6, SC-7, SC-8 | KSI-CNA-RNT, KSI-CNA-ULN, KSI-IAM-ELP | Region-lock SCP, deny-disable-security-services, insecure-transport deny |
+| `org-scp-boundary` | AC-3, AC-4, AC-6, SC-7, SC-8 | KSI-CNA-RNT, KSI-CNA-ULN, KSI-IAM-ELP | Region-lock SCP, deny-disable-security-services, insecure-transport deny, optional IMDSv2 requirement |
 | `rds-postgres-hardened` | CP-9, CP-10, SC-8, SC-12, SC-28, IA-5 | KSI-SVC-SIN, KSI-SVC-VCM | Multi-AZ PostgreSQL, `force_ssl`, KMS storage encryption, managed master password |
 | `ssm-patching-hardened` | SI-2, AU-12 | KSI-SVC-EIS | Automated patch baseline (7-day critical approval), weekly maintenance window, KMS-encrypted output logs |
 | `waf-hardened` | SC-5, SI-3, AU-2 | KSI-CNA-RVP, KSI-CNA-MAT | Regional WAFv2 with 3 AWS-managed rule groups + rate limiting, KMS-encrypted logging |

@@ -3,7 +3,9 @@
 A region-lock SCP that also denies disabling security/audit services
 (CloudTrail, Config, GuardDuty, Security Hub, KMS key deletion), denies
 leaving the organization, and denies unencrypted transport to S3/SQS/
-DynamoDB. Deploy from the AWS Organizations management account.
+DynamoDB. Optionally (`require_imdsv2 = true`) it also denies launching
+EC2 instances without IMDSv2 and denies switching an instance back to
+IMDSv1. Deploy from the AWS Organizations management account.
 
 ## Usage
 
@@ -23,6 +25,12 @@ module "org_scp_boundary" {
 | AC-3, AC-4, AC-6, SC-7, SC-8 | KSI-CNA-RNT, KSI-CNA-ULN, KSI-IAM-ELP |
 
 ## Notes
+
+- `require_imdsv2` is off by default because it breaks any launch
+  template, AMI pipeline or tool that still sets `HttpTokens` to
+  `optional`. Turn it on after Security Hub control EC2.8 (instances use
+  IMDSv2) reports clean. The module's tests check that the SCP with every
+  statement enabled stays under the 5,120-character SCP limit.
 
 - The region lock (`DenyUnapprovedRegions`) explicitly excludes global
   services (`iam`, `organizations`, `route53`, `cloudfront`, `support`,
