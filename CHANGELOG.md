@@ -12,6 +12,13 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Security
+- Documented Trivy suppressions for intentional designs, so the
+  Security tab has no unexplained open alerts: the adopted-and-locked
+  default VPC in `account-baseline` (`AVD-AWS-0101`, `AVD-AWS-0178`)
+  and the `s3:*` ceiling in the developer permissions boundary
+  (`AVD-AWS-0345`). Each suppression carries its rationale inline.
+
 ### Changed
 - **FIPS endpoints everywhere.** Every root configuration (`moderate/`, `high/`,
   `examples/`) now sets `use_fips_endpoint = var.use_fips_endpoint` (default

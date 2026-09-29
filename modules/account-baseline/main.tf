@@ -38,6 +38,11 @@ resource "aws_iam_account_password_policy" "strict" {
 }
 
 # Manage Default VPC / Subnets (Adopt and Restrict)
+# The default VPC is adopted only so its default security group can be locked
+# down below; nothing is deployed into it, so "default VPC in use" and "no flow
+# logs" do not apply. Workload VPCs get flow logs from their own module.
+#trivy:ignore:AVD-AWS-0101
+#trivy:ignore:AVD-AWS-0178
 resource "aws_default_vpc" "default" {
   #checkov:skip=CKV_AWS_148:Adopting default VPC to explicitly close all ingress/egress rules via default security group
   count = var.manage_default_vpc ? 1 : 0
