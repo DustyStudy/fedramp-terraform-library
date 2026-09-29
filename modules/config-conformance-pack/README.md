@@ -17,7 +17,9 @@ module "config_conformance_pack" {
 ```
 
 Inline templates (`conformance_pack_template_body`) are limited to 51,200
-bytes, so large packs go through S3. With neither variable set, the module
+bytes. The FedRAMP Moderate sample was 50,642 bytes in September 2026, so
+`file(...)` works today with little headroom; S3 avoids the limit. AWS
+does not host the samples in a public S3 bucket, so upload your own copy. With neither variable set, the module
 enables Config recording without a conformance pack.
 
 ## Control mapping
