@@ -4,11 +4,10 @@ terraform {
   required_providers {
     aws = {
       source = "hashicorp/aws"
-      # Pinned below v6.0 deliberately: v6 renamed several data source
-      # attributes used throughout this module (e.g. aws_region's `name`
-      # attribute became `region`). If you're already on the v6 provider
-      # line, update the attribute references accordingly before removing
-      # this ceiling.
+      # The upper bound tracks the newest provider release tested here;
+      # Dependabot raises it. v6 deprecated aws_region's `name` attribute in
+      # favor of `region`, but `name` still works through 6.x, so the floor
+      # stays at 5.0 for callers who haven't upgraded.
       version = ">= 5.0, < 6.66"
     }
   }

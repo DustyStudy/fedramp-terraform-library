@@ -31,6 +31,8 @@ trustworthy reference — please keep a few things in mind.
 
 - [ ] `terraform fmt -check` passes
 - [ ] `terraform validate` passes
+- [ ] `terraform test` passes for any module with a `tests/` directory,
+      and new security properties get an assertion
 - [ ] tflint and Checkov pass in CI (or findings are explicitly skipped
       with justification — see below)
 - [ ] Control/KSI mapping added to `docs/control-mapping.md`
