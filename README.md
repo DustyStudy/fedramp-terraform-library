@@ -9,6 +9,16 @@ High**, or **FedRAMP 20x** authorization. This is the Terraform
 counterpart to [fedramp-cfn-library](https://github.com/DustyStudy/fedramp-cfn-library):
 same scope, same disclaimer, same track structure, different tool.
 
+**At a glance**
+
+- **Problem:** FedRAMP control implementations get rebuilt by hand for every
+  system, and a plan that passes `terraform validate` can still grant too much.
+- **Approach:** 16 hardened modules composed into Moderate, High and 20x
+  (10 KSI clusters) tracks, with FIPS endpoints and partition-aware ARNs for
+  GovCloud.
+- **Verification:** 32 `terraform test` runs assert the rendered IAM and
+  bucket policies at plan time. Checkov, Trivy and Gitleaks run on every PR.
+
 ## ⚠️ Disclaimer
 
 These modules support the *implementation* of security controls. They do

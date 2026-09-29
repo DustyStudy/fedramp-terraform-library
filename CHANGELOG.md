@@ -12,6 +12,8 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-29
+
 ### Fixed
 - **`config-conformance-pack` now actually enables AWS Config.** An
   earlier refactor removed the configuration recorder, its IAM role, the
