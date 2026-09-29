@@ -12,6 +12,36 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Fixed
+- **`config-conformance-pack` now actually enables AWS Config.** An
+  earlier refactor removed the configuration recorder, its IAM role, the
+  delivery channel, the recorder status and the Config service grants on
+  the bucket, and passed the template file name to `template_body`. The
+  module planned cleanly but could not work on apply. All of that is
+  restored, and the delivery channel now encrypts with the module's CMK.
+  A blank `config_bucket_name` again defaults to
+  `aws-config-<account>-<region>`.
+
+### Breaking
+- `config-conformance-pack`: `conformance_pack_template` (a file name) is
+  replaced by `conformance_pack_template_s3_uri` or
+  `conformance_pack_template_body`. With neither set, Config is enabled
+  without a conformance pack. The pack resource moved from
+  `aws_config_conformance_pack.fedramp_moderate` to
+  `aws_config_conformance_pack.this[0]`.
+
+### Added
+- `terraform test` suites for `org-cloudtrail`, `config-conformance-pack`,
+  `guardduty-org`, `security-hub-org`, `iam-password-policy`,
+  `account-baseline` and `org-scp-boundary`, run in CI on every PR. They
+  plan against the real AWS provider with dummy credentials, so they need
+  no AWS account.
+- Architecture diagram in the README.
+
+### Changed
+- `org-cloudtrail` and `config-conformance-pack` build bucket ARNs from
+  bucket names, so their bucket policies render in full at plan time.
+
 ### Security
 - Documented Trivy suppressions for intentional designs, so the
   Security tab has no unexplained open alerts: the adopted-and-locked

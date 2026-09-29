@@ -40,6 +40,29 @@ against your organization's current SSP and your 3PAO's expectations.
   terminology/timeline changes (Authorization → Certification, Class
   B/C/D).
 
+## How the pieces fit
+
+```mermaid
+flowchart LR
+  subgraph mgmt["Management / delegated admin account"]
+    scp["org-scp-boundary<br/>org-governance"]
+    trail["org-cloudtrail"]
+    gd["guardduty-org"]
+    sh["security-hub-org"]
+  end
+  subgraph member["Every member account, every region"]
+    base["account-baseline<br/>iam-password-policy"]
+    cfg["config-conformance-pack"]
+    wl["Workload modules<br/>eks / ecs / rds / waf / vpc"]
+  end
+  scp -- "SCPs deny disabling logging<br/>and unapproved regions" --> member
+  member -- "API activity" --> trail
+  cfg -- "config history" --> s3[("KMS-encrypted<br/>S3 archive")]
+  trail --> s3
+  gd -- "findings >= Medium" --> sns["SNS / incident response"]
+  member -- "findings" --> sh
+```
+
 ## Structure
 
 ```
@@ -55,7 +78,7 @@ docs/                 Control-to-module cross-reference
 | Module | What it does |
 |---|---|
 | `org-cloudtrail` | Organization-wide CloudTrail, KMS-encrypted, with a dedicated access-log bucket |
-| `config-conformance-pack` | AWS Config recorder + delivery channel + FedRAMP Moderate conformance pack |
+| `config-conformance-pack` | AWS Config recorder + encrypted delivery channel, optional FedRAMP Moderate conformance pack |
 | `guardduty-org` | GuardDuty with organization auto-enrollment, findings routed to SNS |
 | `security-hub-org` | Security Hub with default standards + organization auto-enrollment |
 | `iam-password-policy` | Account-wide IAM password policy |
@@ -140,13 +163,36 @@ that's true, the module here is simpler and more idiomatic than its CFN
 counterpart; where Terraform has the same kind of gap CloudFormation did,
 the module says so directly in its README.
 
+## Tests
+
+The core modules under `modules/` have `terraform test` suites in their
+`tests/` directory. They cover `org-cloudtrail`, `config-conformance-pack`,
+`guardduty-org`, `security-hub-org`, `iam-password-policy`,
+`account-baseline` and `org-scp-boundary`. Each test runs `plan` against the
+real AWS provider with dummy credentials, so it needs no AWS account. It
+asserts the security properties the control mapping claims, for example:
+
+- the organization trail is multi-region with log file validation on
+- every CloudTrail grant on the log bucket is pinned to the trail's ARN
+- the SCP denies stopping CloudTrail, Config, GuardDuty and Security Hub
+- ARNs use the GovCloud partition when deployed there
+- invalid inputs (dotted bucket names, malformed org IDs) are rejected
+
+```sh
+cd modules/org-cloudtrail
+terraform init -backend=false
+terraform test
+```
+
 ## Security scanning
 
 Every push and PR to `main` runs automatically via GitHub Actions
-(`.github/workflows/ci.yml`), in three jobs:
+(`.github/workflows/ci.yml`), in four jobs:
 
 - **Gitleaks**: secret/credential scanning
 - **`terraform fmt` + tflint**: formatting and Terraform best practices
+- **`terraform test`**: plan-only tests for the core modules (see
+  [Tests](#tests))
 - **Checkov** (blocking) and **Trivy** (reporting to the Security tab):
   two independent security/compliance scanners against the templates
   themselves

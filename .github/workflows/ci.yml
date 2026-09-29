@@ -54,6 +54,38 @@ jobs:
           tflint --init
           tflint --recursive --minimum-failure-severity=warning
 
+  module-tests:
+    name: Terraform Module Tests
+    runs-on: ubuntu-latest
+    env:
+      TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugin-cache
+      TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE: "true"
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: 1.14.6
+          terraform_wrapper: false
+
+      # Plan-only tests: dummy credentials in each test file keep the AWS
+      # provider offline, so no cloud access is needed.
+      - name: Run terraform test for every module with a tests/ directory
+        run: |
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          status=0
+          for dir in $(find . -path '*/tests/*.tftest.hcl' -not -path '*/.terraform/*' -exec dirname {} \; | xargs -n1 dirname | sort -u); do
+            echo "::group::$dir"
+            terraform -chdir="$dir" init -backend=false -input=false >/dev/null
+            terraform -chdir="$dir" test || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+
   sast-security-scan:
     name: Multi-Engine SAST (Checkov & Trivy)
     runs-on: ubuntu-latest

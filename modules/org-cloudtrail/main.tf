@@ -3,6 +3,13 @@ locals {
   region     = data.aws_region.current.name
   partition  = data.aws_partition.current.partition
   trail_arn  = "arn:${data.aws_partition.current.partition}:cloudtrail:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:trail/${var.trail_name}"
+
+  # Bucket ARNs are built from names so the policies below render at plan
+  # time and show up in full in plan output for review.
+  trail_bucket_name      = "${var.trail_name}-logs-${local.account_id}-${local.region}"
+  trail_bucket_arn       = "arn:${local.partition}:s3:::${local.trail_bucket_name}"
+  access_log_bucket_name = "${var.trail_name}-access-logs-${local.account_id}-${local.region}"
+  access_log_bucket_arn  = "arn:${local.partition}:s3:::${local.access_log_bucket_name}"
 }
 
 # KMS Key Policy for CloudTrail
@@ -106,7 +113,7 @@ resource "aws_s3_bucket" "trail_access_log" {
   #checkov:skip=CKV_AWS_144:Cross-region replication not required for access logs
   #checkov:skip=CKV2_AWS_62:Access log bucket does not require event notifications
   #checkov:skip=CKV_AWS_145:S3 server access log destinations only support SSE-S3, not SSE-KMS
-  bucket = "${var.trail_name}-access-logs-${local.account_id}-${local.region}"
+  bucket = local.access_log_bucket_name
 }
 
 resource "aws_s3_bucket_public_access_block" "trail_access_log" {
@@ -145,12 +152,12 @@ data "aws_iam_policy_document" "trail_access_log_bucket" {
       identifiers = ["logging.s3.amazonaws.com"]
     }
     actions   = ["s3:PutObject"]
-    resources = ["${aws_s3_bucket.trail_access_log.arn}/*"]
+    resources = ["${local.access_log_bucket_arn}/*"]
 
     condition {
       test     = "ArnLike"
       variable = "aws:SourceArn"
-      values   = [aws_s3_bucket.trail.arn]
+      values   = [local.trail_bucket_arn]
     }
     condition {
       test     = "StringEquals"
@@ -163,7 +170,7 @@ data "aws_iam_policy_document" "trail_access_log_bucket" {
     sid       = "DenyInsecureTransport"
     effect    = "Deny"
     actions   = ["s3:*"]
-    resources = [aws_s3_bucket.trail_access_log.arn, "${aws_s3_bucket.trail_access_log.arn}/*"]
+    resources = [local.access_log_bucket_arn, "${local.access_log_bucket_arn}/*"]
 
     principals {
       type        = "AWS"
@@ -202,7 +209,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "trail_access_log" {
 resource "aws_s3_bucket" "trail" {
   #checkov:skip=CKV_AWS_144:Cross-region replication is NOT configured by this module. If your contingency plan needs off-site log copies, add S3 replication, or tag the bucket Backup=true (versioning required) and set org-governance copy_destination_region
   #checkov:skip=CKV2_AWS_62:CloudTrail directly delivers logs to S3 and CloudWatch
-  bucket = "${var.trail_name}-logs-${local.account_id}-${local.region}"
+  bucket = local.trail_bucket_name
 }
 
 resource "aws_s3_bucket_public_access_block" "trail" {
@@ -275,7 +282,7 @@ data "aws_iam_policy_document" "s3_cloudtrail_policy" {
       identifiers = ["cloudtrail.amazonaws.com"]
     }
     actions   = ["s3:GetBucketAcl"]
-    resources = [aws_s3_bucket.trail.arn]
+    resources = [local.trail_bucket_arn]
 
     # Without a source condition, any AWS account's CloudTrail trail could
     # be pointed at this bucket (confused deputy). Pin to this trail.
@@ -294,7 +301,7 @@ data "aws_iam_policy_document" "s3_cloudtrail_policy" {
       identifiers = ["cloudtrail.amazonaws.com"]
     }
     actions   = ["s3:PutObject"]
-    resources = ["${aws_s3_bucket.trail.arn}/*"]
+    resources = ["${local.trail_bucket_arn}/*"]
     condition {
       test     = "StringEquals"
       variable = "s3:x-amz-acl"
@@ -311,7 +318,7 @@ data "aws_iam_policy_document" "s3_cloudtrail_policy" {
     sid       = "DenyInsecureTransport"
     effect    = "Deny"
     actions   = ["s3:*"]
-    resources = [aws_s3_bucket.trail.arn, "${aws_s3_bucket.trail.arn}/*"]
+    resources = [local.trail_bucket_arn, "${local.trail_bucket_arn}/*"]
 
     principals {
       type        = "AWS"
