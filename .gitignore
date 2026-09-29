@@ -26,6 +26,14 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
+# Lambda zips built by archive_file at plan time
+**/build/
+
+# Python
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
 # CLI configuration files
 .terraformrc
 terraform.rc

@@ -1,3 +1,5 @@
+data "aws_partition" "current" {}
+
 data "aws_iam_policy_document" "fedramp_boundary_scp" {
   #checkov:skip=CKV_AWS_107:Credentials exposure prevented via explicit Deny blocks
   #checkov:skip=CKV_AWS_108:Data exfiltration mitigated by boundary scoping & region locks
@@ -17,6 +19,7 @@ data "aws_iam_policy_document" "fedramp_boundary_scp" {
       "cloudtrail:PutEventSelectors",
       "config:DeleteConfigRule",
       "config:DeleteConfigurationRecorder",
+      "config:DeleteDeliveryChannel",
       "config:StopConfigurationRecorder",
       "guardduty:DeleteDetector",
       "guardduty:DisassociateFromMasterAccount",
@@ -32,6 +35,7 @@ data "aws_iam_policy_document" "fedramp_boundary_scp" {
       "securityhub:DisassociateFromMasterAccount",
       "securityhub:DisassociateMembers",
       "securityhub:DeleteMembers",
+      "securityhub:DisableImportFindingsForProduct",
       "kms:ScheduleKeyDeletion",
       "kms:DisableKey"
     ]
@@ -72,7 +76,40 @@ data "aws_iam_policy_document" "fedramp_boundary_scp" {
     }
   }
 
-  # 4. Deny Unencrypted Transport (SC-8 / SC-13)
+  # 4. Require IMDSv2 on new and modified instances (AC-3 / SC-7), opt-in.
+  # IMDSv1 answers any unauthenticated GET, which is how SSRF bugs leak an
+  # instance role's credentials.
+  dynamic "statement" {
+    for_each = var.require_imdsv2 ? [1] : []
+    content {
+      sid       = "DenyLaunchWithoutIMDSv2"
+      effect    = "Deny"
+      actions   = ["ec2:RunInstances"]
+      resources = ["arn:${data.aws_partition.current.partition}:ec2:*:*:instance/*"]
+      condition {
+        test     = "StringNotEquals"
+        variable = "ec2:MetadataHttpTokens"
+        values   = ["required"]
+      }
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.require_imdsv2 ? [1] : []
+    content {
+      sid       = "DenyDowngradeToIMDSv1"
+      effect    = "Deny"
+      actions   = ["ec2:ModifyInstanceMetadataOptions"]
+      resources = ["*"]
+      condition {
+        test     = "StringNotEquals"
+        variable = "ec2:MetadataHttpTokens"
+        values   = ["required"]
+      }
+    }
+  }
+
+  # 5. Deny Unencrypted Transport (SC-8 / SC-13)
   statement {
     sid       = "DenyInsecureTransport"
     effect    = "Deny"

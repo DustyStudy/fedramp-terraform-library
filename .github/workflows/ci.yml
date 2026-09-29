@@ -86,6 +86,28 @@ jobs:
           done
           exit $status
 
+  lambda-tests:
+    name: Lambda unit tests (pytest, ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+        with:
+          python-version: "3.12"
+
+      # boto3 clients are replaced with mocks in tests/python, so no AWS
+      # access is needed.
+      - name: Lint and test the module Lambdas
+        run: |
+          pip install "pytest==9.1.1" "boto3==1.43.104" "ruff==0.16.9"
+          ruff check modules tests
+          python -m pytest tests/python -q
+
   sast-security-scan:
     name: Multi-Engine SAST (Checkov & Trivy)
     runs-on: ubuntu-latest

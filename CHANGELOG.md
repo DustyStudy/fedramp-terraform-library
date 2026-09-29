@@ -12,6 +12,28 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Added
+- `stale-account-detector`: weekly CloudTrail Lake query that reports
+  organization accounts with no activity in N days (AC-2(3), CM-8).
+- `identity-center-access-auditor`: daily detective audit of IAM
+  Identity Center permission sets and assignments (AC-6(7)).
+- Both modules came from aws-cloud-security-toolbox. Here they gain a
+  `use_fips_endpoint` input (default `true`), plan-time `terraform test`
+  suites, and pytest suites for their Lambdas (`tests/python/`).
+- `org-scp-boundary`: `require_imdsv2` (default `false`) denies launching
+  EC2 instances without IMDSv2 and denies switching back to IMDSv1.
+- CI: a `Lambda unit tests (pytest, ruff)` job.
+
+### Changed
+- `org-scp-boundary` also denies `config:DeleteDeliveryChannel` and
+  `securityhub:DisableImportFindingsForProduct`. Both stop findings or
+  configuration history from reaching the security account.
+
+### Fixed
+- `stale-account-detector`: with `exempt_tag_key` set and
+  `exempt_tag_value` left empty, only tags with an empty value exempted
+  an account. The tag key alone now exempts, as documented.
+
 ## [1.0.0] - 2026-09-29
 
 ### Fixed
