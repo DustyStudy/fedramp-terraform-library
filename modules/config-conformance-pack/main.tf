@@ -1,8 +1,23 @@
+# Enables AWS Config with a continuous recorder and delivery channel, plus
+# an optional conformance pack (for example AWS's Operational Best
+# Practices for FedRAMP Moderate sample). Deploy once per account and region.
+#
+# Control mapping:
+#   Rev5 (Moderate/High): CM-2, CM-6, CM-8, CA-7, RA-5
+#   FedRAMP 20x: KSI-SVC-ACM, KSI-MLA-EVC
+
 locals {
   account_id  = data.aws_caller_identity.current.account_id
   region      = data.aws_region.current.name
-  bucket_name = var.config_bucket_name
   partition   = data.aws_partition.current.partition
+  bucket_name = var.config_bucket_name != "" ? var.config_bucket_name : "aws-config-${local.account_id}-${local.region}"
+
+  # Bucket ARNs are built from names so the policies below render at plan
+  # time and show up in full in plan output for review.
+  bucket_arn            = "arn:${local.partition}:s3:::${local.bucket_name}"
+  access_log_bucket_arn = "arn:${local.partition}:s3:::${local.bucket_name}-access-logs"
+
+  create_conformance_pack = var.conformance_pack_template_body != null || var.conformance_pack_template_s3_uri != null
 }
 
 # KMS Key Policy for AWS Config
@@ -96,12 +111,12 @@ data "aws_iam_policy_document" "config_access_log_bucket" {
       identifiers = ["logging.s3.amazonaws.com"]
     }
     actions   = ["s3:PutObject"]
-    resources = ["${aws_s3_bucket.config_access_log.arn}/*"]
+    resources = ["${local.access_log_bucket_arn}/*"]
 
     condition {
       test     = "ArnLike"
       variable = "aws:SourceArn"
-      values   = [aws_s3_bucket.config.arn]
+      values   = [local.bucket_arn]
     }
     condition {
       test     = "StringEquals"
@@ -114,7 +129,7 @@ data "aws_iam_policy_document" "config_access_log_bucket" {
     sid       = "DenyInsecureTransport"
     effect    = "Deny"
     actions   = ["s3:*"]
-    resources = [aws_s3_bucket.config_access_log.arn, "${aws_s3_bucket.config_access_log.arn}/*"]
+    resources = [local.access_log_bucket_arn, "${local.access_log_bucket_arn}/*"]
 
     principals {
       type        = "AWS"
@@ -181,10 +196,49 @@ resource "aws_s3_bucket_logging" "config" {
 
 data "aws_iam_policy_document" "config_bucket" {
   statement {
+    sid    = "AWSConfigBucketPermissionsCheck"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["config.amazonaws.com"]
+    }
+    actions   = ["s3:GetBucketAcl", "s3:ListBucket"]
+    resources = [local.bucket_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+
+  statement {
+    sid    = "AWSConfigBucketDelivery"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["config.amazonaws.com"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["${local.bucket_arn}/AWSLogs/${local.account_id}/Config/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+
+  statement {
     sid       = "DenyInsecureTransport"
     effect    = "Deny"
     actions   = ["s3:*"]
-    resources = [aws_s3_bucket.config.arn, "${aws_s3_bucket.config.arn}/*"]
+    resources = [local.bucket_arn, "${local.bucket_arn}/*"]
 
     principals {
       type        = "AWS"
@@ -233,9 +287,113 @@ resource "aws_s3_bucket_lifecycle_configuration" "config" {
   }
 }
 
-# --- Conformance Pack Resource ---
-resource "aws_config_conformance_pack" "fedramp_moderate" {
-  name          = "fedramp-moderate-pack"
-  template_body = var.conformance_pack_template
-  depends_on    = [aws_s3_bucket.config]
+# --- Config recorder IAM role ---
+data "aws_iam_policy_document" "config_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["config.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+}
+
+resource "aws_iam_role" "config_recorder" {
+  name               = "config-recorder-${local.region}"
+  assume_role_policy = data.aws_iam_policy_document.config_assume.json
+}
+
+resource "aws_iam_role_policy_attachment" "config_recorder_managed" {
+  role       = aws_iam_role.config_recorder.name
+  policy_arn = "arn:${local.partition}:iam::aws:policy/service-role/AWS_ConfigRole"
+}
+
+data "aws_iam_policy_document" "config_delivery" {
+  statement {
+    sid       = "DeliverToConfigBucket"
+    effect    = "Allow"
+    actions   = ["s3:PutObject", "s3:PutObjectAcl"]
+    resources = ["${local.bucket_arn}/AWSLogs/${local.account_id}/Config/*"]
+  }
+
+  statement {
+    sid       = "CheckConfigBucketAcl"
+    effect    = "Allow"
+    actions   = ["s3:GetBucketAcl"]
+    resources = [local.bucket_arn]
+  }
+
+  statement {
+    sid       = "EncryptWithConfigKey"
+    effect    = "Allow"
+    actions   = ["kms:GenerateDataKey", "kms:Decrypt"]
+    resources = [aws_kms_key.config.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "config_delivery" {
+  name   = "config-delivery"
+  role   = aws_iam_role.config_recorder.id
+  policy = data.aws_iam_policy_document.config_delivery.json
+}
+
+# --- Config recorder + delivery channel ---
+resource "aws_config_configuration_recorder" "this" {
+  name     = "default"
+  role_arn = aws_iam_role.config_recorder.arn
+
+  recording_group {
+    all_supported                 = true
+    include_global_resource_types = var.include_global_resource_types
+  }
+}
+
+resource "aws_config_delivery_channel" "this" {
+  name           = "default"
+  s3_bucket_name = aws_s3_bucket.config.id
+  s3_kms_key_arn = aws_kms_key.config.arn
+
+  snapshot_delivery_properties {
+    delivery_frequency = var.snapshot_delivery_frequency
+  }
+
+  depends_on = [aws_config_configuration_recorder.this, aws_s3_bucket_policy.config]
+}
+
+# The recorder resource only creates the recorder. It stays idle until this
+# resource switches it on.
+resource "aws_config_configuration_recorder_status" "this" {
+  name       = aws_config_configuration_recorder.this.name
+  is_enabled = true
+
+  depends_on = [aws_config_delivery_channel.this]
+}
+
+# --- Conformance pack (optional) ---
+resource "aws_config_conformance_pack" "this" {
+  count = local.create_conformance_pack ? 1 : 0
+
+  name            = var.conformance_pack_name
+  template_body   = var.conformance_pack_template_body
+  template_s3_uri = var.conformance_pack_template_s3_uri
+
+  lifecycle {
+    precondition {
+      condition     = var.conformance_pack_template_body == null || var.conformance_pack_template_s3_uri == null
+      error_message = "Set conformance_pack_template_body or conformance_pack_template_s3_uri, not both."
+    }
+  }
+
+  depends_on = [aws_config_configuration_recorder_status.this]
+}
+
+moved {
+  from = aws_config_conformance_pack.fedramp_moderate
+  to   = aws_config_conformance_pack.this[0]
 }
