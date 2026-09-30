@@ -12,6 +12,8 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-30
+
 ### Added
 - `identity-center-access-auditor`: flags permission sets whose inline
   policy allows a named privilege escalation action on a wildcard
@@ -37,6 +39,11 @@ FedRAMP expects.
   `sql/audit_postgres_roles.sql`, a read-only review of PostgreSQL role
   grants, tested in CI against PostgreSQL 16 (AC-3, AC-6, IA-2, IA-5,
   SC-7, SC-8).
+
+### Changed
+- CI: every workflow is audited by zizmor, every Linux job starts with
+  harden-runner in audit mode, and Dependabot waits 7 days before
+  proposing an update.
 
 ## [1.1.0] - 2026-09-29
 
