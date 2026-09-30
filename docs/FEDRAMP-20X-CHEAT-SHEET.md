@@ -35,9 +35,9 @@ before treating anything here as current.
   baselines. They remain useful through the transition window, but any
   new engagement should default to the 20x/KSI path unless your agency
   sponsor specifically requires Rev5.
-- **`fedramp-20x/`** tracks the finalized KSI cluster structure. See that
-  folder's `README.md` for the current 10-cluster breakdown and which
-  modules in this repo already contribute evidence toward each one.
+- **`fedramp-20x/README.md`** maps the finalized 10-cluster KSI
+  structure to the modules in this repo that already contribute evidence
+  toward each one.
 - Machine-readable submission packages (OSCAL format — JSON/XML/YAML)
   are required for all providers as of September 2026 (RFC-0024). Nothing
   in this repo currently generates OSCAL output; that's a gap to be aware

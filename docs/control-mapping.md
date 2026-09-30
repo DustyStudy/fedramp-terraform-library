@@ -120,20 +120,21 @@ https://www.fedramp.gov/2026/reference/20x/b/key-security-indicators/ for
 the authoritative source and https://www.fedramp.gov/updates/changelog for
 anything more recent. The 6-category set this repo originally tracked
 included `KSI-CNBC`, which does **not** exist in the finalized structure;
-its scope split across `KSI-CNA` and `KSI-SVC` below.
+its scope split across `KSI-CNA` and `KSI-SVC` below. The directory holds
+no Terraform of its own; it is a map from each cluster to existing modules.
 
-| Folder | KSI Category |
+| KSI | Category |
 |---|---|
-| `ksi-cna/` | Cloud Native Architecture |
-| `ksi-iam/` | Identity and Access Management |
-| `ksi-mla/` | Monitoring, Logging and Auditing |
-| `ksi-svc/` | Service Configuration |
-| `ksi-inr/` | Incident Response |
-| `ksi-cmt/` | Change Management |
-| `ksi-rpl/` | Recovery Planning |
-| `ksi-piy/` | Policy and Inventory |
-| `ksi-scr/` | Supply Chain Risk |
-| `ksi-ced/` | Cybersecurity Education |
+| `KSI-CNA` | Cloud Native Architecture |
+| `KSI-IAM` | Identity and Access Management |
+| `KSI-MLA` | Monitoring, Logging and Auditing |
+| `KSI-SVC` | Service Configuration |
+| `KSI-INR` | Incident Response |
+| `KSI-CMT` | Change Management |
+| `KSI-RPL` | Recovery Planning |
+| `KSI-PIY` | Policy and Inventory |
+| `KSI-SCR` | Supply Chain Risk |
+| `KSI-CED` | Cybersecurity Education |
 
 See `fedramp-20x/README.md` for a cross-reference of which existing
 `modules/` and `moderate/` code already satisfy each category, and

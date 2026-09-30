@@ -1,7 +1,7 @@
 # FedRAMP Terraform Library
 
 [![CI](https://github.com/DustyStudy/fedramp-terraform-library/actions/workflows/ci.yml/badge.svg)](https://github.com/DustyStudy/fedramp-terraform-library/actions/workflows/ci.yml)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 Reusable Terraform modules that implement common controls and security
 patterns for organizations pursuing **FedRAMP Moderate**, **FedRAMP
@@ -11,11 +11,13 @@ High**, or **FedRAMP 20x** authorization.
 
 - **Problem:** FedRAMP control implementations get rebuilt by hand for every
   system, and a plan that passes `terraform validate` can still grant too much.
-- **Approach:** 16 hardened modules composed into Moderate, High and 20x
-  (10 KSI clusters) tracks, with FIPS endpoints and partition-aware ARNs for
-  GovCloud.
-- **Verification:** 32 `terraform test` runs assert the rendered IAM and
-  bucket policies at plan time. Checkov, Trivy and Gitleaks run on every PR.
+- **Approach:** 18 hardened modules composed into Moderate and High
+  tracks, plus a map from the 10 FedRAMP 20x KSI clusters to those modules.
+  FIPS endpoints and partition-aware ARNs for GovCloud.
+- **Verification:** 43 `terraform test` runs assert the rendered IAM and
+  bucket policies at plan time, and 25 pytest tests cover the module
+  Lambdas. Checkov, Trivy and Gitleaks run on every PR. See
+  [what is verified, and what is not](docs/PROOF.md).
 
 ## ⚠️ Disclaimer
 
@@ -77,7 +79,7 @@ flowchart LR
 modules/              Shared baseline modules used across all three tracks
 moderate/             Rev5 Moderate baseline, by control family
 high/                 Rev5 High: reuses moderate/ with tfvars overrides
-fedramp-20x/          KSI-based cross-reference (CNA, IAM, MLA, SVC, INR, CMT, RPL, PIY, SCR, CED)
+fedramp-20x/          KSI-to-module cross-reference, no Terraform (CNA, IAM, MLA, SVC, INR, CMT, RPL, PIY, SCR, CED)
 docs/                 Control-to-module cross-reference
 ```
 
@@ -246,4 +248,5 @@ finding.
 
 ## License
 
-Apache License 2.0, see `LICENSE`.
+MIT, see `LICENSE`. Releases up to and including v1.0.0 were published
+under Apache License 2.0.

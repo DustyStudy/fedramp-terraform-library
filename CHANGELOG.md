@@ -12,6 +12,8 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-29
+
 ### Added
 - `stale-account-detector`: weekly CloudTrail Lake query that reports
   organization accounts with no activity in N days (AC-2(3), CM-8).
@@ -25,9 +27,18 @@ FedRAMP expects.
 - CI: a `Lambda unit tests (pytest, ruff)` job.
 
 ### Changed
+- License changed from Apache 2.0 to MIT, matching the other repos.
+  Releases up to and including 1.0.0 remain available under Apache 2.0.
+- `fedramp-20x/`: removed the ten empty `ksi-*/` placeholder folders. The
+  directory is a map from KSI clusters to modules and says so.
 - `org-scp-boundary` also denies `config:DeleteDeliveryChannel` and
   `securityhub:DisableImportFindingsForProduct`. Both stop findings or
   configuration history from reaching the security account.
+
+### Documentation
+- `docs/PROOF.md`: what the tests, validation and scans verify, the
+  numbers from the last run, how to reproduce them, and the gaps.
+- README: module and test counts brought up to date.
 
 ### Fixed
 - `stale-account-detector`: with `exempt_tag_key` set and
