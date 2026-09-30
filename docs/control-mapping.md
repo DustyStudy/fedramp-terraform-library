@@ -114,6 +114,13 @@ module here if it diverges *structurally* from its Moderate counterpart
 (not just variable values) — e.g. FIPS 140-3 validated endpoint
 enforcement, additional audit event types required at High.
 
+## Repository supply chain
+
+| Control | What implements it | Notes |
+|---|---|---|
+| SR-3, SR-11, CM-14 (`KSI-SCR`) | `tests/python/test_provider_sources.py`, run in CI | Fails the build if any `required_providers` source in a module or example is not on the allowlist (today `hashicorp/aws` and `hashicorp/archive`), so a typosquatted or third-party provider can't be added without a reviewed change. |
+| SI-7, CM-14 (consumer side) | Your root module's committed `.terraform.lock.hcl` | This library doesn't commit lock files (callers ignore a module's lock file). In the root that consumes these modules, commit `.terraform.lock.hcl` and run `terraform init -lockfile=readonly` in CI, so only provider builds with reviewed checksums are installed on a runner that holds deploy credentials. |
+
 ## fedramp-20x/
 
 FedRAMP 20x's KSI clusters were finalized as part of the "Consolidated
