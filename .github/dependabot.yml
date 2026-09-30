@@ -1,6 +1,8 @@
 version: 2
 updates:
   - package-ecosystem: "github-actions"
+    cooldown:
+      default-days: 7
     directory: "/"
     schedule:
       interval: "weekly"
@@ -9,6 +11,10 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: "terraform"
+
+    cooldown:
+
+      default-days: 7
     directories:
       - "/modules/**"
       - "/high/**"
