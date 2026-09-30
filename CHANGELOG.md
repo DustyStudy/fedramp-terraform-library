@@ -12,6 +12,17 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Added
+- Provider supply-chain guard: `tests/python/test_provider_sources.py`
+  fails CI when any `required_providers` source is not on an allowlist
+  (`hashicorp/aws`, `hashicorp/archive`), catching typosquats such as
+  the `kreuzwenker/docker` provider from the 2026-09 Graphalgo Terraform
+  Registry campaign
+  ([Aikido](https://www.aikido.dev/blog/graphalgo-terraform-go-modules)).
+  `CONTRIBUTING.md` and `docs/control-mapping.md` now cover adding a
+  provider and pinning providers in consumer roots with a committed lock
+  file and `terraform init -lockfile=readonly` (SR-3, SR-11, CM-14, SI-7).
+
 ## [1.2.0] - 2026-09-30
 
 ### Added
