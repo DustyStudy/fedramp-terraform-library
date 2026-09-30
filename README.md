@@ -93,6 +93,7 @@ docs/                 Control-to-module cross-reference
 | `security-hub-org` | Security Hub with default standards + organization auto-enrollment |
 | `iam-password-policy` | Account-wide IAM password policy |
 | `identity-center-access-auditor` | Daily detective audit of IAM Identity Center: admin or wildcard permission sets, direct-to-user assignments, unused permission sets |
+| `trust-policy-auditor` | Daily detective audit of who can reach in from outside: OIDC trust without a pinned `sub`/`aud`, cross-account and `"*"` trust, open Lambda function policies, RAM shares outside the organization. Single account or organization-wide |
 | `account-baseline` | EBS default encryption, S3 account public access block, optional default-VPC/SG lockdown |
 | `ecr-hardened` | KMS-encrypted ECR repository, tag immutability, scan-on-push |
 | `ecs-fargate-hardened` | ECS cluster with Container Insights and KMS-encrypted logging (incl. ECS Exec) |

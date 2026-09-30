@@ -27,6 +27,7 @@ definitions before using it in an SSP.
 | `security-hub-org` | CA-7, RA-5, SI-4 | KSI-MLA-EVC, KSI-CNA-EIS |
 | `iam-password-policy` | IA-5, AC-2, AC-7 | KSI-IAM-APM, KSI-IAM-AAM |
 | `identity-center-access-auditor` | AC-2, AC-6, AC-6(7) | KSI-IAM-ELP, KSI-IAM-AAM |
+| `trust-policy-auditor` | AC-3, AC-6, AC-21, IA-5, SC-7 | KSI-IAM-SNU, KSI-IAM-ELP |
 | `stale-account-detector` | AC-2, AC-2(3), CM-8 | KSI-IAM-AAM |
 
 **Note on native resources vs. workarounds:** `iam-password-policy` and
