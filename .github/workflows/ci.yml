@@ -128,6 +128,51 @@ jobs:
           ruff check modules tests
           python -m pytest tests/python -q
 
+  sql-role-audit:
+    name: SQL role audit (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
+        env:
+          POSTGRES_PASSWORD: ci-only # throwaway service container
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: ci-only
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # Seeds one role per finding, runs the audit, and checks each
+      # expected role is reported and the clean one isn't.
+      - name: Run audit_postgres_roles.sql against fixture roles
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/seed_rds_roles.sql
+          psql -X -v ON_ERROR_STOP=1 -f modules/rds-access-auditor/sql/audit_postgres_roles.sql | tee audit.txt
+          for expected in fixture_master fixture_role_admin fixture_writer fixture_readonly fixture_open; do
+            grep -q "$expected" audit.txt || { echo "::error::$expected was not reported"; exit 1; }
+          done
+          if grep -q fixture_report_ro audit.txt; then
+            echo "::error::fixture_report_ro is read-only and IAM-authenticated, so it must not be reported"; exit 1
+          fi
+
   sast-security-scan:
     name: Multi-Engine SAST (Checkov & Trivy)
     runs-on: ubuntu-latest
