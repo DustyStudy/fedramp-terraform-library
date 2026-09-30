@@ -12,6 +12,15 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Added
+- `trust-policy-auditor`: daily detective audit of who can reach in from
+  outside the account. It reports OIDC trust without a pinned `sub` or
+  `aud` (graded for GitHub's subject formats, including immutable IDs),
+  `"*"` and cross-account trust without `sts:ExternalId`, open Lambda
+  function policies and public function URLs, and RAM shares outside the
+  organization. Single account by default; `member_role_name` makes it
+  organization-wide (AC-3, AC-6, AC-21, IA-5, SC-7).
+
 ## [1.1.0] - 2026-09-29
 
 ### Added
