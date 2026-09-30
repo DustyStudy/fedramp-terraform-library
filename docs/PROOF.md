@@ -1,0 +1,92 @@
+# What is verified, and what is not
+
+This library has not been applied to a live AWS account as a whole. Its
+evidence is plan-time: every check below runs offline, against the
+resources and policy JSON that Terraform renders, with dummy credentials
+in the test files. This page lists what those checks cover, the numbers
+from the last run, and the gaps.
+
+Numbers are from a local run on 2026-09-29 at commit `01496ee`
+(Terraform 1.16.4, Checkov 3.3.20). CI runs the same checks on every pull
+request with Terraform 1.14.6.
+
+## Summary
+
+| Check | Result |
+|---|---|
+| `terraform test` (9 modules) | 43 runs, 43 passed |
+| pytest (module Lambdas) | 25 passed |
+| `terraform validate` | 18 of 18 modules and 14 of 14 roots under `moderate/`, `high/` and `examples/` valid |
+| Checkov (`--framework terraform`, 221 resources) | 787 passed, 0 failed, 150 skipped |
+| Trivy config scan, Gitleaks, `terraform fmt`, TFLint | Run in CI on every PR |
+
+Every Checkov skip is an inline `checkov:skip=<ID>: <reason>` comment next
+to the resource, so each exception is reviewable in the code. The most
+common are `CKV_AWS_109`, `CKV_AWS_111` and `CKV_AWS_356` (20 each),
+mostly on KMS key policies, which must grant the account root `kms:*` on
+`*`.
+
+## What the `terraform test` suites assert
+
+Each run plans the module with fixed inputs and asserts on the planned
+resources. Several runs also feed in invalid input and expect the
+variable validation to reject it.
+
+| Module | Runs | What the runs assert |
+|---|---:|---|
+| `account-baseline` | 5 | Account-level guardrails are on; password policy follows NIST SP 800-63B-4; the default security group denies all traffic; the backup vault gets a dedicated rotating CMK, or uses a supplied key |
+| `config-conformance-pack` | 6 | The recorder is created and switched on; AWS Config can write to its bucket; delivery is encrypted with a rotating CMK; no pack is created without a template; a pack can come from S3; supplying both template sources is rejected |
+| `guardduty-org` | 5 | The detector enables all classic protections; new accounts are enrolled; findings alert at Medium or higher; `auto_enable = false` means `NONE`; an unknown publishing frequency is rejected |
+| `iam-password-policy` | 3 | Defaults follow NIST SP 800-63B-4; composition rules are opt-in; a minimum length below the NIST floor is rejected |
+| `identity-center-access-auditor` | 4 | The Lambda role is read-only; settings reach the Lambda; it runs daily with encrypted logs; the topic uses the module CMK |
+| `org-cloudtrail` | 7 | The trail covers the whole organization; logs use a rotating CMK; buckets block public access and are versioned; the bucket policy blocks confused-deputy access and plain HTTP; ARNs use the current partition; dotted trail names and malformed organization IDs are rejected |
+| `org-scp-boundary` | 6 | The SCP denies disabling security services; the region lock uses the approved regions; insecure transport is denied; the policy attaches to every target; the IMDSv2 rule is off by default and, when on, denies both launch without IMDSv2 and downgrade |
+| `security-hub-org` | 2 | Default standards and organization enrollment are on; standards auto-enable can be turned off |
+| `stale-account-detector` | 5 | An organization-wide management-events store is created, or an existing one reused; the Lambda uses FIPS endpoints and the configured lookback; the Lambda is encrypted and has a DLQ; the topic uses the module CMK |
+
+The pytest suites (`tests/python/`) run the Lambda handlers for
+`identity-center-access-auditor` and `stale-account-detector` against
+mocked boto3 clients.
+
+## Reproduce it
+
+```bash
+# Module tests (no AWS credentials needed)
+for dir in $(find . -path '*/tests/*.tftest.hcl' -not -path '*/.terraform/*' \
+    -exec dirname {} \; | xargs -n1 dirname | sort -u); do
+  terraform -chdir="$dir" init -backend=false -input=false >/dev/null
+  terraform -chdir="$dir" test
+done
+
+# Lambda tests
+pip install pytest boto3
+python -m pytest tests/python -q
+
+# Validate every module
+for dir in modules/*; do
+  terraform -chdir="$dir" init -backend=false -input=false >/dev/null
+  terraform -chdir="$dir" validate
+done
+
+# Static analysis
+checkov -d . --framework terraform
+```
+
+## Gaps
+
+- **No live deployment of this repo as a whole.** Plan-time tests prove
+  what Terraform will request. They do not prove what AWS accepts or how
+  the policies behave at request time. For SCP and permissions-boundary
+  behavior tested with real API calls, see the live proof in
+  [aws-org-guardrails](https://github.com/DustyStudy/aws-org-guardrails/blob/main/docs/PROOF.md).
+- **9 of 18 modules have no `terraform test` suite yet:** `ecr-hardened`,
+  `ecs-fargate-hardened`, `eks-hardened`, `fips-vpc-endpoints`,
+  `network-perimeter-vpc`, `org-governance`, `rds-postgres-hardened`,
+  `ssm-patching-hardened` and `waf-hardened`. They are covered by
+  `terraform validate`, Checkov, Trivy and TFLint only.
+- **`fedramp-20x/` holds no Terraform.** It maps each KSI cluster to the
+  modules above. Whether a module's evidence satisfies a KSI's validation
+  method is a judgment for your assessor.
+- **Controls that code cannot implement** (policies, training, IR
+  exercises, contingency testing) are listed in
+  [COVERAGE-GAPS.md](COVERAGE-GAPS.md).
