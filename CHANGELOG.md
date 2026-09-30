@@ -20,6 +20,15 @@ FedRAMP expects.
   function policies and public function URLs, and RAM shares outside the
   organization. Single account by default; `member_role_name` makes it
   organization-wide (AC-3, AC-6, AC-21, IA-5, SC-7).
+- `rds-access-auditor`: daily detective audit of RDS and Aurora access.
+  It reports publicly accessible databases (CRITICAL when a security
+  group admits the internet on the database port), master passwords not
+  managed in Secrets Manager, IAM database authentication off, TLS not
+  enforced in the parameter group, and IAM policies granting
+  `rds-db:connect` as any database user or as the master user. Ships
+  `sql/audit_postgres_roles.sql`, a read-only review of PostgreSQL role
+  grants, tested in CI against PostgreSQL 16 (AC-3, AC-6, IA-2, IA-5,
+  SC-7, SC-8).
 
 ## [1.1.0] - 2026-09-29
 
