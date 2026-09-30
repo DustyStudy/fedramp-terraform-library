@@ -13,6 +13,14 @@ FedRAMP expects.
 ## [Unreleased]
 
 ### Added
+- `identity-center-access-auditor`: flags permission sets whose inline
+  policy allows a named privilege escalation action on a wildcard
+  resource, such as `iam:PutRolePolicy`, `iam:AttachRolePolicy`,
+  `iam:DeleteRolePermissionsBoundary`, `iam:PassRole` or
+  `sso:CreateAccountAssignment`. Action patterns like `iam:Put*` are
+  matched. Before this, only `AdministratorAccess` and `service:*`
+  wildcards were caught. The list can be replaced with the new
+  `escalation_actions` variable.
 - `trust-policy-auditor`: daily detective audit of who can reach in from
   outside the account. It reports OIDC trust without a pinned `sub` or
   `aud` (graded for GitHub's subject formats, including immutable IDs),

@@ -70,6 +70,12 @@ run "settings_reach_the_lambda" {
   variables {
     sensitive_wildcard_services  = ["iam", "kms"]
     flag_direct_user_assignments = false
+    escalation_actions           = ["iam:PutRolePolicy", "iam:PassRole"]
+  }
+
+  assert {
+    condition     = aws_lambda_function.audit.environment[0].variables.ESCALATION_ACTIONS == "iam:PutRolePolicy,iam:PassRole"
+    error_message = "escalation_actions must reach the Lambda."
   }
 
   assert {
@@ -85,6 +91,15 @@ run "settings_reach_the_lambda" {
   assert {
     condition     = aws_lambda_function.audit.environment[0].variables.AWS_USE_FIPS_ENDPOINT == "true"
     error_message = "The Lambda's SDK calls must use FIPS endpoints by default."
+  }
+}
+
+run "escalation_actions_default_to_the_lambda_list" {
+  command = plan
+
+  assert {
+    condition     = !contains(keys(aws_lambda_function.audit.environment[0].variables), "ESCALATION_ACTIONS")
+    error_message = "With escalation_actions unset, the Lambda must use its built-in list."
   }
 }
 
