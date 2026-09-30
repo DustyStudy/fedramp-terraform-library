@@ -123,7 +123,7 @@ jobs:
 
       # Engine 1: Checkov FedRAMP / NIST Benchmark Scan (Blocking Hard Gate)
       - name: Run Checkov SAST
-        uses: bridgecrewio/checkov-action@444c9db6fa75e2d9c19ebf1fde7322089be9009e # v12
+        uses: bridgecrewio/checkov-action@5798bad4f6dd9c1fb67ae3ec10d42d8fb67037c4 # v12
         with:
           framework: terraform
           output_format: cli,sarif
@@ -142,7 +142,7 @@ jobs:
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy Scan Results to GitHub Security
-        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
         if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: 'trivy-results.sarif'
