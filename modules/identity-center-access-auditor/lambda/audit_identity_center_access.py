@@ -17,6 +17,14 @@ Three checks, run across every Identity Center instance in the account
    check 2) - a permission set like this assigned org-wide is a very
    different risk than one assigned to a single break-glass group in
    one account.
+   Also flagged: an inline statement that allows a named privilege
+   escalation action (iam:PutRolePolicy, iam:AttachRolePolicy,
+   iam:DeleteRolePermissionsBoundary, iam:PassRole,
+   sso:CreateAccountAssignment and similar) on a wildcard resource. A
+   permission set doesn't need "iam:*" to become admin: a user who can
+   attach a policy to a role, or remove its permissions boundary, can
+   grant themselves anything the boundary was meant to stop. Action
+   patterns such as "iam:Put*" or "iam:*Policy" are matched too.
 2. Direct-to-user account assignments: any account assignment whose
    principal is a user rather than a group. Independent of privilege
    level - this is a scalability/governance finding, not a severity
@@ -42,6 +50,10 @@ Env vars:
                                  "*" is flagged in an inline policy
                                  (default: iam, ec2, s3, kms,
                                  organizations, sts)
+  ESCALATION_ACTIONS           - comma-separated IAM actions flagged when
+                                 an inline statement allows them on a
+                                 resource containing "*" (default:
+                                 DEFAULT_ESCALATION_ACTIONS below)
   FLAG_DIRECT_USER_ASSIGNMENTS - "true"/"false" - enable check 2
                                  (default "true")
   REPORT_UNUSED_PERMISSION_SETS - "true"/"false" - include check 3's
@@ -50,6 +62,7 @@ Env vars:
                                  "true")
 """
 
+import fnmatch
 import json
 import logging
 import os
@@ -70,6 +83,25 @@ SENSITIVE_WILDCARD_SERVICES = [
     s.strip()
     for s in os.environ.get("SENSITIVE_WILDCARD_SERVICES", "iam,ec2,s3,kms,organizations,sts").split(",")
     if s.strip()
+]
+# IAM and Identity Center actions that let a principal raise its own or
+# someone else's privileges. Grouped by technique: edit a policy, swap a
+# policy version, change who can assume a role, drop a permissions
+# boundary, mint credentials for another user, hand a role to a service,
+# or change what an Identity Center permission set grants.
+DEFAULT_ESCALATION_ACTIONS = (
+    "iam:PutRolePolicy,iam:AttachRolePolicy,iam:PutUserPolicy,iam:AttachUserPolicy,"
+    "iam:PutGroupPolicy,iam:AttachGroupPolicy,iam:AddUserToGroup,"
+    "iam:CreatePolicyVersion,iam:SetDefaultPolicyVersion,iam:UpdateAssumeRolePolicy,"
+    "iam:DeleteRolePermissionsBoundary,iam:PutRolePermissionsBoundary,"
+    "iam:DeleteUserPermissionsBoundary,iam:PutUserPermissionsBoundary,"
+    "iam:CreateAccessKey,iam:CreateLoginProfile,iam:UpdateLoginProfile,iam:PassRole,"
+    "sso:CreateAccountAssignment,sso:PutInlinePolicyToPermissionSet,"
+    "sso:AttachManagedPolicyToPermissionSet,sso:AttachCustomerManagedPolicyReferenceToPermissionSet,"
+    "sso:DeletePermissionsBoundaryFromPermissionSet"
+)
+ESCALATION_ACTIONS = [
+    a.strip().lower() for a in os.environ.get("ESCALATION_ACTIONS", DEFAULT_ESCALATION_ACTIONS).split(",") if a.strip()
 ]
 FLAG_DIRECT_USER_ASSIGNMENTS = os.environ.get("FLAG_DIRECT_USER_ASSIGNMENTS", "true").lower() == "true"
 REPORT_UNUSED_PERMISSION_SETS = os.environ.get("REPORT_UNUSED_PERMISSION_SETS", "true").lower() == "true"
@@ -125,9 +157,22 @@ def _as_list(value):
     return value if isinstance(value, list) else [value]
 
 
+def _escalation_actions_allowed(action_patterns):
+    """The escalation actions that any of the statement's action patterns
+    match. IAM action names are case-insensitive and allow "*" and "?"
+    wildcards, which fnmatch handles the same way once both sides are
+    lowercased."""
+    return [
+        action
+        for action in ESCALATION_ACTIONS
+        if any(fnmatch.fnmatchcase(action, pattern) for pattern in action_patterns)
+    ]
+
+
 def _statement_is_risky(statement):
-    """A full wildcard action, or a service-wide wildcard on a sensitive
-    service combined with a wildcard resource."""
+    """A full wildcard action, a service-wide wildcard on a sensitive
+    service combined with a wildcard resource, or a named privilege
+    escalation action on a resource that contains a wildcard."""
     if statement.get("Effect") != "Allow":
         return None
 
@@ -150,6 +195,16 @@ def _statement_is_risky(statement):
             service, _, rest = action.partition(":")
             if rest == "*" and service in SENSITIVE_WILDCARD_SERVICES:
                 return f"service-wide wildcard action ({action}) with Resource '*'"
+
+    # A wildcard anywhere in the resource ("*", "arn:aws:iam::111:role/*")
+    # means the action reaches roles or users the author didn't name.
+    if any("*" in str(resource) for resource in resources):
+        escalation = _escalation_actions_allowed(actions)
+        if escalation:
+            return (
+                f"privilege escalation action(s) on a wildcard resource: {', '.join(escalation)} "
+                "(can grant itself more access or remove a permissions boundary)"
+            )
 
     return None
 

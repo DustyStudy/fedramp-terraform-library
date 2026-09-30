@@ -32,6 +32,18 @@ Lambda checks:
    - Whether its inline policy contains a full wildcard action
      (`"Action": "*"`) or a service-wide wildcard (e.g. `iam:*`) on one
      of `sensitive_wildcard_services`, combined with `Resource: "*"`
+   - Whether its inline policy allows a named **privilege escalation
+     action** on a resource that contains `*`: policy edits
+     (`iam:PutRolePolicy`, `iam:AttachRolePolicy` and the user and group
+     versions), `iam:CreatePolicyVersion`, `iam:UpdateAssumeRolePolicy`,
+     permissions boundary changes (`iam:DeleteRolePermissionsBoundary`),
+     `iam:CreateAccessKey`, `iam:PassRole`, and Identity Center changes
+     such as `sso:CreateAccountAssignment` or
+     `sso:PutInlinePolicyToPermissionSet`. Patterns like `iam:Put*` count.
+     A permission set doesn't need `iam:*` to become admin: whoever can
+     attach a policy to a role or strip its boundary can grant themselves
+     the rest. Self-service elevation workflows are a common way in.
+     Override the list with `escalation_actions`.
 
    Any match is reported together with how many accounts the permission
    set is provisioned to and whether it's also assigned directly to a
@@ -84,6 +96,7 @@ Detective only: a human still does the review and the right-sizing.
 | `notification_email` | Email to subscribe to the SNS topic | `""` (no subscription) |
 | `schedule_expression` | EventBridge schedule | `rate(1 day)` |
 | `sensitive_wildcard_services` | Services where `<service>:*` + `Resource: "*"` is flagged | see `variables.tf` |
+| `escalation_actions` | Actions flagged on a wildcard resource; `null` uses the Lambda's built-in list | `null` |
 | `flag_direct_user_assignments` | Flag user (vs group) account assignments | `true` |
 | `report_unused_permission_sets` | Include the unused-permission-set addendum when there's other findings | `true` |
 | `code_signing_config_arn` | ARN of an existing `aws_lambda_code_signing_config` to enforce | `null` |
