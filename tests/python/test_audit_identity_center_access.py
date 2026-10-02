@@ -106,6 +106,51 @@ def test_scoped_or_non_sensitive_statements_pass(make_fn, statement):
     assert _body(fn.lambda_handler({}, None))["over_privileged_permission_set_count"] == 0
 
 
+@pytest.mark.parametrize(
+    ("statement", "expected"),
+    [
+        ({"Effect": "Allow", "Action": "iam:PutRolePolicy", "Resource": "*"}, "iam:putrolepolicy"),
+        (
+            {"Effect": "Allow", "Action": "iam:DeleteRolePermissionsBoundary", "Resource": "arn:aws:iam::111:role/*"},
+            "iam:deleterolepermissionsboundary",
+        ),
+        ({"Effect": "Allow", "Action": ["s3:GetObject", "iam:Attach*"], "Resource": "*"}, "iam:attachrolepolicy"),
+        ({"Effect": "Allow", "Action": "IAM:PassRole", "Resource": "*"}, "iam:passrole"),
+        ({"Effect": "Allow", "Action": "sso:CreateAccountAssignment", "Resource": "*"}, "sso:createaccountassignment"),
+    ],
+)
+def test_escalation_actions_on_wildcard_resources_are_flagged(make_fn, statement, expected):
+    fn = make_fn([_permission_set("Elevate", inline={"Statement": [statement]})])
+
+    assert _body(fn.lambda_handler({}, None))["over_privileged_permission_set_count"] == 1
+    assert "privilege escalation action(s)" in _message(fn)
+    assert expected in _message(fn)
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        {"Effect": "Allow", "Action": "iam:PutRolePolicy", "Resource": "arn:aws:iam::111:role/app"},
+        {"Effect": "Allow", "Action": "iam:Get*", "Resource": "*"},
+        {"Effect": "Deny", "Action": "iam:PutRolePolicy", "Resource": "*"},
+    ],
+)
+def test_named_or_read_only_iam_statements_pass(make_fn, statement):
+    fn = make_fn([_permission_set("Scoped", inline={"Statement": [statement]})])
+
+    assert _body(fn.lambda_handler({}, None))["over_privileged_permission_set_count"] == 0
+
+
+def test_escalation_action_list_can_be_overridden(make_fn):
+    statement = {"Effect": "Allow", "Action": "iam:PassRole", "Resource": "*"}
+    fn = make_fn(
+        [_permission_set("Deploy", inline={"Statement": [statement]})],
+        ESCALATION_ACTIONS="iam:PutRolePolicy",
+    )
+
+    assert _body(fn.lambda_handler({}, None))["over_privileged_permission_set_count"] == 0
+
+
 def test_direct_user_assignment_is_flagged(make_fn):
     fn = make_fn([_permission_set("ReadOnly", assignments=[{"PrincipalType": "USER", "PrincipalId": "u-1"}])])
 

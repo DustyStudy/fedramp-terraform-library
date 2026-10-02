@@ -28,6 +28,7 @@ definitions before using it in an SSP.
 | `iam-password-policy` | IA-5, AC-2, AC-7 | KSI-IAM-APM, KSI-IAM-AAM |
 | `identity-center-access-auditor` | AC-2, AC-6, AC-6(7) | KSI-IAM-ELP, KSI-IAM-AAM |
 | `trust-policy-auditor` | AC-3, AC-6, AC-21, IA-5, SC-7 | KSI-IAM-SNU, KSI-IAM-ELP |
+| `rds-access-auditor` | AC-3, AC-6, IA-2, IA-5, SC-7, SC-8 | KSI-IAM-ELP, KSI-IAM-SNU, KSI-CNA-RNT, KSI-SVC-ASM, KSI-SVC-SIN |
 | `stale-account-detector` | AC-2, AC-2(3), CM-8 | KSI-IAM-AAM |
 
 **Note on native resources vs. workarounds:** `iam-password-policy` and
@@ -112,6 +113,13 @@ High reuses the `moderate/` modules with tighter variable values via
 module here if it diverges *structurally* from its Moderate counterpart
 (not just variable values) — e.g. FIPS 140-3 validated endpoint
 enforcement, additional audit event types required at High.
+
+## Repository supply chain
+
+| Control | What implements it | Notes |
+|---|---|---|
+| SR-3, SR-11, CM-14 (`KSI-SCR`) | `tests/python/test_provider_sources.py`, run in CI | Fails the build if any `required_providers` source in a module or example is not on the allowlist (today `hashicorp/aws` and `hashicorp/archive`), so a typosquatted or third-party provider can't be added without a reviewed change. |
+| SI-7, CM-14 (consumer side) | Your root module's committed `.terraform.lock.hcl` | This library doesn't commit lock files (callers ignore a module's lock file). In the root that consumes these modules, commit `.terraform.lock.hcl` and run `terraform init -lockfile=readonly` in CI, so only provider builds with reviewed checksums are installed on a runner that holds deploy credentials. |
 
 ## fedramp-20x/
 

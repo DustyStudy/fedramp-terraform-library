@@ -20,6 +20,13 @@ trustworthy reference — please keep a few things in mind.
   resource (rare, but it happens — check the AWS provider docs before
   assuming), a `null_resource` with `local-exec`, or documenting the manual
   step, are the fallback options; explain the gap in the module's README.
+- **Only allowlisted providers.** A new `required_providers` entry must
+  be added to `ALLOWED_PROVIDERS` in `tests/python/test_provider_sources.py`
+  in the same PR, or CI fails. Copy the namespace from the provider's
+  registry page rather than typing it: the 2026-09 Graphalgo campaign
+  shipped malware as `kreuzwenker/docker`, one letter off
+  `kreuzwerker/docker`. Prefer HashiCorp or verified-partner providers,
+  and say in the PR why the new one is trusted (SR-3, SR-11).
 - **Run `terraform fmt` before committing.** CI checks formatting and will
   fail an unformatted PR.
 - **Test before submitting a PR.** Run `terraform init && terraform plan`
@@ -37,6 +44,7 @@ trustworthy reference — please keep a few things in mind.
       with justification — see below)
 - [ ] Control/KSI mapping added to `docs/control-mapping.md`
 - [ ] No hardcoded account IDs, ARNs, or credentials
+- [ ] Any new provider is allowlisted in `tests/python/test_provider_sources.py`
 - [ ] Module README updated if this changes scope
 - [ ] Planned/applied successfully in a test account
 

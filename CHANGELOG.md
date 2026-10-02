@@ -13,6 +13,27 @@ FedRAMP expects.
 ## [Unreleased]
 
 ### Added
+- Provider supply-chain guard: `tests/python/test_provider_sources.py`
+  fails CI when any `required_providers` source is not on an allowlist
+  (`hashicorp/aws`, `hashicorp/archive`), catching typosquats such as
+  the `kreuzwenker/docker` provider from the 2026-09 Graphalgo Terraform
+  Registry campaign
+  ([Aikido](https://www.aikido.dev/blog/graphalgo-terraform-go-modules)).
+  `CONTRIBUTING.md` and `docs/control-mapping.md` now cover adding a
+  provider and pinning providers in consumer roots with a committed lock
+  file and `terraform init -lockfile=readonly` (SR-3, SR-11, CM-14, SI-7).
+
+## [1.2.0] - 2026-09-30
+
+### Added
+- `identity-center-access-auditor`: flags permission sets whose inline
+  policy allows a named privilege escalation action on a wildcard
+  resource, such as `iam:PutRolePolicy`, `iam:AttachRolePolicy`,
+  `iam:DeleteRolePermissionsBoundary`, `iam:PassRole` or
+  `sso:CreateAccountAssignment`. Action patterns like `iam:Put*` are
+  matched. Before this, only `AdministratorAccess` and `service:*`
+  wildcards were caught. The list can be replaced with the new
+  `escalation_actions` variable.
 - `trust-policy-auditor`: daily detective audit of who can reach in from
   outside the account. It reports OIDC trust without a pinned `sub` or
   `aud` (graded for GitHub's subject formats, including immutable IDs),
@@ -20,6 +41,20 @@ FedRAMP expects.
   function policies and public function URLs, and RAM shares outside the
   organization. Single account by default; `member_role_name` makes it
   organization-wide (AC-3, AC-6, AC-21, IA-5, SC-7).
+- `rds-access-auditor`: daily detective audit of RDS and Aurora access.
+  It reports publicly accessible databases (CRITICAL when a security
+  group admits the internet on the database port), master passwords not
+  managed in Secrets Manager, IAM database authentication off, TLS not
+  enforced in the parameter group, and IAM policies granting
+  `rds-db:connect` as any database user or as the master user. Ships
+  `sql/audit_postgres_roles.sql`, a read-only review of PostgreSQL role
+  grants, tested in CI against PostgreSQL 16 (AC-3, AC-6, IA-2, IA-5,
+  SC-7, SC-8).
+
+### Changed
+- CI: every workflow is audited by zizmor, every Linux job starts with
+  harden-runner in audit mode, and Dependabot waits 7 days before
+  proposing an update.
 
 ## [1.1.0] - 2026-09-29
 

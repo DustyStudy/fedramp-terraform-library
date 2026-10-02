@@ -22,6 +22,19 @@ variable "sensitive_wildcard_services" {
   default     = ["iam", "ec2", "s3", "kms", "organizations", "sts"]
 }
 
+variable "escalation_actions" {
+  type        = list(string)
+  description = <<-EOT
+    IAM and Identity Center actions flagged when a permission set's inline
+    policy allows them on a resource that contains "*". Action patterns in
+    the policy (such as "iam:Put*") are matched against this list. Leave
+    null for the Lambda's built-in list: policy edits, policy versions,
+    trust policy edits, permissions boundary changes, access keys and
+    login profiles, iam:PassRole, and permission set changes.
+  EOT
+  default     = null
+}
+
 variable "flag_direct_user_assignments" {
   type        = bool
   description = <<-EOT
