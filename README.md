@@ -18,6 +18,10 @@ High**, or **FedRAMP 20x** authorization.
   bucket policies at plan time, and 25 pytest tests cover the module
   Lambdas. Checkov, Trivy and Gitleaks run on every PR. See
   [what is verified, and what is not](docs/PROOF.md).
+- **Live use:** a read-only `trust-policy-auditor` run against a real
+  4-account organization found a GitHub OIDC deploy role that any branch
+  could assume. The library as a whole has not been applied to a live
+  account.
 
 ## ⚠️ Disclaimer
 
@@ -46,9 +50,7 @@ against your organization's current SSP and your 3PAO's expectations.
   generally available certification path (effective 2026-06-24) and
   finalized 10 KSI clusters. See `fedramp-20x/README.md` for the current
   cluster list and a cross-reference of which existing modules already
-  satisfy each one, and `docs/FEDRAMP-20X-CHEAT-SHEET.md` for the 2026
-  terminology/timeline changes (Authorization → Certification, Class
-  B/C/D).
+  satisfy each one.
 
 ## How the pieces fit
 
@@ -107,12 +109,12 @@ docs/                 Control-to-module cross-reference
 | `stale-account-detector` | Weekly CloudTrail Lake query for organization accounts with no activity in N days |
 | `ssm-patching-hardened` | Automated patch baseline, weekly maintenance window, KMS-encrypted patch logs |
 | `waf-hardened` | Regional WAFv2 with AWS-managed rule groups, rate limiting, KMS-encrypted logging |
-| `moderate/iam-access-control` | Access Analyzer, permission boundary, enforced-MFA group, root usage alerting |
-| `moderate/logging-monitoring` | 14 CIS/Security Hub CloudWatch metric-filter + alarm pairs |
+| `iam-access-control` | Access Analyzer, permission boundary, enforced-MFA group, root usage alerting |
+| `logging-monitoring` | 14 CIS/Security Hub CloudWatch metric-filter + alarm pairs |
 | `moderate/network-boundary/vpc-flow-logs` | VPC Flow Logs to encrypted S3, for an existing VPC |
 | `moderate/network-boundary/default-security-group-lockdown` | Strips all rules from an existing VPC's default security group (native resource; no custom scripting needed, unlike CFN) |
 | `moderate/data-protection/kms-cmk-baseline` | Reusable customer-managed KMS key for encryption at rest |
-| `moderate/incident-response/incident-notifications` | Aggregated SNS topic for high-severity GuardDuty/Security Hub findings |
+| `incident-notifications` | Aggregated SNS topic for high-severity GuardDuty/Security Hub findings |
 
 See `docs/control-mapping.md` for the NIST 800-53/20x KSI mapping per
 module, and `docs/NIST-800-53-REV5-MATRIX.md` for the same information
@@ -140,8 +142,6 @@ docs are aimed at that gap directly:
 - **`docs/CONTINUOUS-MONITORING.md`**: how this repo's modules feed
   FedRAMP's CR26 continuous monitoring (quarterly CCM reports, VDR
   timeframes, SCN), and what it requires that nothing here automates
-- **`docs/POAM-TEMPLATE.md`**: legacy Rev5 finding tracker; under CR26,
-  providers report vulnerabilities under VDR/VER instead
 - **`CHANGELOG.md`**: change history, in the spirit of the documentation
   discipline FedRAMP's Significant Change Notification (SCN) rules expect
 

@@ -37,3 +37,23 @@ module "iam_password_policy" {
 - IAM password policies can't check a blocklist of common or compromised
   passwords, so IA-5(1)(a)–(b) need an IdP that does (prefer Identity
   Center over IAM users).
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| max_password_age | Days before a password must be changed; 0 disables expiry. NIST SP 800-63B-4 says verifiers SHALL NOT require periodic changes, so 0 is the default. Set a value only if your own policy requires rotation. | `number` | `0` | no |
+| minimum_password_length | Minimum password length. NIST SP 800-63B-4: at least 15 for single-factor passwords; 8 only when always used with MFA. FedRAMP assigns no separate value. | `number` | `15` | no |
+| password_reuse_prevention | Number of previous passwords remembered to prevent reuse (organization-defined; FedRAMP assigns no value). | `number` | `24` | no |
+| require_lowercase_characters | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
+| require_numbers | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
+| require_symbols | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
+| require_uppercase_characters | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| expire_passwords | Whether password expiration is active under this policy (true whenever max_password_age > 0) |
+<!-- END_TF_DOCS -->

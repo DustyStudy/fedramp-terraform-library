@@ -42,3 +42,21 @@ module "waf_hardened" {
   per source IP — tune it against your actual traffic patterns before
   relying on the default in production; too low blocks legitimate bursty
   traffic, too high defeats the point of the rule.
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| environment | n/a | `string` | `"fedramp"` | no |
+| log_retention_days | Retention period for WAF logs in days | `number` | `365` | no |
+| rate_limit_threshold | Maximum requests allowed from a single IP per 5-minute window | `number` | `2000` | no |
+| scope | REGIONAL for ALB/API Gateway or CLOUDFRONT for edge distribution | `string` | `"REGIONAL"` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| web_acl_arn | n/a |
+| web_acl_id | n/a |
+<!-- END_TF_DOCS -->

@@ -12,6 +12,22 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Changed
+- `iam-access-control`, `logging-monitoring` and `incident-notifications`
+  move from `moderate/` into `modules/`. Their `moderate/` roots stay and
+  now call the module, with `moved` blocks so existing state carries over
+  without replacement. Roots that sourced the `moderate/` paths as modules
+  (as `examples/` did) inherited a separate `provider "aws"` block, so a
+  region, `assume_role` or `default_tags` set by the caller did not apply
+  to them; source `modules/<name>` instead.
+
+### Removed
+- `docs/POAM-TEMPLATE.md`: CR26 replaced the provider POA&M with VDR/VER
+  reporting, and the file said so itself.
+- `docs/FEDRAMP-20X-CHEAT-SHEET.md`: general FedRAMP news rather than
+  documentation of this library. Its repo-specific notes (Rev5 tracks,
+  no OSCAL output) moved to `fedramp-20x/README.md`.
+
 ### Added
 - Provider supply-chain guard: `tests/python/test_provider_sources.py`
   fails CI when any `required_providers` source is not on an allowlist

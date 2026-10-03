@@ -34,3 +34,18 @@ module "ecr_hardened" {
   other way (e.g. a bare commit SHA) aren't covered by that rule and will
   accumulate — adjust the prefix list or add a rule if your tagging
   convention differs.
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| repository_name | Name of the hardened ECR repository | `string` | n/a | yes |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| repository_arn | n/a |
+| repository_url | n/a |
+<!-- END_TF_DOCS -->

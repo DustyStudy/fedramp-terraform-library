@@ -36,3 +36,19 @@ module "ecs_fargate_hardened" {
 - `log_retention_days` defaults to 365 to match FedRAMP Moderate's
   one-year audit log retention expectation; override for High if your SSP
   calls for longer.
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| cluster_name | Name of the ECS Cluster | `string` | n/a | yes |
+| log_retention_days | CloudWatch Log retention in days (FedRAMP requires >= 365) | `number` | `365` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| cluster_arn | n/a |
+| log_group_arn | n/a |
+<!-- END_TF_DOCS -->

@@ -39,7 +39,7 @@ module "account_baseline" {
   avoid a resource conflict.
 - This only sets the password policy for IAM *users*. SSO/Identity Center
   users authenticate through your IdP, so password/MFA enforcement for
-  them lives there, not here — see `moderate/iam-access-control` for the
+  them lives there, not here — see `modules/iam-access-control` for the
   MFA-group side of that.
 - **Backup vault.** `create_backup_vault` (default `true`) creates
   `backup_vault_name` (default `FedRAMPComplianceVault`), encrypted with a
@@ -60,3 +60,31 @@ module "account_baseline" {
 - IAM password policies can't check a blocklist of common or compromised
   passwords, so IA-5(1)(a)–(b) need an IdP that does (prefer Identity
   Center over IAM users).
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| backup_vault_kms_key_arn | Optional existing CMK ARN for the backup vault. Empty creates a dedicated CMK with rotation enabled. | `string` | `""` | no |
+| backup_vault_name | Backup vault name; must match org-governance's backup_vault_name. | `string` | `"FedRAMPComplianceVault"` | no |
+| create_backup_vault | Create the AWS Backup vault that modules/org-governance's backup policy targets. Deploy once per region listed in that policy's backup_regions. | `bool` | `true` | no |
+| kms_key_arn | Optional custom KMS Key ARN to use for default EBS encryption. | `string` | `""` | no |
+| manage_default_vpc | Whether to adopt and restrict default VPC security groups. | `bool` | `true` | no |
+| max_password_age | Days before a password must be changed; 0 disables expiry. NIST SP 800-63B-4 says verifiers SHALL NOT require periodic changes, so 0 is the default. Set a value only if your own policy requires rotation. | `number` | `0` | no |
+| minimum_password_length | Minimum password length. NIST SP 800-63B-4: at least 15 for single-factor passwords; 8 only when always used with MFA. FedRAMP assigns no separate value. | `number` | `15` | no |
+| password_reuse_prevention | Number of previous passwords remembered to prevent reuse (organization-defined; FedRAMP assigns no value). | `number` | `24` | no |
+| require_lowercase_characters | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
+| require_numbers | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
+| require_symbols | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
+| require_uppercase_characters | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| backup_vault_arn | ARN of the AWS Backup vault (null when create_backup_vault = false) |
+| ebs_encryption_enabled | Whether EBS default encryption is enabled |
+| iam_password_policy_expire_passwords | Indicates whether passwords expire according to the IAM password policy |
+| s3_public_access_block_id | ID of the account-level S3 public access block |
+<!-- END_TF_DOCS -->

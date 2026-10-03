@@ -36,3 +36,20 @@ module "ssm_patching_hardened" {
 - Patch baseline currently covers `AMAZON_LINUX_2023` only. Add additional
   `aws_ssm_patch_baseline` resources (and corresponding maintenance-window
   tasks) for other operating systems in your fleet.
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| environment | Environment identifier | `string` | `"fedramp"` | no |
+| maintenance_window_cron | Cron expression for maintenance window (Default: Sunday at 02:00 AM UTC) | `string` | `"cron(0 2 ? * SUN *)"` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| maintenance_window_id | SSM Maintenance Window ID |
+| patch_baseline_id | SSM Patch Baseline ID |
+| patch_logs_bucket_arn | S3 Bucket storing patch execution logs |
+<!-- END_TF_DOCS -->

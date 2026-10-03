@@ -16,8 +16,6 @@ draft. See:
 - https://www.fedramp.gov/2026/reference/20x/b/key-security-indicators/ —
   authoritative source for the table below
 - https://www.fedramp.gov/updates/changelog — ongoing changes
-- `../docs/FEDRAMP-20X-CHEAT-SHEET.md` — plain-language rundown of the
-  2026 terminology changes (Authorization → Certification, Class B/C/D)
 
 **Still verify before submitting evidence:** FedRAMP continues to iterate
 inside this structure (RFC-0033/RFC-0034, opened 2026-09-09, cover Class D
@@ -37,8 +35,8 @@ already produce evidence for it:
 | KSI | Cluster | What it covers | Existing modules that already contribute evidence |
 |---|---|---|---|
 | `KSI-CNA` | Cloud Native Architecture | Minimal attack surface, network traffic controls, DoS protection, high availability | `modules/eks-hardened`, `modules/ecs-fargate-hardened`, `modules/network-perimeter-vpc`, `modules/waf-hardened`, `modules/fips-vpc-endpoints`, `modules/org-scp-boundary`, `moderate/network-boundary/default-security-group-lockdown` |
-| `KSI-IAM` | Identity and Access Management | Account lifecycle automation, least privilege, passwordless/phishing-resistant MFA | `moderate/iam-access-control`, `modules/iam-password-policy`, `modules/account-baseline`, `modules/org-scp-boundary` |
-| `KSI-MLA` | Monitoring, Logging, and Auditing | Centralized tamper-resistant logging, persistent log review, config evaluation | `modules/org-cloudtrail`, `modules/guardduty-org`, `modules/security-hub-org`, `moderate/logging-monitoring`, `modules/ecs-fargate-hardened`, `moderate/network-boundary/vpc-flow-logs` |
+| `KSI-IAM` | Identity and Access Management | Account lifecycle automation, least privilege, passwordless/phishing-resistant MFA | `modules/iam-access-control`, `modules/iam-password-policy`, `modules/account-baseline`, `modules/org-scp-boundary` |
+| `KSI-MLA` | Monitoring, Logging, and Auditing | Centralized tamper-resistant logging, persistent log review, config evaluation | `modules/org-cloudtrail`, `modules/guardduty-org`, `modules/security-hub-org`, `modules/logging-monitoring`, `modules/ecs-fargate-hardened`, `moderate/network-boundary/vpc-flow-logs` |
 | `KSI-SVC` | Service Configuration | Automated config-drift detection, secrets/key rotation, encryption, integrity validation | `modules/account-baseline`, `modules/ecr-hardened`, `modules/rds-postgres-hardened`, `modules/ssm-patching-hardened`, `modules/config-conformance-pack`, `modules/eks-hardened`, `moderate/data-protection/kms-cmk-baseline` |
 | `KSI-INR` | Incident Response | Documented IR procedures, after-action reviews, pattern analysis of past incidents | `modules/guardduty-org`, `moderate/incident-response` |
 | `KSI-CMT` | Change Management | Version-controlled, tested deployments; logged and monitored changes | This repo's own CI pipeline (`.github/workflows/ci.yml`) is evidence for the *tooling* side; the documented change-management *procedure* is not something Terraform can provide — see `../docs/COVERAGE-GAPS.md` |
@@ -52,3 +50,11 @@ assembling KSI evidence; it is not a substitute for reading the actual KSI
 indicator definitions at the fedramp.gov link above, since 20x's specific
 validation method for each indicator may expect something more precise
 than "a relevant control exists."
+
+## Rev5 tracks and OSCAL
+
+`moderate/` and `high/` follow the Rev5 control baselines (Class C and D
+under the 2026 rules). They stay useful through the transition (new Rev5
+authorizations end 2027-06-11), but new work should default to the KSI
+path above unless the agency sponsor requires Rev5. Nothing here generates
+the OSCAL submission package FedRAMP requires (RFC-0024).
