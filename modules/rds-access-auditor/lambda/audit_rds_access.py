@@ -331,7 +331,7 @@ def _client_factory(credentials=None):
         aws_secret_access_key=credentials and credentials["SecretAccessKey"],
         aws_session_token=credentials and credentials["SessionToken"],
     )
-    return lambda service, region: session.client(service, region_name=region) if region else session.client(service)
+    return lambda service, region: session.client(service, region_name=region)
 
 
 def _member_client(partition, account_id):

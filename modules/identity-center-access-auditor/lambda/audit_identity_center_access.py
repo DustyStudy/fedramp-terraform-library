@@ -118,23 +118,13 @@ def _notify(subject, message):
         logger.exception("Failed to publish SNS notification")
 
 
-def _paginate(method, result_key, **kwargs):
-    """Manual NextToken pagination - sso-admin's list_* operations all
-    follow this same NextToken/MaxResults shape. API errors propagate: a
-    detective audit that swallows AccessDenied would report a false
-    "no findings", so let the invocation fail visibly (Lambda Errors
-    metric / DLQ) instead. Callers that are genuinely best-effort catch
-    ClientError themselves."""
-    next_token = None
-    while True:
-        call_kwargs = dict(kwargs)
-        if next_token:
-            call_kwargs["NextToken"] = next_token
-        page = method(**call_kwargs)
+def _paginate(client, operation, result_key, **kwargs):
+    """API errors propagate: a detective audit that swallows AccessDenied
+    would report a false "no findings", so let the invocation fail visibly
+    (Lambda Errors metric / DLQ) instead. Callers that are genuinely
+    best-effort catch ClientError themselves."""
+    for page in client.get_paginator(operation).paginate(**kwargs):
         yield from page.get(result_key, [])
-        next_token = page.get("NextToken")
-        if not next_token:
-            return
 
 
 def _account_name_map():
@@ -144,7 +134,7 @@ def _account_name_map():
     without it, just with less friendly output."""
     names = {}
     try:
-        for account in _paginate(organizations.list_accounts, "Accounts"):
+        for account in _paginate(organizations, "list_accounts", "Accounts"):
             names[account["Id"]] = account.get("Name", account["Id"])
     except ClientError:
         logger.exception("Failed to list Organizations accounts - falling back to raw account IDs")
@@ -243,7 +233,8 @@ def _managed_policy_findings(instance_arn, permission_set_arn):
     has_admin = False
     other_managed = []
     for policy in _paginate(
-        sso_admin.list_managed_policies_in_permission_set,
+        sso_admin,
+        "list_managed_policies_in_permission_set",
         "AttachedManagedPolicies",
         InstanceArn=instance_arn,
         PermissionSetArn=permission_set_arn,
@@ -259,7 +250,8 @@ def _managed_policy_findings(instance_arn, permission_set_arn):
 def _customer_managed_policy_count(instance_arn, permission_set_arn):
     count = 0
     for _ in _paginate(
-        sso_admin.list_customer_managed_policy_references_in_permission_set,
+        sso_admin,
+        "list_customer_managed_policy_references_in_permission_set",
         "CustomerManagedPolicyReferences",
         InstanceArn=instance_arn,
         PermissionSetArn=permission_set_arn,
@@ -269,15 +261,15 @@ def _customer_managed_policy_count(instance_arn, permission_set_arn):
 
 
 def _provisioned_accounts(instance_arn, permission_set_arn):
-    return [
-        a
-        for a in _paginate(
-            sso_admin.list_accounts_for_provisioned_permission_set,
+    return list(
+        _paginate(
+            sso_admin,
+            "list_accounts_for_provisioned_permission_set",
             "AccountIds",
             InstanceArn=instance_arn,
             PermissionSetArn=permission_set_arn,
         )
-    ]
+    )
 
 
 def _resolve_principal_name(identity_store_id, principal_id, principal_type):
@@ -298,7 +290,8 @@ def _resolve_principal_name(identity_store_id, principal_id, principal_type):
 def _account_assignments(instance_arn, account_id, permission_set_arn):
     return list(
         _paginate(
-            sso_admin.list_account_assignments,
+            sso_admin,
+            "list_account_assignments",
             "AccountAssignments",
             InstanceArn=instance_arn,
             AccountId=account_id,
@@ -312,7 +305,7 @@ def _audit_instance(instance_arn, identity_store_id, account_names):
     direct_user_assignments = []
     unused_permission_sets = []
 
-    for ps_arn in _paginate(sso_admin.list_permission_sets, "PermissionSets", InstanceArn=instance_arn):
+    for ps_arn in _paginate(sso_admin, "list_permission_sets", "PermissionSets", InstanceArn=instance_arn):
         try:
             ps_name = sso_admin.describe_permission_set(InstanceArn=instance_arn, PermissionSetArn=ps_arn)[
                 "PermissionSet"
@@ -376,7 +369,7 @@ def lambda_handler(event, context):
     all_direct_user_assignments = []
     all_unused = []
 
-    for instance in _paginate(sso_admin.list_instances, "Instances"):
+    for instance in _paginate(sso_admin, "list_instances", "Instances"):
         instance_arn = instance["InstanceArn"]
         identity_store_id = instance["IdentityStoreId"]
         logger.info("Auditing Identity Center instance %s", instance_arn)

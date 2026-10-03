@@ -43,3 +43,26 @@ module "rds_postgres_hardened" {
   variable) — bump it there directly when you need a newer minor version,
   and confirm compatibility with `aws_db_parameter_group`'s
   `family = "postgres16"`.
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| private_subnet_ids | List of private isolated subnet IDs across at least 2 Availability Zones | `list(string)` | n/a | yes |
+| vpc_cidr | VPC CIDR allowed to communicate with the database | `string` | n/a | yes |
+| vpc_id | VPC ID where the database resides | `string` | n/a | yes |
+| admin_username | Master DB username | `string` | `"dbadmin"` | no |
+| allocated_storage | Initial storage in GB | `number` | `100` | no |
+| db_name | Database instance identifier | `string` | `"fedramp-postgres-db"` | no |
+| instance_class | RDS DB instance compute class | `string` | `"db.r6g.large"` | no |
+| max_allocated_storage | Upper storage auto-scaling threshold in GB | `number` | `500` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| db_instance_arn | ARN of the RDS instance |
+| db_instance_endpoint | Connection endpoint for the RDS instance |
+| master_user_secret_arn | Secrets Manager secret ARN containing master database credentials |
+<!-- END_TF_DOCS -->

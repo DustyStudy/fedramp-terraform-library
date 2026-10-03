@@ -32,6 +32,38 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  module-docs:
+    name: Module README tables (terraform-docs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TFDOCS_VERSION: "0.24.0"
+      TFDOCS_SHA256: 9005daf969de0b50134493a2c00078b49f5f5b39d021cda7c89bf4d4f3d776d3
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install terraform-docs (checksum-verified)
+        run: |
+          curl -sSLo tfdocs.tgz "https://github.com/terraform-docs/terraform-docs/releases/download/v${TFDOCS_VERSION}/terraform-docs-v${TFDOCS_VERSION}-linux-amd64.tar.gz"
+          echo "${TFDOCS_SHA256}  tfdocs.tgz" | sha256sum -c -
+          tar xzf tfdocs.tgz terraform-docs
+
+      - name: Fail if a module README is stale
+        run: |
+          for dir in modules/*/; do ./terraform-docs "$dir"; done
+          git diff --exit-code -- modules || {
+            echo "::error::Module README tables are stale. Run: for d in modules/*/; do terraform-docs $d; done"
+            exit 1
+          }
+
   syntax-and-lint:
     name: Terraform Format & TFLint
     runs-on: ubuntu-latest

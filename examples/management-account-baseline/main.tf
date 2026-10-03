@@ -35,6 +35,6 @@ module "org_governance" {
 # the CloudWatch Logs group receiving its management events) is a
 # management-account resource.
 module "logging_monitoring" {
-  source                    = "../../moderate/logging-monitoring"
+  source                    = "../../modules/logging-monitoring"
   cloudtrail_log_group_name = module.org_cloudtrail.log_group_name
 }

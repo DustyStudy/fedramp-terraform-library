@@ -8,6 +8,12 @@ LAMBDA = "modules/identity-center-access-auditor/lambda/audit_identity_center_ac
 INSTANCE = {"InstanceArn": "arn:aws:sso:::instance/ssoins-1", "IdentityStoreId": "d-1"}
 
 
+def _pages(client):
+    """Serve get_paginator(op).paginate(**kw) from the client's op mock, as one page."""
+    client.get_paginator.side_effect = lambda op: MagicMock(paginate=lambda **kw: [getattr(client, op)(**kw)])
+    return client
+
+
 def _permission_set(name, accounts=("111",), managed=(), inline=None, assignments=None, customer_managed=0):
     return {
         "name": name,
@@ -51,7 +57,7 @@ def make_fn(load_lambda):
         identitystore.describe_user.return_value = {"UserName": "alice"}
         organizations = MagicMock()
         organizations.list_accounts.return_value = {"Accounts": [{"Id": "111", "Name": "prod"}]}
-        module.sso_admin, module.identitystore, module.organizations = sso, identitystore, organizations
+        module.sso_admin, module.identitystore, module.organizations = _pages(sso), identitystore, _pages(organizations)
         module.sns = MagicMock()
         return module
 

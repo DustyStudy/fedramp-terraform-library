@@ -1,0 +1,20 @@
+# Regenerates the Inputs/Outputs tables in modules/*/README.md:
+#   terraform-docs modules/<name>
+# CI fails if a README is stale.
+formatter: markdown table
+recursive:
+  enabled: false
+sections:
+  show: [inputs, outputs]
+output:
+  file: README.md
+  mode: inject
+settings:
+  anchor: false
+  default: true
+  escape: false
+  html: false
+  required: true
+  type: true
+sort:
+  by: required

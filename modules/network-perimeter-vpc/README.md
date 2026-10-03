@@ -41,3 +41,26 @@ module "network_perimeter_vpc" {
   `us-east-1` deployment — override every one of them for a real
   environment; the defaults exist so the module is directly runnable in a
   sandbox, not as a recommended production layout.
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| app_subnet_cidrs | n/a | `list(string)` | ```[ "10.100.10.0/24", "10.100.20.0/24" ]``` | no |
+| availability_zones | n/a | `list(string)` | ```[ "us-east-1a", "us-east-1b" ]``` | no |
+| db_subnet_cidrs | n/a | `list(string)` | ```[ "10.100.100.0/24", "10.100.200.0/24" ]``` | no |
+| environment | n/a | `string` | `"fedramp"` | no |
+| log_retention_days | n/a | `number` | `365` | no |
+| public_subnet_cidrs | n/a | `list(string)` | ```[ "10.100.1.0/24", "10.100.2.0/24" ]``` | no |
+| vpc_cidr | n/a | `string` | `"10.100.0.0/16"` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| application_subnet_ids | n/a |
+| database_subnet_ids | n/a |
+| public_subnet_ids | n/a |
+| vpc_id | n/a |
+<!-- END_TF_DOCS -->

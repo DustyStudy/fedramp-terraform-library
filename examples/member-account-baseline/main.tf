@@ -41,11 +41,11 @@ module "config_conformance_pack" {
 }
 
 module "iam_access_control" {
-  source        = "../../moderate/iam-access-control"
+  source        = "../../modules/iam-access-control"
   analyzer_type = "ACCOUNT"
 }
 
 module "incident_notifications" {
-  source                       = "../../moderate/incident-response/incident-notifications"
+  source                       = "../../modules/incident-notifications"
   guardduty_severity_threshold = 7
 }

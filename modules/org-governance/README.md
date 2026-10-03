@@ -54,3 +54,24 @@ module "org_governance" {
   Populate it with your actual break-glass/security-admin role ARNs
   before attaching this in a real account, or legitimate retention
   management will be denied along with everything else.
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| authorized_security_admin_arns | ARNs allowed to manage S3 Object Lock settings | `list(string)` | `[]` | no |
+| backup_regions | Regions where the centralized backup plan runs (this does NOT copy backups between regions; use copy_destination_region for that). Defaults assume a standard AWS commercial deployment (us-east-1, us-west-2) — if deploying in AWS GovCloud, override with GovCloud region names (e.g. us-gov-west-1, us-gov-east-1) instead, since the two partitions don't share regions. | `list(string)` | ```[ "us-east-1", "us-west-2" ]``` | no |
+| backup_retention_days | Number of days to retain backups (and cross-region copies). FedRAMP assigns no CP-9 retention value: set this from your own contingency plan. AWS requires deletion at least 90 days after the day-30 cold-storage move. | `number` | `365` | no |
+| backup_vault_name | Name of the AWS Backup vault the policy writes to. The vault must exist in every member account and every region in backup_regions before backups run: deploy modules/account-baseline (create_backup_vault = true, the default) per account and region, or create it another way. | `string` | `"FedRAMPComplianceVault"` | no |
+| copy_destination_region | Optional region to copy every backup to (same vault name, same member account). Empty string disables cross-region copies. The destination vault must exist in that region in every member account. | `string` | `""` | no |
+| target_ou_or_account_ids | List of OUs or Account IDs to attach these policies to | `list(string)` | `[]` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| ai_opt_out_policy_id | ID of the AI Opt-Out Policy |
+| backup_policy_id | ID of the Centralized Backup Policy |
+| workload_perimeter_policy_id | ID of the workload perimeter SCP |
+<!-- END_TF_DOCS -->

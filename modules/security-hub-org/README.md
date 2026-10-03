@@ -28,3 +28,17 @@ delegated administrator push policy to member accounts rather than each
 account auto-enabling its own standards — worth considering for larger
 organizations, but it's a different operating model, not just a parameter
 tweak, so it's intentionally out of scope for this module.
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| auto_enable_standards | Automatically enable default security standards for new accounts joining the organization. | `bool` | `true` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| security_hub_account_id | ID of the Security Hub account resource (indicates Security Hub is enabled) |
+<!-- END_TF_DOCS -->
