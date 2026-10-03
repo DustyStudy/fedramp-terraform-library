@@ -80,7 +80,7 @@ your compliance team makes per change.
 
 | Expectation | What this repo provides |
 |---|---|
-| Continuous audit logging (KSI-MLA-LET, KSI-MLA-OSM) | `modules/org-cloudtrail` + `moderate/logging-monitoring`'s 14 CIS alarms |
+| Continuous audit logging (KSI-MLA-LET, KSI-MLA-OSM) | `modules/org-cloudtrail` + `modules/logging-monitoring`'s 14 CIS alarms |
 | Continuous configuration monitoring (KSI-SVC-ACM, KSI-MLA-EVC) | `modules/config-conformance-pack` |
 | Continuous threat detection and posture monitoring | `modules/guardduty-org`, `modules/security-hub-org` |
 | Incident alerting | `moderate/incident-response`'s aggregated SNS topic |

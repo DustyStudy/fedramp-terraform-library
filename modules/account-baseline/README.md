@@ -39,7 +39,7 @@ module "account_baseline" {
   avoid a resource conflict.
 - This only sets the password policy for IAM *users*. SSO/Identity Center
   users authenticate through your IdP, so password/MFA enforcement for
-  them lives there, not here — see `moderate/iam-access-control` for the
+  them lives there, not here — see `modules/iam-access-control` for the
   MFA-group side of that.
 - **Backup vault.** `create_backup_vault` (default `true`) creates
   `backup_vault_name` (default `FedRAMPComplianceVault`), encrypted with a

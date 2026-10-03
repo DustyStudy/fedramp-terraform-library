@@ -70,13 +70,13 @@ all of the above with implementation detail per control.
 ### logging-monitoring
 
 All 14 filter patterns are copied verbatim from AWS's Security Hub CSPM
-documentation — see `moderate/logging-monitoring/README.md` for the full
+documentation — see `modules/logging-monitoring/README.md` for the full
 per-alarm control mapping.
 
 ### iam-access-control
 
 Access Analyzer, permission boundary, enforced-MFA group, root usage
-alerting — see `moderate/iam-access-control/README.md` for the full
+alerting — see `modules/iam-access-control/README.md` for the full
 resource-level control mapping.
 
 ### network-boundary/

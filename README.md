@@ -107,12 +107,12 @@ docs/                 Control-to-module cross-reference
 | `stale-account-detector` | Weekly CloudTrail Lake query for organization accounts with no activity in N days |
 | `ssm-patching-hardened` | Automated patch baseline, weekly maintenance window, KMS-encrypted patch logs |
 | `waf-hardened` | Regional WAFv2 with AWS-managed rule groups, rate limiting, KMS-encrypted logging |
-| `moderate/iam-access-control` | Access Analyzer, permission boundary, enforced-MFA group, root usage alerting |
-| `moderate/logging-monitoring` | 14 CIS/Security Hub CloudWatch metric-filter + alarm pairs |
+| `iam-access-control` | Access Analyzer, permission boundary, enforced-MFA group, root usage alerting |
+| `logging-monitoring` | 14 CIS/Security Hub CloudWatch metric-filter + alarm pairs |
 | `moderate/network-boundary/vpc-flow-logs` | VPC Flow Logs to encrypted S3, for an existing VPC |
 | `moderate/network-boundary/default-security-group-lockdown` | Strips all rules from an existing VPC's default security group (native resource; no custom scripting needed, unlike CFN) |
 | `moderate/data-protection/kms-cmk-baseline` | Reusable customer-managed KMS key for encryption at rest |
-| `moderate/incident-response/incident-notifications` | Aggregated SNS topic for high-severity GuardDuty/Security Hub findings |
+| `incident-notifications` | Aggregated SNS topic for high-severity GuardDuty/Security Hub findings |
 
 See `docs/control-mapping.md` for the NIST 800-53/20x KSI mapping per
 module, and `docs/NIST-800-53-REV5-MATRIX.md` for the same information
