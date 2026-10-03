@@ -48,6 +48,7 @@ resource "aws_kms_key" "ssm" {
 }
 
 # S3 Bucket for Patch Execution Logs with SSE-KMS
+#trivy:ignore:AWS-0089 Access logging goes to the central log sink; see the CKV_AWS_18 skip.
 resource "aws_s3_bucket" "patch_logs" {
   #checkov:skip=CKV_AWS_18:Access logging target can be configured at centralized log sink
   #checkov:skip=CKV_AWS_144:Cross-region replication is NOT configured by this module. If your contingency plan needs off-site log copies, add S3 replication, or tag the bucket Backup=true (versioning required) and set org-governance copy_destination_region
