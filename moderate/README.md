@@ -22,6 +22,5 @@ Library-wide docs live in the repository root, not here:
 [control mapping](../docs/control-mapping.md),
 [NIST 800-53 matrix](../docs/NIST-800-53-REV5-MATRIX.md),
 [continuous monitoring](../docs/CONTINUOUS-MONITORING.md),
-[coverage gaps](../docs/COVERAGE-GAPS.md),
-[20x cheat sheet](../docs/FEDRAMP-20X-CHEAT-SHEET.md), and
+[coverage gaps](../docs/COVERAGE-GAPS.md), and
 [20x KSI cross-reference](../fedramp-20x/README.md).

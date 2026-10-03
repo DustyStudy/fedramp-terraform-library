@@ -16,8 +16,6 @@ draft. See:
 - https://www.fedramp.gov/2026/reference/20x/b/key-security-indicators/ —
   authoritative source for the table below
 - https://www.fedramp.gov/updates/changelog — ongoing changes
-- `../docs/FEDRAMP-20X-CHEAT-SHEET.md` — plain-language rundown of the
-  2026 terminology changes (Authorization → Certification, Class B/C/D)
 
 **Still verify before submitting evidence:** FedRAMP continues to iterate
 inside this structure (RFC-0033/RFC-0034, opened 2026-09-09, cover Class D
@@ -52,3 +50,11 @@ assembling KSI evidence; it is not a substitute for reading the actual KSI
 indicator definitions at the fedramp.gov link above, since 20x's specific
 validation method for each indicator may expect something more precise
 than "a relevant control exists."
+
+## Rev5 tracks and OSCAL
+
+`moderate/` and `high/` follow the Rev5 control baselines (Class C and D
+under the 2026 rules). They stay useful through the transition (new Rev5
+authorizations end 2027-06-11), but new work should default to the KSI
+path above unless the agency sponsor requires Rev5. Nothing here generates
+the OSCAL submission package FedRAMP requires (RFC-0024).

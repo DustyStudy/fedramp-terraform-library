@@ -146,6 +146,4 @@ no Terraform of its own; it is a map from each cluster to existing modules.
 | `KSI-CED` | Cybersecurity Education |
 
 See `fedramp-20x/README.md` for a cross-reference of which existing
-`modules/` and `moderate/` code already satisfy each category, and
-`FEDRAMP-20X-CHEAT-SHEET.md` for the broader 2026 terminology/timeline
-changes.
+`modules/` and `moderate/` code already satisfy each category.

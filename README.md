@@ -46,9 +46,7 @@ against your organization's current SSP and your 3PAO's expectations.
   generally available certification path (effective 2026-06-24) and
   finalized 10 KSI clusters. See `fedramp-20x/README.md` for the current
   cluster list and a cross-reference of which existing modules already
-  satisfy each one, and `docs/FEDRAMP-20X-CHEAT-SHEET.md` for the 2026
-  terminology/timeline changes (Authorization → Certification, Class
-  B/C/D).
+  satisfy each one.
 
 ## How the pieces fit
 
@@ -140,8 +138,6 @@ docs are aimed at that gap directly:
 - **`docs/CONTINUOUS-MONITORING.md`**: how this repo's modules feed
   FedRAMP's CR26 continuous monitoring (quarterly CCM reports, VDR
   timeframes, SCN), and what it requires that nothing here automates
-- **`docs/POAM-TEMPLATE.md`**: legacy Rev5 finding tracker; under CR26,
-  providers report vulnerabilities under VDR/VER instead
 - **`CHANGELOG.md`**: change history, in the spirit of the documentation
   discipline FedRAMP's Significant Change Notification (SCN) rules expect
 
