@@ -34,3 +34,23 @@ module "iam_access_control" {
   paths. It does not cover `iam:PassRole` combined with a compute service —
   that needs a resource-scoped `PassRole` condition or an SCP, layered on
   top of this boundary.
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| analyzer_type | Use ORGANIZATION if deploying from the delegated Access Analyzer administrator account to cover all member accounts; ACCOUNT for a single-account deployment. | `string` | `"ACCOUNT"` | no |
+| root_usage_alert_topic_name | n/a | `string` | `"root-account-usage-alerts"` | no |
+| unused_access_age | Days of inactivity before Access Analyzer flags a permission as unused (supports AC-2(3), periodic account review). | `number` | `90` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| external_access_analyzer_arn | ARN of the external-access analyzer |
+| permission_boundary_arn | ARN to reference in permissions_boundary when creating human/developer IAM roles or users |
+| require_mfa_group_name | IAM group name — add users here to enforce MFA |
+| root_usage_alert_topic_arn | Subscribe your security team's email/Slack integration here |
+| unused_access_analyzer_arn | ARN of the unused-access analyzer |
+<!-- END_TF_DOCS -->

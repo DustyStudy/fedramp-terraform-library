@@ -88,19 +88,28 @@ Works the same in GovCloud.
 Supports the periodic privilege review in AC-6(7) with a daily report.
 Detective only: a human still does the review and the right-sizing.
 
-## Variables
+<!-- BEGIN_TF_DOCS -->
+## Inputs
 
-| Variable | Description | Default |
-|---|---|---|
-| `name_prefix` | Prefix for all resource names | `identity-center-access-auditor` |
-| `notification_email` | Email to subscribe to the SNS topic | `""` (no subscription) |
-| `schedule_expression` | EventBridge schedule | `rate(1 day)` |
-| `sensitive_wildcard_services` | Services where `<service>:*` + `Resource: "*"` is flagged | see `variables.tf` |
-| `escalation_actions` | Actions flagged on a wildcard resource; `null` uses the Lambda's built-in list | `null` |
-| `flag_direct_user_assignments` | Flag user (vs group) account assignments | `true` |
-| `report_unused_permission_sets` | Include the unused-permission-set addendum when there's other findings | `true` |
-| `code_signing_config_arn` | ARN of an existing `aws_lambda_code_signing_config` to enforce | `null` |
-| `use_fips_endpoint` | Make the Lambda's SDK calls through FIPS endpoints (`AWS_USE_FIPS_ENDPOINT`) | `true` |
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| code_signing_config_arn | Optional ARN of an existing aws_lambda_code_signing_config to enforce on this function. Leave null to skip. | `string` | `null` | no |
+| escalation_actions | IAM and Identity Center actions flagged when a permission set's inline policy allows them on a resource that contains "*". Action patterns in the policy (such as "iam:Put*") are matched against this list. Leave null for the Lambda's built-in list: policy edits, policy versions, trust policy edits, permissions boundary changes, access keys and login profiles, iam:PassRole, and permission set changes. | `list(string)` | `null` | no |
+| flag_direct_user_assignments | Flag account assignments made directly to a user rather than a group. Assignments should generally flow through groups so access can be reasoned about and rotated as people change teams. | `bool` | `true` | no |
+| name_prefix | Prefix used for naming all resources created by this module. | `string` | `"identity-center-access-auditor"` | no |
+| notification_email | Optional email address to subscribe to the SNS topic. Leave empty to skip. | `string` | `""` | no |
+| report_unused_permission_sets | Include permission sets provisioned to zero accounts as an informational addendum whenever the audit already has other findings to report. This never triggers a notification by itself. | `bool` | `true` | no |
+| schedule_expression | EventBridge schedule expression controlling how often the audit runs. | `string` | `"rate(1 day)"` | no |
+| sensitive_wildcard_services | IAM service prefixes where "<service>:*" combined with Resource "*" in a permission set's inline policy is flagged as over-broad. | `list(string)` | ```[ "iam", "ec2", "s3", "kms", "organizations", "sts" ]``` | no |
+| use_fips_endpoint | Make the Lambda's AWS SDK calls through FIPS 140 validated endpoints (sets AWS_USE_FIPS_ENDPOINT). Default true, matching the provider setting in this library's root configurations. | `bool` | `true` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| lambda_function_arn | ARN of the auditor Lambda function. |
+| sns_topic_arn | ARN of the SNS topic used for audit notifications. |
+<!-- END_TF_DOCS -->
 
 ## Before you deploy
 

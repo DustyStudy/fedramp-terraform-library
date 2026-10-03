@@ -164,26 +164,28 @@ database user, and checks that authenticators (IA-5) and transport
 encryption (SC-8) are managed rather than left at defaults. Detective
 only: a human still decides what to change.
 
-## Variables
+<!-- BEGIN_TF_DOCS -->
+## Inputs
 
-| Variable | Description | Default |
-|---|---|---|
-| `name_prefix` | Prefix for all resource names | `rds-access-auditor` |
-| `notification_email` | Email to subscribe to the SNS topic | `""` (no subscription) |
-| `schedule_expression` | EventBridge schedule | `rate(1 day)` |
-| `regions` | Regions to audit RDS in (IAM is global) | `[]` (the deployed region) |
-| `member_role_name` | Role to assume in every other active account | `""` (this account only) |
-| `code_signing_config_arn` | ARN of an existing `aws_lambda_code_signing_config` to enforce | `null` |
-| `use_fips_endpoint` | Make the Lambda's SDK calls through FIPS endpoints (`AWS_USE_FIPS_ENDPOINT`) | `true` |
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| code_signing_config_arn | Optional ARN of an existing aws_lambda_code_signing_config to enforce on this function. Leave null to skip. | `string` | `null` | no |
+| member_role_name | Name of a read-only role to assume in every other active account of the organization. Empty scans only the account the module is deployed in. The role must trust this module's Lambda role (output lambda_role_arn) and allow the actions in output member_role_policy_json. | `string` | `""` | no |
+| name_prefix | Prefix used for naming all resources created by this module. | `string` | `"rds-access-auditor"` | no |
+| notification_email | Optional email address to subscribe to the SNS topic. Leave empty to skip. | `string` | `""` | no |
+| regions | Regions to audit RDS databases in. Empty means the region the module is deployed in. IAM roles are global and always audited. | `list(string)` | `[]` | no |
+| schedule_expression | EventBridge schedule expression controlling how often the audit runs. | `string` | `"rate(1 day)"` | no |
+| use_fips_endpoint | Make the Lambda's AWS SDK calls through FIPS 140 validated endpoints (sets AWS_USE_FIPS_ENDPOINT). Default true, matching the provider setting in this library's root configurations. | `bool` | `true` | no |
 
 ## Outputs
 
-| Output | Description |
-|---|---|
-| `lambda_function_arn` | ARN of the auditor Lambda |
-| `lambda_role_arn` | ARN of its execution role, for member-role trust policies |
-| `sns_topic_arn` | ARN of the notification topic |
-| `member_role_policy_json` | Read-only policy for the member-account role |
+| Name | Description |
+| ---- | ----------- |
+| lambda_function_arn | ARN of the auditor Lambda function. |
+| lambda_role_arn | ARN of the auditor's execution role. Member-account roles named by member_role_name must trust it. |
+| member_role_policy_json | Read-only permissions the member-account role needs. Attach it to the role named by member_role_name in each account. |
+| sns_topic_arn | ARN of the SNS topic used for audit notifications. |
+<!-- END_TF_DOCS -->
 
 ## Notes
 

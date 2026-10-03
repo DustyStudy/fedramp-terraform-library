@@ -45,3 +45,21 @@ module "org_scp_boundary" {
 - See `../../high/org-scp-boundary` for the same SCP with a High-track
   policy name — the boundary logic itself doesn't change between
   Moderate and High, only the naming.
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| approved_regions | List of approved FedRAMP regions. Defaults assume a standard AWS commercial deployment (us-east-1, us-west-2) — if deploying in AWS GovCloud, override with GovCloud region names (e.g. us-gov-west-1, us-gov-east-1) instead, since the two partitions don't share regions. | `list(string)` | ```[ "us-east-1", "us-west-2" ]``` | no |
+| policy_name | Name of the SCP | `string` | `"fedramp-authorization-boundary-scp"` | no |
+| require_imdsv2 | Add statements that deny launching an EC2 instance without IMDSv2 (HttpTokens = required) and deny switching an instance back to IMDSv1. Off by default: turning it on breaks any launch template, AMI pipeline or tool that still sets HttpTokens to optional. | `bool` | `false` | no |
+| target_ou_or_account_ids | List of Organizational Units or Account IDs to attach this SCP | `list(string)` | `[]` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| policy_arn | ARN of the created SCP |
+| policy_id | ID of the created SCP |
+<!-- END_TF_DOCS -->

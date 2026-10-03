@@ -34,3 +34,17 @@ module "logging_monitoring" {
 | Network gateway changes | SC-7, AU-6 | KSI-CNA-RNT |
 | Route table changes | SC-7, AU-6 | KSI-CNA-ULN |
 | VPC changes | SC-7, CM-6 | KSI-CNA-RNT |
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| cloudtrail_log_group_name | Name of the CloudWatch Logs log group receiving CloudTrail management events (the log_group_name output of modules/org-cloudtrail). | `string` | n/a | yes |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| cis_alarms_topic_arn | SNS topic receiving all 14 CIS/Security Hub CloudWatch alarms — subscribe your on-call, ticketing, or SOAR integration here. |
+<!-- END_TF_DOCS -->

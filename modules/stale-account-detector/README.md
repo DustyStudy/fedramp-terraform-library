@@ -70,29 +70,32 @@ Works the same in GovCloud.
 Flags accounts to disable or close; it doesn't disable anything itself.
 The account-level counterpart to AC-2(3)'s "disable inactive accounts".
 
+<!-- BEGIN_TF_DOCS -->
 ## Inputs
 
-| Name | Description | Default |
-|---|---|---|
-| `name_prefix` | Prefix for all resource names | `stale-account-detector` |
-| `notification_email` | Email to subscribe to the SNS topic (optional) | `""` |
-| `schedule_expression` | EventBridge schedule | `rate(7 days)` |
-| `activity_lookback_days` | Days of no activity before an account is flagged stale | `90` |
-| `excluded_account_ids` | Account IDs to always skip | `[]` |
-| `exempt_tag_key` / `exempt_tag_value` | Skip accounts carrying this Organizations tag | `""` / `""` |
-| `create_event_data_store` | Create a new org-wide event data store | `true` |
-| `existing_event_data_store_arn` | Required if `create_event_data_store = false` | `""` |
-| `event_data_store_retention_days` | Retention for a newly-created store | `92` |
-| `code_signing_config_arn` | ARN of an existing code-signing config (optional) | `null` |
-| `use_fips_endpoint` | Make the Lambda's SDK calls through FIPS endpoints (`AWS_USE_FIPS_ENDPOINT`) | `true` |
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| activity_lookback_days | Accounts with no CloudTrail activity in this many days are reported as stale. Also bounds the CloudTrail Lake query window - keep this at or below the event data store's actual retention period. | `number` | `90` | no |
+| code_signing_config_arn | Optional ARN of an existing aws_lambda_code_signing_config to enforce on this function. Leave null to skip. | `string` | `null` | no |
+| create_event_data_store | Create a new organization-wide CloudTrail Lake event data store (management events only, scoped to keep ingestion cost down). Set to false if you already have a suitable one and supply its ARN via existing_event_data_store_arn instead - CloudTrail Lake bills by ingestion volume, so avoid standing up a duplicate store just for this tool if one already exists. | `bool` | `true` | no |
+| event_data_store_retention_days | Retention period (days) for the event data store this module creates. Ignored if create_event_data_store is false. Minimum supported by CloudTrail Lake is 7 days; keep this comfortably above activity_lookback_days. | `number` | `92` | no |
+| excluded_account_ids | Account IDs to always skip (break-glass accounts, intentionally idle sandboxes, log-archive accounts, etc.). | `list(string)` | `[]` | no |
+| exempt_tag_key | Optional AWS Organizations account tag key. Accounts carrying this tag are skipped entirely. Leave empty to check every account. | `string` | `""` | no |
+| exempt_tag_value | Optional value exempt_tag_key must match. Leave empty to exempt on the tag key's presence alone (any value). | `string` | `""` | no |
+| existing_event_data_store_arn | ARN of an existing organization-wide CloudTrail Lake event data store to query instead of creating a new one. Required if create_event_data_store is false. It must be organization-enabled and include management events, or this tool won't see activity from member accounts. | `string` | `""` | no |
+| name_prefix | Prefix used for naming all resources created by this module. | `string` | `"stale-account-detector"` | no |
+| notification_email | Optional email address to subscribe to the SNS topic for the stale-account report. Leave empty to skip. | `string` | `""` | no |
+| schedule_expression | EventBridge schedule expression controlling how often the scan runs. | `string` | `"rate(7 days)"` | no |
+| use_fips_endpoint | Make the Lambda's AWS SDK calls through FIPS 140 validated endpoints (sets AWS_USE_FIPS_ENDPOINT). Default true, matching the provider setting in this library's root configurations. | `bool` | `true` | no |
 
 ## Outputs
 
 | Name | Description |
-|---|---|
-| `lambda_function_arn` | ARN of the detector Lambda |
-| `sns_topic_arn` | ARN of the SNS notification topic |
-| `event_data_store_arn` | ARN of the event data store being queried |
+| ---- | ----------- |
+| event_data_store_arn | ARN of the CloudTrail Lake event data store being queried (created by this module, or the existing one you supplied). |
+| lambda_function_arn | ARN of the stale-account detector Lambda function. |
+| sns_topic_arn | ARN of the SNS topic used for the stale-account report. |
+<!-- END_TF_DOCS -->
 
 ## Notes
 

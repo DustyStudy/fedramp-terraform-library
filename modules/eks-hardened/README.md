@@ -39,3 +39,21 @@ module "eks_hardened" {
 - `kubernetes_version` defaults to `"1.30"` — EKS deprecates old versions
   on its own schedule, so confirm this is still a supported version before
   relying on the default.
+
+<!-- BEGIN_TF_DOCS -->
+## Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| cluster_name | Name of the hardened EKS cluster | `string` | n/a | yes |
+| private_subnet_ids | Private Subnet IDs for the EKS Cluster | `list(string)` | n/a | yes |
+| kubernetes_version | Kubernetes control plane version | `string` | `"1.30"` | no |
+| log_retention_days | Retention period, in days, for the encrypted EKS control-plane log group | `number` | `365` | no |
+
+## Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| cluster_arn | n/a |
+| cluster_endpoint | n/a |
+<!-- END_TF_DOCS -->
