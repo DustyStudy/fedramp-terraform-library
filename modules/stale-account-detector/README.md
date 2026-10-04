@@ -86,6 +86,7 @@ The account-level counterpart to AC-2(3)'s "disable inactive accounts".
 | name_prefix | Prefix used for naming all resources created by this module. | `string` | `"stale-account-detector"` | no |
 | notification_email | Optional email address to subscribe to the SNS topic for the stale-account report. Leave empty to skip. | `string` | `""` | no |
 | schedule_expression | EventBridge schedule expression controlling how often the scan runs. | `string` | `"rate(7 days)"` | no |
+| reserved_concurrent_executions | Concurrency reserved for the Lambda. Set -1 to reserve none: accounts at the 10-execution quota floor (new and sandbox accounts) reject any reservation. | `number` | `1` | no |
 | use_fips_endpoint | Make the Lambda's AWS SDK calls through FIPS 140 validated endpoints (sets AWS_USE_FIPS_ENDPOINT). Default true, matching the provider setting in this library's root configurations. | `bool` | `true` | no |
 
 ## Outputs

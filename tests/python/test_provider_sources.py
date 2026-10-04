@@ -21,6 +21,8 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 ALLOWED_PROVIDERS = {
     "registry.terraform.io/hashicorp/aws",
     "registry.terraform.io/hashicorp/archive",
+    # proof/member only: generates the weak fixture database's password.
+    "registry.terraform.io/hashicorp/random",
 }
 
 _SOURCE = re.compile(r'\bsource\s*=\s*"([^"]+)"')

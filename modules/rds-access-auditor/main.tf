@@ -185,7 +185,7 @@ resource "aws_lambda_function" "audit" {
   runtime                        = "python3.12"
   timeout                        = 600
   memory_size                    = 256
-  reserved_concurrent_executions = 2
+  reserved_concurrent_executions = var.reserved_concurrent_executions
   filename                       = data.archive_file.lambda_zip.output_path
   source_code_hash               = data.archive_file.lambda_zip.output_base64sha256
   kms_key_arn                    = aws_kms_key.log_encryption.arn

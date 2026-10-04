@@ -114,7 +114,7 @@ module "logging_monitoring" {
 module "rds_postgres_hardened" {
   source                = "../../modules/rds-postgres-hardened"
   db_name               = "${local.name}-hardened"
-  instance_class        = "db.t4g.micro"
+  instance_class        = "db.t3.micro"
   allocated_storage     = 20
   max_allocated_storage = 50
   vpc_id                = module.network_perimeter_vpc.vpc_id
@@ -181,7 +181,8 @@ resource "aws_db_instance" "weak_fixture" {
   #checkov:skip=CKV2_AWS_69: Fixture. TLS is optional so the auditor has something to find.
   identifier             = "${local.name}-weak"
   engine                 = "postgres"
-  instance_class         = "db.t4g.micro"
+  engine_version         = "16.3"
+  instance_class         = "db.t3.micro"
   allocated_storage      = 20
   storage_encrypted      = true
   publicly_accessible    = false

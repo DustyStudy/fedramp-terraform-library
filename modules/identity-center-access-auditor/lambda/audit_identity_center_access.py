@@ -68,13 +68,19 @@ import logging
 import os
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
-sso_admin = boto3.client("sso-admin")
-identitystore = boto3.client("identitystore")
+# IAM Identity Center has no separate FIPS endpoints: with
+# AWS_USE_FIPS_ENDPOINT set, the SDK builds sso-fips.<region> and
+# identitystore-fips.<region>, which do not exist in the commercial
+# partition. In GovCloud the standard endpoint is the FIPS one.
+_NO_FIPS_VARIANT = Config(use_fips_endpoint=False)
+sso_admin = boto3.client("sso-admin", config=_NO_FIPS_VARIANT)
+identitystore = boto3.client("identitystore", config=_NO_FIPS_VARIANT)
 organizations = boto3.client("organizations")
 sns = boto3.client("sns")
 

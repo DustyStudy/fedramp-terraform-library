@@ -215,7 +215,7 @@ resource "aws_lambda_function" "detector" {
   runtime                        = "python3.12"
   timeout                        = 300
   memory_size                    = 256
-  reserved_concurrent_executions = 1
+  reserved_concurrent_executions = var.reserved_concurrent_executions
   filename                       = data.archive_file.lambda_zip.output_path
   source_code_hash               = data.archive_file.lambda_zip.output_base64sha256
   kms_key_arn                    = aws_kms_key.log_encryption.arn

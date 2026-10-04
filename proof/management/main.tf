@@ -33,11 +33,17 @@ variable "region" {
 module "identity_center_access_auditor" {
   source      = "../../modules/identity-center-access-auditor"
   name_prefix = "ftlproof-idc-auditor"
+
+  # The management account sits at the 10-execution Lambda quota floor in
+  # this region, where any reservation is rejected.
+  reserved_concurrent_executions = -1
 }
 
 module "stale_account_detector" {
   source      = "../../modules/stale-account-detector"
   name_prefix = "ftlproof-stale-accounts"
+
+  reserved_concurrent_executions = -1
 
   # The data store is minutes old when the Lambda runs, so one day of
   # lookback is all it can answer for.
