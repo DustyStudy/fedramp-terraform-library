@@ -12,6 +12,19 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Fixed
+- The four auditor modules take `reserved_concurrent_executions` (defaults
+  unchanged; `-1` reserves none). Accounts at the 10-execution Lambda
+  quota floor reject any reservation, which made the modules undeployable
+  there.
+- `identity-center-access-auditor`: the `sso-admin` and `identitystore`
+  clients no longer follow `AWS_USE_FIPS_ENDPOINT`. IAM Identity Center
+  has no FIPS endpoints in the commercial partition, so the Lambda could
+  not reach it with the module's default settings.
+- `rds-postgres-hardened`: `rds.force_ssl` sets
+  `apply_method = "pending-reboot"`, which ends a parameter group diff
+  that appeared on every plan.
+
 ### Changed
 - CI: Gitleaks, Checkov, Trivy and zizmor now run from the shared
   `DustyStudy/DustyStudy` security-scan workflow (`security-scan.yml`)
@@ -35,6 +48,12 @@ FedRAMP expects.
   no OSCAL output) moved to `fedramp-20x/README.md`.
 
 ### Added
+- Live proof: `proof/member` and `proof/management` deploy twelve modules
+  to a real organization, and `proof/member/probe.py` checks them with
+  real API calls. Results and limits are in `docs/LIVE-PROOF.md`. The
+  provider allowlist gains `hashicorp/random` for the proof fixture.
+- `stale-account-detector` README notes that CloudTrail Lake is closed to
+  new customers.
 - Provider supply-chain guard: `tests/python/test_provider_sources.py`
   fails CI when any `required_providers` source is not on an allowlist
   (`hashicorp/aws`, `hashicorp/archive`), catching typosquats such as

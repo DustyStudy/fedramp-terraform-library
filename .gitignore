@@ -46,3 +46,9 @@ Thumbs.db
 *~
 .vscode/
 .idea/
+
+# Saved plans can hold account IDs and sensitive values
+*.tfplan
+
+# Live proof inputs (hold account IDs)
+probe-inputs.json

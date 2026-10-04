@@ -99,6 +99,7 @@ Detective only: a human still does the review and the right-sizing.
 | name_prefix | Prefix used for naming all resources created by this module. | `string` | `"identity-center-access-auditor"` | no |
 | notification_email | Optional email address to subscribe to the SNS topic. Leave empty to skip. | `string` | `""` | no |
 | report_unused_permission_sets | Include permission sets provisioned to zero accounts as an informational addendum whenever the audit already has other findings to report. This never triggers a notification by itself. | `bool` | `true` | no |
+| reserved_concurrent_executions | Concurrency reserved for the Lambda. Set -1 to reserve none: accounts at the 10-execution quota floor (new and sandbox accounts) reject any reservation. | `number` | `2` | no |
 | schedule_expression | EventBridge schedule expression controlling how often the audit runs. | `string` | `"rate(1 day)"` | no |
 | sensitive_wildcard_services | IAM service prefixes where "<service>:*" combined with Resource "*" in a permission set's inline policy is flagged as over-broad. | `list(string)` | ```[ "iam", "ec2", "s3", "kms", "organizations", "sts" ]``` | no |
 | use_fips_endpoint | Make the Lambda's AWS SDK calls through FIPS 140 validated endpoints (sets AWS_USE_FIPS_ENDPOINT). Default true, matching the provider setting in this library's root configurations. | `bool` | `true` | no |

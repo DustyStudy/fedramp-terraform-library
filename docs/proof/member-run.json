@@ -1,0 +1,226 @@
+{
+  "run_at": "2026-10-04T22:53:15+00:00",
+  "region": "us-east-1",
+  "passed": 16,
+  "total": 17,
+  "security_hub_import": {
+    "failed": 0,
+    "succeeded": 1
+  },
+  "results": [
+    {
+      "module": "account-baseline",
+      "check": "Password policy follows NIST SP 800-63B-4",
+      "passed": true,
+      "observed": {
+        "MinimumPasswordLength": 15,
+        "PasswordReusePrevention": 24,
+        "ExpirePasswords": false
+      }
+    },
+    {
+      "module": "account-baseline",
+      "check": "EBS encryption is on by default",
+      "passed": true,
+      "observed": {
+        "enabled": true,
+        "customer_managed_key": false
+      }
+    },
+    {
+      "module": "account-baseline",
+      "check": "S3 account-level public access block is fully on",
+      "passed": false,
+      "observed": "NoSuchPublicAccessBlockConfiguration: An error occurred (NoSuchPublicAccessBlockConfiguration) when calling the GetPublicAccessBlock operation: The public access block configuration was not found"
+    },
+    {
+      "module": "account-baseline, network-perimeter-vpc",
+      "check": "Default security groups have no rules",
+      "passed": true,
+      "observed": {
+        "default_security_groups": 2,
+        "rules": 0
+      }
+    },
+    {
+      "module": "account-baseline",
+      "check": "Backup vault uses a rotating customer managed key",
+      "passed": true,
+      "observed": {
+        "vault": "FedRAMPComplianceVault",
+        "rotating_customer_managed_key": true
+      }
+    },
+    {
+      "module": "network-perimeter-vpc",
+      "check": "VPC flow log is active, captures all traffic, and its log group is encrypted",
+      "passed": true,
+      "observed": [
+        {
+          "FlowLogStatus": "ACTIVE",
+          "TrafficType": "ALL",
+          "DeliverLogsStatus": "SUCCESS",
+          "MaxAggregationInterval": 60
+        },
+        {
+          "log_group_kms": true,
+          "retention_days": 365
+        }
+      ]
+    },
+    {
+      "module": "fips-vpc-endpoints",
+      "check": "Every interface endpoint is available, including the -fips services",
+      "passed": true,
+      "observed": {
+        "kms-fips": "available",
+        "ec2-fips": "available",
+        "logs": "available",
+        "secretsmanager": "available",
+        "sts-fips": "available",
+        "monitoring": "available",
+        "ssmmessages": "available",
+        "ec2messages": "available",
+        "ecr.dkr": "available",
+        "ecr.api": "available",
+        "ssm": "available"
+      }
+    },
+    {
+      "module": "ecr-hardened",
+      "check": "Repository is immutable, scans on push and uses a rotating customer managed key",
+      "passed": true,
+      "observed": {
+        "imageTagMutability": "IMMUTABLE",
+        "scanOnPush": true,
+        "encryptionType": "KMS"
+      }
+    },
+    {
+      "module": "ecs-fargate-hardened",
+      "check": "Cluster logs ECS Exec sessions with KMS and has Container Insights on",
+      "passed": true,
+      "observed": {
+        "status": "ACTIVE",
+        "exec_logging": "OVERRIDE",
+        "exec_kms": true,
+        "containerInsights": "enabled"
+      }
+    },
+    {
+      "module": "waf-hardened",
+      "check": "Web ACL has its four rules and logs with the authorization header redacted",
+      "passed": true,
+      "observed": {
+        "rules": [
+          "AWSManagedRulesAmazonIpReputationList",
+          "AWSManagedRulesCommonRuleSet",
+          "AWSManagedRulesKnownBadInputsRuleSet",
+          "RateLimitPerIp"
+        ],
+        "default_action": "Allow",
+        "logging_destinations": 1,
+        "redacted_headers": [
+          "authorization",
+          "cookie"
+        ]
+      }
+    },
+    {
+      "module": "rds-postgres-hardened",
+      "check": "Instance is encrypted, Multi-AZ, private, TLS-only, IAM-authenticated and delete-protected",
+      "passed": true,
+      "observed": {
+        "status": "available",
+        "engine_version": "16.3",
+        "StorageEncrypted": true,
+        "MultiAZ": true,
+        "PubliclyAccessible": false,
+        "IAMDatabaseAuthenticationEnabled": true,
+        "DeletionProtection": true,
+        "BackupRetentionPeriod": 35,
+        "managed_master_secret": true,
+        "rds.force_ssl": "1",
+        "log_exports": [
+          "postgresql",
+          "upgrade"
+        ]
+      }
+    },
+    {
+      "module": "trust-policy-auditor",
+      "check": "Deployed Lambda flags the fixture role that trusts an OIDC provider with no audience or subject condition",
+      "passed": true,
+      "observed": {
+        "counts": {
+          "CRITICAL": 0,
+          "HIGH": 2,
+          "MEDIUM": 0,
+          "LOW": 0
+        },
+        "errors": [],
+        "oidc_fixture": [
+          "HIGH",
+          "HIGH"
+        ],
+        "cross_account_fixture_findings": 0
+      }
+    },
+    {
+      "module": "rds-access-auditor",
+      "check": "Deployed Lambda reports three findings on the weak fixture and none on rds-postgres-hardened",
+      "passed": true,
+      "observed": {
+        "counts": {
+          "CRITICAL": 0,
+          "HIGH": 0,
+          "MEDIUM": 2,
+          "LOW": 1
+        },
+        "errors": [],
+        "weak_fixture": [
+          "iam-auth",
+          "master-credentials",
+          "transport"
+        ],
+        "hardened_module": []
+      }
+    },
+    {
+      "module": "logging-monitoring",
+      "check": "A root-usage event raises cis-root-account-usage and the KMS-encrypted topic delivers it",
+      "passed": true,
+      "observed": {
+        "subject": "ALARM: \"cis-root-account-usage\" in US East (N. Virginia)",
+        "message_excerpt": "{\"AlarmName\":\"cis-root-account-usage\",\"AlarmDescription\":\"Root user activity detected.\",\"AWSAccountId\":\"111122223333\",\"AlarmConfigurationUpdatedTimestamp\":\"2026-10-04T21:38:28.632+0000\",\"NewStateValue\":\"ALARM\",\"NewStateReason\":\"Threshold Crossed: 1 datapoint [1.0 (04/10/26 22:50:00)] was greater tha"
+      }
+    },
+    {
+      "module": "incident-notifications",
+      "check": "A HIGH Security Hub finding is routed to the KMS-encrypted incident topic",
+      "passed": true,
+      "observed": {
+        "subject": null,
+        "message_excerpt": "{\"version\":\"0\",\"id\":\"f74575a7-4934-0a62-09f1-85546c6721ea\",\"detail-type\":\"Security Hub Findings - Imported\",\"source\":\"aws.securityhub\",\"account\":\"111122223333\",\"time\":\"2026-10-04T22:54:25Z\",\"region\":\"us-east-1\",\"resources\":[\"arn:aws:securityhub:us-east-1:111122223333:product/111122223333/default/ftl"
+      }
+    },
+    {
+      "module": "trust-policy-auditor",
+      "check": "Findings are published to the auditor's KMS-encrypted topic",
+      "passed": true,
+      "observed": {
+        "subject": "Trust policy audit: 0 critical, 2 high",
+        "message_excerpt": "Trust policy audit: 2 finding(s).\nOrganization accounts could not be listed, so trust in accounts outside the organization was not checked.\n\n=== HIGH (2) ===\n[oidc-trust] 111122223333 arn:aws:iam::111122223333:role/ftlproof-oidc-trust-fixture\n  trusts oidc.ftlproof.example with no audience (aud) con"
+      }
+    },
+    {
+      "module": "rds-access-auditor",
+      "check": "Findings are published to the auditor's KMS-encrypted topic",
+      "passed": true,
+      "observed": {
+        "subject": "RDS access audit: 0 critical, 0 high",
+        "message_excerpt": "RDS access audit: 3 finding(s).\n\n=== MEDIUM (2) ===\n[master-credentials] 111122223333 arn:aws:rds:us-east-1:111122223333:db:ftlproof-weak\n  master user 'dbadmin' has a password RDS doesn't manage in Secrets Manager: a static credential for the most privileged database user that nothing rotates\n[tran"
+      }
+    }
+  ]
+}

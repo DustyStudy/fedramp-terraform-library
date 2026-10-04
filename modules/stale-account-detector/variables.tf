@@ -95,3 +95,18 @@ variable "use_fips_endpoint" {
   EOT
   default     = true
 }
+
+variable "reserved_concurrent_executions" {
+  type        = number
+  description = <<-EOT
+    Concurrency reserved for the Lambda. Set -1 to reserve none: accounts at
+    the 10-execution quota floor (new and sandbox accounts) reject any
+    reservation.
+  EOT
+  default     = 1
+
+  validation {
+    condition     = var.reserved_concurrent_executions >= -1
+    error_message = "reserved_concurrent_executions must be -1 (unreserved) or a non-negative number."
+  }
+}

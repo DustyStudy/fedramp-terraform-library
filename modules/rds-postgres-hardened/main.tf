@@ -43,9 +43,13 @@ resource "aws_db_parameter_group" "this" {
   family      = "postgres16"
   description = "FedRAMP compliant PostgreSQL parameter group enforcing TLS and query logging"
 
+  # PostgreSQL 15 and later already default rds.force_ssl to 1. RDS then
+  # reports the parameter as pending-reboot, and without a matching
+  # apply_method every plan shows this group as changed.
   parameter {
-    name  = "rds.force_ssl"
-    value = "1"
+    name         = "rds.force_ssl"
+    value        = "1"
+    apply_method = "pending-reboot"
   }
 
   parameter {
