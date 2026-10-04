@@ -18,10 +18,12 @@ High**, or **FedRAMP 20x** authorization.
   bucket policies at plan time, and 25 pytest tests cover the module
   Lambdas. Checkov, Trivy and Gitleaks run on every PR. See
   [what is verified, and what is not](docs/PROOF.md).
-- **Live use:** a read-only `trust-policy-auditor` run against a real
-  4-account organization found a GitHub OIDC deploy role that any branch
-  could assume. The library as a whole has not been applied to a live
-  account.
+- **Live use:** twelve modules were deployed to a real 4-account
+  organization and checked with real API calls, including alarm,
+  finding-routing and auditor paths end to end. See the
+  [live proof](docs/LIVE-PROOF.md). Earlier, a read-only
+  `trust-policy-auditor` run there found a GitHub OIDC deploy role that
+  any branch could assume.
 
 ## ⚠️ Disclaimer
 

@@ -1,10 +1,11 @@
 # What is verified, and what is not
 
-This library has not been applied to a live AWS account as a whole. Its
-evidence is plan-time: every check below runs offline, against the
-resources and policy JSON that Terraform renders, with dummy credentials
-in the test files. This page lists what those checks cover, the numbers
-from the last run, and the gaps.
+This page covers the plan-time evidence: every check below runs offline,
+against the resources and policy JSON that Terraform renders, with dummy
+credentials in the test files. It lists what those checks cover, the
+numbers from the last run, and the gaps. Twelve modules have also been
+deployed to a real organization and probed with real API calls; that run
+is in [LIVE-PROOF.md](LIVE-PROOF.md).
 
 Numbers are from a local run on 2026-09-29 at commit `01496ee`
 (Terraform 1.16.4, Checkov 3.3.20). CI runs the same checks on every pull
@@ -79,10 +80,12 @@ checkov -d . --framework terraform
 
 ## Gaps
 
-- **No live deployment of this repo as a whole.** Plan-time tests prove
-  what Terraform will request. They do not prove what AWS accepts or how
-  the policies behave at request time. For SCP and permissions-boundary
-  behavior tested with real API calls, see the live proof in
+- **Live deployment covers twelve modules, not the whole repo.** Plan-time
+  tests prove what Terraform will request. They do not prove what AWS
+  accepts or how the policies behave at request time.
+  [LIVE-PROOF.md](LIVE-PROOF.md) lists which modules were deployed and
+  which were not. For SCP and permissions-boundary behavior tested with
+  real API calls, see the live proof in
   [aws-org-guardrails](https://github.com/DustyStudy/aws-org-guardrails/blob/main/docs/PROOF.md).
 - **9 of 18 modules have no `terraform test` suite yet:** `ecr-hardened`,
   `ecs-fargate-hardened`, `eks-hardened`, `fips-vpc-endpoints`,

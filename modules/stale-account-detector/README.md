@@ -7,6 +7,14 @@ no per-account role assumption. Emails a report via SNS **only when it
 actually finds stale accounts** — a scan that finds nothing sends no
 email at all.
 
+> **CloudTrail Lake availability.** AWS no longer accepts new CloudTrail
+> Lake customers: in an organization that has never used it,
+> `CreateEventDataStore` fails with "CloudTrail Lake is no longer accepting
+> new customers" (seen in the [live run](../../docs/LIVE-PROOF.md) on
+> 2026-10-04). This module works where CloudTrail Lake is already in use.
+> Pass an existing store with `create_event_data_store = false` and
+> `existing_event_data_store_arn`.
+
 ## Why CloudTrail Lake instead of parsing raw CloudTrail logs
 
 CloudTrail Lake is purpose-built for exactly this kind of ad-hoc,

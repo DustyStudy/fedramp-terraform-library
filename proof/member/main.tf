@@ -52,6 +52,7 @@ locals {
 }
 
 data "aws_partition" "current" {}
+data "aws_caller_identity" "current" {}
 
 # --- Modules under test -------------------------------------------------------
 
@@ -145,6 +146,22 @@ resource "aws_iam_role" "external_trust_fixture" {
       Effect    = "Allow"
       Action    = "sts:AssumeRole"
       Principal = { AWS = "arn:${data.aws_partition.current.partition}:iam::${var.external_account_id}:root" }
+    }]
+  })
+}
+
+# Trusts an OIDC provider with no audience or subject condition. The
+# provider does not exist, so nothing can assume it. (IAM itself now rejects
+# this shape for GitHub's provider, so the fixture uses another host.)
+resource "aws_iam_role" "oidc_trust_fixture" {
+  name = "${local.name}-oidc-trust-fixture"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Principal = { Federated = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/oidc.ftlproof.example" }
     }]
   })
 }
@@ -257,6 +274,7 @@ output "probe" {
     hardened_db           = "${local.name}-hardened"
     weak_db               = aws_db_instance.weak_fixture.identifier
     fixture_role_arn      = aws_iam_role.external_trust_fixture.arn
+    oidc_fixture_role_arn = aws_iam_role.oidc_trust_fixture.arn
     trust_auditor_lambda  = module.trust_policy_auditor.lambda_function_arn
     rds_auditor_lambda    = module.rds_access_auditor.lambda_function_arn
     capture_queue_url     = aws_sqs_queue.capture.id

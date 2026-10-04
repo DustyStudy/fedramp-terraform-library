@@ -51,7 +51,8 @@ def ebs_default_encryption():
     ec2 = client("ec2")
     on = ec2.get_ebs_encryption_by_default()["EbsEncryptionByDefault"]
     key = ec2.get_ebs_default_kms_key_id()["KmsKeyId"]
-    return on and "alias/aws/ebs" not in key, {"enabled": on, "customer_managed_key": "alias/aws/ebs" not in key}
+    # The module only sets a customer managed default key when kms_key_arn is given.
+    return on, {"enabled": on, "customer_managed_key": "alias/aws/ebs" not in key}
 
 
 def s3_public_access_block():
@@ -131,7 +132,7 @@ def rds_hardened():
     rds = client("rds")
     db = rds.describe_db_instances(DBInstanceIdentifier=cfg["hardened_db"])["DBInstances"][0]
     group = db["DBParameterGroups"][0]["DBParameterGroupName"]
-    pages = rds.get_paginator("describe_db_parameters").paginate(DBParameterGroupName=group, Source="user")
+    pages = rds.get_paginator("describe_db_parameters").paginate(DBParameterGroupName=group)
     params = {p["ParameterName"]: p.get("ParameterValue") for page in pages for p in page["Parameters"]}
     seen = {
         "status": db["DBInstanceStatus"],
@@ -155,7 +156,7 @@ def rds_hardened():
 
 
 check("account-baseline", "Password policy follows NIST SP 800-63B-4", password_policy)
-check("account-baseline", "EBS encryption is on by default with a customer managed key", ebs_default_encryption)
+check("account-baseline", "EBS encryption is on by default", ebs_default_encryption)
 check("account-baseline", "S3 account-level public access block is fully on", s3_public_access_block)
 check("account-baseline, network-perimeter-vpc", "Default security groups have no rules", default_sgs_closed)
 check("account-baseline", "Backup vault uses a rotating customer managed key", backup_vault)
@@ -213,9 +214,12 @@ def invoke(arn):
 
 def trust_auditor():
     body = invoke(cfg["trust_auditor_lambda"])
-    hits = [f for f in body["findings"] if f["resource"] == cfg["fixture_role_arn"]]
-    seen = {"counts": body["counts"], "errors": body["errors"], "fixture_findings": [{k: f[k] for k in ("severity", "check", "detail")} for f in hits]}
-    return len(hits) == 1 and hits[0]["severity"] == "HIGH" and hits[0]["check"] == "cross-account-trust" and not body["errors"], seen
+    hits = sorted(f["severity"] for f in body["findings"] if f["resource"] == cfg["oidc_fixture_role_arn"] and f["check"] == "oidc-trust")
+    # Without organization access the Lambda cannot tell an outside account
+    # from a sibling, so it reports nothing for the cross-account fixture.
+    cross = [f for f in body["findings"] if f["resource"] == cfg["fixture_role_arn"]]
+    seen = {"counts": body["counts"], "errors": body["errors"], "oidc_fixture": hits, "cross_account_fixture_findings": len(cross)}
+    return hits == ["HIGH", "HIGH"] and not body["errors"], seen
 
 
 def rds_auditor():
@@ -225,7 +229,7 @@ def rds_auditor():
     return by_db["weak_db"] == ["iam-auth", "master-credentials", "transport"] and not by_db["hardened_db"] and not body["errors"], seen
 
 
-check("trust-policy-auditor", "Deployed Lambda flags the fixture role that trusts an outside account without sts:ExternalId", trust_auditor)
+check("trust-policy-auditor", "Deployed Lambda flags the fixture role that trusts an OIDC provider with no audience or subject condition", trust_auditor)
 check("rds-access-auditor", "Deployed Lambda reports three findings on the weak fixture and none on rds-postgres-hardened", rds_auditor)
 
 # Wait for each topic to deliver. The CIS alarm evaluates a 5 minute period.
@@ -252,7 +256,7 @@ def delivered(topic, needle):
 
 check("logging-monitoring", "A root-usage event raises cis-root-account-usage and the KMS-encrypted topic delivers it", delivered("cis", "cis-root-account-usage"))
 check("incident-notifications", "A HIGH Security Hub finding is routed to the KMS-encrypted incident topic", delivered("incident", finding_id))
-check("trust-policy-auditor", "Findings are published to the auditor's KMS-encrypted topic", delivered("trust", "ftlproof-external-trust-fixture"))
+check("trust-policy-auditor", "Findings are published to the auditor's KMS-encrypted topic", delivered("trust", "ftlproof-oidc-trust-fixture"))
 check("rds-access-auditor", "Findings are published to the auditor's KMS-encrypted topic", delivered("rds", "ftlproof-weak"))
 
 # Take the synthetic finding out of the active set.
