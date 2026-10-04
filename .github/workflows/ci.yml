@@ -143,7 +143,7 @@ jobs:
       # access is needed.
       - name: Lint and test the module Lambdas
         run: |
-          pip install "pytest==9.1.1" "boto3==1.43.104" "ruff==0.16.9"
+          pip install --require-hashes -r requirements-dev.txt
           ruff check modules tests
           python -m pytest tests/python -q
 
