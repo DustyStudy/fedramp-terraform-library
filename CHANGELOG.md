@@ -13,6 +13,12 @@ FedRAMP expects.
 ## [Unreleased]
 
 ### Changed
+- CI: Gitleaks, Checkov, Trivy and zizmor now run from the shared
+  `DustyStudy/DustyStudy` security-scan workflow (`security-scan.yml`)
+  instead of copies in `ci.yml`. This drops `gitleaks-action`, which fails
+  on PRs that bring in another repo's root commit. Trivy now scans
+  dependencies as well as Terraform. `ci.yml` jobs get timeouts and a
+  concurrency group.
 - `iam-access-control`, `logging-monitoring` and `incident-notifications`
   move from `moderate/` into `modules/`. Their `moderate/` roots stay and
   now call the module, with `moved` blocks so existing state carries over

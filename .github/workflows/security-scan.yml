@@ -1,0 +1,27 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    # Shared Gitleaks, Checkov, Trivy and zizmor jobs.
+    uses: DustyStudy/DustyStudy/.github/workflows/security-scan.yml@40755212db58db5b4a23ced3a82669baf6d8e6cf # security-scan-v2
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    with:
+      checkov-framework: terraform
