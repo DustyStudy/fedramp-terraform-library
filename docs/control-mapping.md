@@ -29,7 +29,7 @@ definitions before using it in an SSP.
 | `identity-center-access-auditor` | AC-2, AC-6, AC-6(7) | KSI-IAM-ELP, KSI-IAM-AAM |
 | `trust-policy-auditor` | AC-3, AC-6, AC-21, IA-5, SC-7 | KSI-IAM-SNU, KSI-IAM-ELP |
 | `rds-access-auditor` | AC-3, AC-6, IA-2, IA-5, SC-7, SC-8 | KSI-IAM-ELP, KSI-IAM-SNU, KSI-CNA-RNT, KSI-SVC-ASM, KSI-SVC-SIN |
-| `stale-account-detector` | AC-2, AC-2(3), CM-8 | KSI-IAM-AAM |
+| `stale-account-detector` | AC-2, AC-2(3), IA-4, CM-8 | KSI-IAM-AAM |
 
 **Note on native resources vs. workarounds:** `iam-password-policy` and
 `guardduty-org` use native Terraform resources (`aws_iam_account_password_policy`,

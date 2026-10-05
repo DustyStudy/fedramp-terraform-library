@@ -15,8 +15,8 @@ request with Terraform 1.14.6.
 
 | Check | Result |
 |---|---|
-| `terraform test` (9 modules) | 43 runs, 43 passed |
-| pytest (module Lambdas) | 25 passed |
+| `terraform test` (11 modules, recounted 2026-10-04) | 58 runs, 58 passed |
+| pytest (module Lambdas, recounted 2026-10-04) | 152 passed |
 | Provider allowlist guard (`tests/python/test_provider_sources.py`, added 2026-09-30) | 38 `required_providers` declarations checked, all allowlisted; 4 guard self-tests passed |
 | `terraform validate` | 18 of 18 modules and 14 of 14 roots under `moderate/`, `high/` and `examples/` valid |
 | Checkov (`--framework terraform`, 221 resources) | 787 passed, 0 failed, 150 skipped |
@@ -40,13 +40,13 @@ variable validation to reject it.
 | `config-conformance-pack` | 6 | The recorder is created and switched on; AWS Config can write to its bucket; delivery is encrypted with a rotating CMK; no pack is created without a template; a pack can come from S3; supplying both template sources is rejected |
 | `guardduty-org` | 5 | The detector enables all classic protections; new accounts are enrolled; findings alert at Medium or higher; `auto_enable = false` means `NONE`; an unknown publishing frequency is rejected |
 | `iam-password-policy` | 3 | Defaults follow NIST SP 800-63B-4; composition rules are opt-in; a minimum length below the NIST floor is rejected |
-| `identity-center-access-auditor` | 4 | The Lambda role is read-only; settings reach the Lambda; it runs daily with encrypted logs; the topic uses the module CMK |
+| `identity-center-access-auditor` | 5 | The Lambda role is read-only; settings reach the Lambda; it runs daily with encrypted logs; the topic uses the module CMK |
 | `trust-policy-auditor` | 6 | It can't assume any role unless `member_role_name` is set, and then only that role; the Lambda role and the member-account policy are read-only; settings reach the Lambda; it runs daily with encrypted logs and a CMK-encrypted topic; a role ARN or a malformed account ID is rejected |
 | `rds-access-auditor` | 6 | It can't list the organization or assume any role unless `member_role_name` is set, and then only that role; the Lambda role and the member-account policy are read-only; settings reach the Lambda; it runs daily with encrypted logs and a CMK-encrypted topic; a role ARN or a malformed region is rejected |
 | `org-cloudtrail` | 7 | The trail covers the whole organization; logs use a rotating CMK; buckets block public access and are versioned; the bucket policy blocks confused-deputy access and plain HTTP; ARNs use the current partition; dotted trail names and malformed organization IDs are rejected |
 | `org-scp-boundary` | 6 | The SCP denies disabling security services; the region lock uses the approved regions; insecure transport is denied; the policy attaches to every target; the IMDSv2 rule is off by default and, when on, denies both launch without IMDSv2 and downgrade |
 | `security-hub-org` | 2 | Default standards and organization enrollment are on; standards auto-enable can be turned off |
-| `stale-account-detector` | 5 | An organization-wide management-events store is created, or an existing one reused; the Lambda uses FIPS endpoints and the configured lookback; the Lambda is encrypted and has a DLQ; the topic uses the module CMK |
+| `stale-account-detector` | 7 | The Lambda role and the member policy are read-only; it can't assume any role unless `member_role_name` is set, and then only that role; settings reach the Lambda; a window over 90 days or a role ARN is rejected; the Lambda is encrypted and has a DLQ; the topic uses the module CMK |
 
 The pytest suites (`tests/python/`) run the Lambda handlers for
 `identity-center-access-auditor`, `rds-access-auditor`,

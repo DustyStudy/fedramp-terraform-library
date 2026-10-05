@@ -26,6 +26,16 @@ FedRAMP expects.
   that appeared on every plan.
 
 ### Changed
+- **Breaking:** `stale-account-detector` no longer uses CloudTrail Lake,
+  which AWS has closed to new customers. It now reports unused IAM
+  passwords and access keys, unused roles (pipeline roles separately),
+  Identity Center users with no sign-in, Identity Center access nobody
+  uses, and idle AWS accounts, from IAM last-used data and CloudTrail
+  event history. `activity_lookback_days` becomes `inactivity_days`
+  (1 to 90); the event data store variables and output are removed;
+  `member_role_name`, `ignored_role_names`, `lambda_role_arn` and
+  `member_role_policy_json` are new. See the module README for the
+  upgrade steps.
 - CI: Gitleaks, Checkov, Trivy and zizmor now run from the shared
   `DustyStudy/DustyStudy` security-scan workflow (`security-scan.yml`)
   instead of copies in `ci.yml`. This drops `gitleaks-action`, which fails

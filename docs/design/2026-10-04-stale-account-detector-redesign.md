@@ -1,6 +1,6 @@
 # stale-account-detector 2.0: design
 
-Status: approved design, not yet implemented.
+Status: implemented in 2.0.0.
 
 ## Purpose
 
@@ -87,6 +87,9 @@ Rules that apply to every check:
   reported by `sso-access`; that is why the check is LOW. If a user record
   has no creation time, the user is treated as older than the window.
 - **Service-linked roles** (path `/aws-service-role/`) are skipped.
+- **Disabled Identity Center users** are skipped by both SSO checks.
+- **Service-linked roles and the member role** never count as account
+  activity.
 - **Roles created by Identity Center** (`AWSReservedSSO_*`) are skipped in
   `iam-role`; `sso-access` covers them per user.
 - **Exemptions.** `excluded_account_ids` and the account exempt tag skip a
@@ -197,9 +200,10 @@ The checks hold all the judgment and need no AWS mocks to test.
   write actions; `sts:AssumeRole` is absent unless `member_role_name` is
   set and then names only that role; settings reach the Lambda
   environment; `inactivity_days` outside 1 through 90 is rejected.
-- **Live**: `proof/management` deploys the module with a stale fixture
-  IAM user and role, the Lambda is invoked, and the result is added to
-  `docs/LIVE-PROOF.md`.
+- **Live**: `proof/management` deploys the module with
+  `inactivity_days = 1` against the organization's real identities. A
+  fixture cannot be made stale on demand, because creation time counts as
+  activity.
 
 ## Migration
 
