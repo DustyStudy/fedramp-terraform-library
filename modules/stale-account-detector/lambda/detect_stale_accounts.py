@@ -28,8 +28,12 @@ Env vars:
   REPORT_POLL_SECONDS  - wait between credential report polls (default 2)
 """
 
+import csv
+import io
+import json
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 
 import boto3
@@ -219,3 +223,120 @@ def check_sso_access(assignments, last_access, users, now):
             detail = f"assigned to this account but not used in the last {INACTIVITY_DAYS} days"
             findings.append(_finding("LOW", "sso-access", account_id, resource, detail))
     return findings
+
+
+# --- collectors: IAM -------------------------------------------------------------
+
+
+def credential_report(iam_client):
+    for _ in range(30):
+        if iam_client.generate_credential_report()["State"] == "COMPLETE":
+            content = iam_client.get_credential_report()["Content"]
+            return list(csv.DictReader(io.StringIO(content.decode("utf-8"))))
+        time.sleep(REPORT_POLL_SECONDS)
+    raise RuntimeError("credential report was not ready after 30 polls")
+
+
+def list_roles(iam_client):
+    # ListRoles leaves RoleLastUsed and Tags out; GetRole returns both.
+    roles = []
+    for page in iam_client.get_paginator("list_roles").paginate():
+        for summary in page["Roles"]:
+            roles.append(iam_client.get_role(RoleName=summary["RoleName"])["Role"])
+    return roles
+
+
+def exempt_user_names(iam_client, rows):
+    if not EXEMPT_TAG_KEY:
+        return set()
+    names = set()
+    for row in rows:
+        if row["user"] != "<root_account>" and _exempt(iam_client.list_user_tags(UserName=row["user"])["Tags"]):
+            names.add(row["user"])
+    return names
+
+
+# --- collectors: CloudTrail event history ----------------------------------------
+
+
+class LookupTimeout(Exception):
+    """The event history could not be read in the time the function has."""
+
+
+def _lookup_events(event_name, start, deadline):
+    # ponytail: LookupEvents is 50 events a page at 2 requests a second. An
+    # organization with heavy Identity Center use can outgrow it; read an
+    # organization trail with Athena here if that happens.
+    paginator = cloudtrail.get_paginator("lookup_events")
+    attributes = [{"AttributeKey": "EventName", "AttributeValue": event_name}]
+    for page in paginator.paginate(LookupAttributes=attributes, StartTime=start):
+        if time.monotonic() > deadline:
+            raise LookupTimeout(f"ran out of time reading {event_name} events")
+        for event in page["Events"]:
+            yield parse_time(event["EventTime"]), json.loads(event["CloudTrailEvent"])
+
+
+def _event_user(detail):
+    return ((detail.get("userIdentity") or {}).get("onBehalfOf") or {}).get("userId")
+
+
+def _keep_latest(latest, key, when):
+    if key not in latest or when > latest[key]:
+        latest[key] = when
+
+
+def sso_activity(start, deadline):
+    last_sign_in, last_access = {}, {}
+    for when, detail in _lookup_events("UserAuthentication", start, deadline):
+        user_id = _event_user(detail)
+        if user_id and (detail.get("serviceEventDetails") or {}).get("UserAuthentication") == "Success":
+            _keep_latest(last_sign_in, user_id, when)
+    for when, detail in _lookup_events("GetRoleCredentials", start, deadline):
+        details = detail.get("serviceEventDetails") or {}
+        key = (_event_user(detail), details.get("account_id"), details.get("role_name"))
+        if all(key) and not detail.get("errorCode"):
+            _keep_latest(last_access, key, when)
+    return last_sign_in, last_access
+
+
+# --- collectors: IAM Identity Center ---------------------------------------------
+
+
+def identity_center_assignments(instance):
+    store, instance_arn = instance["IdentityStoreId"], instance["InstanceArn"]
+
+    users = {}
+    for page in identitystore.get_paginator("list_users").paginate(IdentityStoreId=store):
+        for user in page["Users"]:
+            users[user["UserId"]] = {
+                "name": user["UserName"],
+                "created": parse_time(user.get("CreatedAt")),
+                "enabled": user.get("UserStatus", "ENABLED") != "DISABLED",
+            }
+
+    members = {}
+
+    def group_members(group_id):
+        if group_id not in members:
+            paginator = identitystore.get_paginator("list_group_memberships")
+            members[group_id] = [
+                m["MemberId"]["UserId"]
+                for page in paginator.paginate(IdentityStoreId=store, GroupId=group_id)
+                for m in page["GroupMemberships"]
+                if "UserId" in m["MemberId"]
+            ]
+        return members[group_id]
+
+    assignments = set()
+    for page in sso_admin.get_paginator("list_permission_sets").paginate(InstanceArn=instance_arn):
+        for permission_set_arn in page["PermissionSets"]:
+            common = {"InstanceArn": instance_arn, "PermissionSetArn": permission_set_arn}
+            name = sso_admin.describe_permission_set(**common)["PermissionSet"]["Name"]
+            for accounts in sso_admin.get_paginator("list_accounts_for_provisioned_permission_set").paginate(**common):
+                for account_id in accounts["AccountIds"]:
+                    for assigned in sso_admin.get_paginator("list_account_assignments").paginate(AccountId=account_id, **common):
+                        for assignment in assigned["AccountAssignments"]:
+                            principal = assignment["PrincipalId"]
+                            user_ids = [principal] if assignment["PrincipalType"] == "USER" else group_members(principal)
+                            assignments.update((user_id, account_id, name) for user_id in user_ids)
+    return users, assignments

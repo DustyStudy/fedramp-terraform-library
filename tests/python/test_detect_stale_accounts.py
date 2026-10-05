@@ -1,4 +1,6 @@
+import json
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -251,3 +253,126 @@ def test_unused_sso_access_is_low_per_user_account_and_permission_set(fn):
     assert [(f["severity"], f["check"], f["account"], f["resource"]) for f in findings] == [
         ("LOW", "sso-access", "222222222222", "user active with permission set Admin")
     ]
+
+
+# --- collectors -------------------------------------------------------------
+
+
+def pages(method_pages):
+    """A client whose get_paginator(name).paginate(**kw) returns method_pages[name]."""
+    client = MagicMock()
+
+    def get_paginator(name):
+        paginator = MagicMock()
+        source = method_pages[name]
+        paginator.paginate.side_effect = (lambda **kw: source(**kw)) if callable(source) else (lambda **kw: source)
+        return paginator
+
+    client.get_paginator.side_effect = get_paginator
+    return client
+
+
+def test_credential_report_polls_until_complete_and_parses_rows(fn):
+    module = fn()
+    client = MagicMock()
+    client.generate_credential_report.side_effect = [{"State": "STARTED"}, {"State": "INPROGRESS"}, {"State": "COMPLETE"}]
+    client.get_credential_report.return_value = {"Content": b"user,arn,password_enabled\nalice,arn:aws:iam::1:user/alice,true\n"}
+    rows = module.credential_report(client)
+    assert rows == [{"user": "alice", "arn": "arn:aws:iam::1:user/alice", "password_enabled": "true"}]
+    assert client.generate_credential_report.call_count == 3
+
+
+def test_credential_report_gives_up_with_an_error(fn):
+    module = fn()
+    client = MagicMock()
+    client.generate_credential_report.return_value = {"State": "INPROGRESS"}
+    with pytest.raises(RuntimeError, match="credential report"):
+        module.credential_report(client)
+
+
+def test_list_roles_fetches_each_role_for_last_used(fn):
+    module = fn()
+    client = pages({"list_roles": [{"Roles": [{"RoleName": "a"}, {"RoleName": "b"}]}]})
+    client.get_role.side_effect = lambda RoleName: {"Role": {"RoleName": RoleName, "RoleLastUsed": {}}}
+    assert [r["RoleName"] for r in module.list_roles(client)] == ["a", "b"]
+
+
+def test_exempt_user_names_reads_tags_only_when_a_key_is_set(fn):
+    client = MagicMock()
+    client.list_user_tags.side_effect = lambda UserName: {"Tags": [{"Key": "stale-exempt", "Value": "x"}] if UserName == "bot" else []}
+    rows = [user_row(user="bot"), user_row(user="alice"), user_row(user="<root_account>")]
+    assert fn(EXEMPT_TAG_KEY="stale-exempt").exempt_user_names(client, rows) == {"bot"}
+    untouched = MagicMock()
+    assert fn(EXEMPT_TAG_KEY="").exempt_user_names(untouched, rows) == set()
+    untouched.list_user_tags.assert_not_called()
+
+
+def trail_event(days, user_id, details):
+    body = {"userIdentity": {"type": "IdentityCenterUser", "onBehalfOf": {"userId": user_id}}, "serviceEventDetails": details}
+    return {"EventTime": days_ago(days), "CloudTrailEvent": json.dumps(body)}
+
+
+def test_sso_activity_keeps_the_latest_successful_event(fn):
+    module = fn()
+    events = {
+        "UserAuthentication": [
+            trail_event(10, "u1", {"UserAuthentication": "Success"}),
+            trail_event(2, "u1", {"UserAuthentication": "Success"}),
+            trail_event(1, "u1", {"UserAuthentication": "Failure"}),
+            trail_event(1, "u2", {"UserAuthentication": "Failure"}),
+        ],
+        "GetRoleCredentials": [
+            trail_event(5, "u1", {"account_id": "111111111111", "role_name": "Admin"}),
+            trail_event(3, "u1", {"account_id": "111111111111", "role_name": "Admin"}),
+            trail_event(1, None, {"account_id": "111111111111", "role_name": "Admin"}),
+        ],
+    }
+    module.cloudtrail = pages({"lookup_events": lambda **kw: [{"Events": events[kw["LookupAttributes"][0]["AttributeValue"]]}]})
+    last_sign_in, last_access = module.sso_activity(days_ago(90), deadline=float("inf"))
+    assert last_sign_in == {"u1": days_ago(2)}
+    assert last_access == {("u1", "111111111111", "Admin"): days_ago(3)}
+
+
+def test_sso_activity_stops_at_the_deadline(fn):
+    module = fn()
+    module.cloudtrail = pages({"lookup_events": [{"Events": []}]})
+    with pytest.raises(module.LookupTimeout):
+        module.sso_activity(days_ago(90), deadline=0.0)
+
+
+def test_identity_center_assignments_expand_groups(fn):
+    module = fn()
+    module.identitystore = pages(
+        {
+            "list_users": [
+                {
+                    "Users": [
+                        {"UserId": "u1", "UserName": "alice", "CreatedAt": days_ago(100), "UserStatus": "ENABLED"},
+                        {"UserId": "u2", "UserName": "bob", "UserStatus": "DISABLED"},
+                    ]
+                }
+            ],
+            "list_group_memberships": [{"GroupMemberships": [{"MemberId": {"UserId": "u1"}}, {"MemberId": {"UserId": "u2"}}]}],
+        }
+    )
+    module.sso_admin = pages(
+        {
+            "list_permission_sets": [{"PermissionSets": ["ps-arn"]}],
+            "list_accounts_for_provisioned_permission_set": [{"AccountIds": ["111111111111"]}],
+            "list_account_assignments": [
+                {
+                    "AccountAssignments": [
+                        {"PrincipalType": "GROUP", "PrincipalId": "g1"},
+                        {"PrincipalType": "USER", "PrincipalId": "u1"},
+                    ]
+                }
+            ],
+        }
+    )
+    module.sso_admin.describe_permission_set.return_value = {"PermissionSet": {"Name": "Admin"}}
+    users, assignments = module.identity_center_assignments({"InstanceArn": "ins", "IdentityStoreId": "d-1"})
+    assert users == {
+        "u1": {"name": "alice", "created": days_ago(100), "enabled": True},
+        "u2": {"name": "bob", "created": None, "enabled": False},
+    }
+    assert assignments == {("u1", "111111111111", "Admin"), ("u2", "111111111111", "Admin")}
