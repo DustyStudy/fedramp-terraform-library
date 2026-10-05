@@ -130,3 +130,60 @@ def check_iam_user(row, account_id, now):
             resource = f"{row['arn']} access key {slot}"
             findings.append(_finding("HIGH", "iam-access-key", account_id, resource, f"active access key {_age(used, now)}"))
     return findings
+
+
+# --- IAM roles (the Role dict from iam:GetRole) --------------------------------
+
+
+def classify_role(role):
+    if role.get("Path", "/").startswith("/aws-service-role/"):
+        return "service-linked"
+    if role["RoleName"].startswith("AWSReservedSSO_"):
+        return "sso"
+    for statement in _as_list((role.get("AssumeRolePolicyDocument") or {}).get("Statement")):
+        principal = statement.get("Principal")
+        federated = _as_list(principal.get("Federated")) if isinstance(principal, dict) else []
+        if any("oidc-provider/" in value for value in federated):
+            return "pipeline"
+    return "other"
+
+
+def role_last_used(role):
+    return parse_time((role.get("RoleLastUsed") or {}).get("LastUsedDate"))
+
+
+def check_role(role, account_id, now):
+    kind = classify_role(role)
+    # Identity Center roles are covered per user by sso-access.
+    if kind in ("service-linked", "sso") or _exempt(role.get("Tags")):
+        return []
+    used = role_last_used(role)
+    if not is_stale(parse_time(role.get("CreateDate")), used, now):
+        return []
+    if kind == "pipeline":
+        return [_finding("MEDIUM", "pipeline-role", account_id, role["Arn"], f"OIDC-federated role {_age(used, now)}")]
+    return [_finding("LOW", "iam-role", account_id, role["Arn"], f"role {_age(used, now)}")]
+
+
+# --- AWS accounts ----------------------------------------------------------------
+
+_USER_LAST_USED_FIELDS = ("password_last_used", "access_key_1_last_used_date", "access_key_2_last_used_date")
+
+
+def account_last_activity(rows, roles):
+    times = []
+    for row in rows:
+        if row["user"] != "<root_account>":
+            times += [parse_time(row.get(field)) for field in _USER_LAST_USED_FIELDS]
+    for role in roles:
+        if classify_role(role) != "service-linked" and role["RoleName"] not in IGNORED_ROLE_NAMES:
+            times.append(role_last_used(role))
+    return max((t for t in times if t), default=None)
+
+
+def check_account(account, rows, roles, now):
+    used = account_last_activity(rows, roles)
+    if not is_stale(parse_time(account.get("JoinedTimestamp")), used, now):
+        return []
+    resource = f"{account['Name']} ({account['Id']})"
+    return [_finding("MEDIUM", "aws-account", account["Id"], resource, f"no user, access key or role in the account: {_age(used, now)}")]
