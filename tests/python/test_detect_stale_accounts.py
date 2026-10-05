@@ -1,150 +1,123 @@
-import json
-from unittest.mock import MagicMock
+from datetime import datetime, timedelta, timezone
 
 import pytest
-from botocore.exceptions import ClientError
 
 LAMBDA = "modules/stale-account-detector/lambda/detect_stale_accounts.py"
-STORE_ARN = "arn:aws:cloudtrail:us-east-1:123456789012:eventdatastore/store-id"
+NOW = datetime(2026, 10, 1, tzinfo=timezone.utc)
 
 
-def _account(account_id, status="ACTIVE"):
-    return {"Id": account_id, "Name": f"acct-{account_id}", "Email": f"{account_id}@example.com", "Status": status}
+def days_ago(days):
+    return NOW - timedelta(days=days)
 
 
-def _row(account_id, last_activity="2026-09-01 00:00:00", last_login=None):
-    return [
-        {"recipientAccountId": account_id},
-        {"last_activity_time": last_activity},
-        {"last_console_login_time": last_login},
-    ]
+def iso(days):
+    return days_ago(days).isoformat()
 
 
 @pytest.fixture
-def make_fn(load_lambda):
-    def _make(accounts, rows, statuses=("FINISHED",), tags=None, **env):
-        module = load_lambda(
-            LAMBDA,
-            EVENT_DATA_STORE_ARN=STORE_ARN,
-            SNS_TOPIC_ARN="arn:aws:sns:us-east-1:123456789012:report",
-            QUERY_POLL_INTERVAL_SECONDS="0",
-            **env,
-        )
-        organizations = MagicMock()
-        organizations.get_paginator.return_value.paginate.return_value = [{"Accounts": accounts}]
-        organizations.list_tags_for_resource.side_effect = lambda ResourceId: {"Tags": (tags or {}).get(ResourceId, [])}
-        cloudtrail = MagicMock()
-        cloudtrail.start_query.return_value = {"QueryId": "q-1"}
-        cloudtrail.describe_query.side_effect = [{"QueryStatus": s} for s in statuses]
-        cloudtrail.get_query_results.return_value = {"QueryResultRows": rows}
-        module.organizations, module.cloudtrail, module.sns = organizations, cloudtrail, MagicMock()
-        return module
+def fn(load_lambda):
+    def _load(**env):
+        return load_lambda(LAMBDA, SNS_TOPIC_ARN="arn:aws:sns:us-east-1:123456789012:report", REPORT_POLL_SECONDS="0", **env)
 
-    return _make
+    return _load
 
 
-def _body(response):
-    return json.loads(response["body"])
+def user_row(**overrides):
+    row = {
+        "user": "alice",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "user_creation_time": iso(400),
+        "password_enabled": "false",
+        "password_last_used": "N/A",
+        "password_last_changed": "N/A",
+        "access_key_1_active": "false",
+        "access_key_1_last_rotated": "N/A",
+        "access_key_1_last_used_date": "N/A",
+        "access_key_2_active": "false",
+        "access_key_2_last_rotated": "N/A",
+        "access_key_2_last_used_date": "N/A",
+    }
+    return {**row, **overrides}
 
 
-def test_account_with_no_activity_is_stale(make_fn):
-    fn = make_fn([_account("111"), _account("222")], [_row("111", last_login="2026-09-01")])
-
-    body = _body(fn.lambda_handler({}, None))
-
-    assert body["stale_account_ids"] == ["222"]
-    assert "222" in fn.sns.publish.call_args.kwargs["Message"]
+# --- staleness rule ---------------------------------------------------------
 
 
-def test_query_uses_the_bare_store_id_and_lookback(make_fn):
-    fn = make_fn([], [], ACTIVITY_LOOKBACK_DAYS="30")
-
-    fn.lambda_handler({}, None)
-
-    query = fn.cloudtrail.start_query.call_args.kwargs["QueryStatement"]
-    assert "FROM store-id" in query
-    assert "-30" in query
-
-
-def test_no_findings_sends_nothing(make_fn):
-    fn = make_fn([_account("111")], [_row("111", last_login="2026-09-01")])
-
-    fn.lambda_handler({}, None)
-
-    fn.sns.publish.assert_not_called()
-
-
-def test_suspended_accounts_are_ignored(make_fn):
-    fn = make_fn([_account("111", status="SUSPENDED")], [])
-
-    assert _body(fn.lambda_handler({}, None))["stale_account_count"] == 0
+@pytest.mark.parametrize(
+    ("created", "last_used", "expected"),
+    [
+        (400, 10, False),  # used recently
+        (400, 91, True),  # used, but outside the window
+        (400, None, True),  # old and never used
+        (5, None, False),  # new and never used
+        (None, None, True),  # no creation time counts as old
+        (None, 10, False),
+    ],
+)
+def test_is_stale(fn, created, last_used, expected):
+    module = fn()
+    created_at = days_ago(created) if created is not None else None
+    used_at = days_ago(last_used) if last_used is not None else None
+    assert module.is_stale(created_at, used_at, NOW) is expected
 
 
-def test_excluded_and_tag_exempt_accounts_are_skipped(make_fn):
-    fn = make_fn(
-        [_account("111"), _account("222"), _account("333")],
-        [],
-        tags={"222": [{"Key": "idle-ok", "Value": "yes"}]},
-        EXCLUDED_ACCOUNT_IDS="111",
-        EXEMPT_TAG_KEY="idle-ok",
+def test_inactivity_days_comes_from_the_environment(fn):
+    module = fn(INACTIVITY_DAYS="35")
+    assert module.is_stale(days_ago(400), days_ago(40), NOW) is True
+    assert module.is_stale(days_ago(400), days_ago(30), NOW) is False
+
+
+def test_parse_time_handles_report_placeholders(fn):
+    module = fn()
+    assert module.parse_time("N/A") is None
+    assert module.parse_time("no_information") is None
+    assert module.parse_time("not_supported") is None
+    assert module.parse_time(None) is None
+    assert module.parse_time("2026-09-01T00:00:00+00:00") == datetime(2026, 9, 1, tzinfo=timezone.utc)
+    assert module.parse_time(datetime(2026, 9, 1)).tzinfo is timezone.utc  # noqa: DTZ001 - a naive value is the case under test
+
+
+# --- IAM users --------------------------------------------------------------
+
+
+def test_unused_password_is_medium(fn):
+    module = fn()
+    row = user_row(password_enabled="true", password_last_used=iso(120), password_last_changed=iso(300))
+    findings = module.check_iam_user(row, "111111111111", NOW)
+    assert [(f["severity"], f["check"]) for f in findings] == [("MEDIUM", "iam-user-password")]
+    assert "120 days ago" in findings[0]["detail"]
+
+
+def test_unused_active_key_is_high_and_names_the_key_slot(fn):
+    module = fn()
+    row = user_row(access_key_2_active="true", access_key_2_last_rotated=iso(200), access_key_2_last_used_date="N/A")
+    findings = module.check_iam_user(row, "111111111111", NOW)
+    assert [(f["severity"], f["check"]) for f in findings] == [("HIGH", "iam-access-key")]
+    assert findings[0]["resource"].endswith("user/alice access key 2")
+    assert "never used" in findings[0]["detail"]
+
+
+def test_recently_used_credentials_are_not_reported(fn):
+    module = fn()
+    row = user_row(
+        password_enabled="true",
+        password_last_used=iso(3),
+        password_last_changed=iso(300),
+        access_key_1_active="true",
+        access_key_1_last_rotated=iso(300),
+        access_key_1_last_used_date=iso(1),
     )
-
-    assert _body(fn.lambda_handler({}, None))["stale_account_ids"] == ["333"]
-
-
-def test_empty_exempt_value_exempts_on_key_alone(make_fn):
-    # Terraform sets EXEMPT_TAG_VALUE to "" when exempt_tag_value is unset.
-    fn = make_fn(
-        [_account("111")],
-        [],
-        tags={"111": [{"Key": "idle-ok", "Value": "anything"}]},
-        EXEMPT_TAG_KEY="idle-ok",
-        EXEMPT_TAG_VALUE="",
-    )
-
-    assert _body(fn.lambda_handler({}, None))["stale_account_count"] == 0
+    assert module.check_iam_user(row, "111111111111", NOW) == []
 
 
-def test_automation_only_account_is_reported_but_not_stale(make_fn):
-    fn = make_fn([_account("111"), _account("222")], [_row("111")])
-
-    body = _body(fn.lambda_handler({}, None))
-
-    assert body["no_login_account_count"] == 1
-    assert "no interactive console sign-in" in fn.sns.publish.call_args.kwargs["Message"]
+def test_new_never_used_key_is_not_reported(fn):
+    module = fn()
+    row = user_row(user_creation_time=iso(2), access_key_1_active="true", access_key_1_last_rotated=iso(2))
+    assert module.check_iam_user(row, "111111111111", NOW) == []
 
 
-def test_waits_for_the_query_to_finish(make_fn):
-    fn = make_fn([_account("111")], [], statuses=("QUEUED", "RUNNING", "FINISHED"))
-
-    fn.lambda_handler({}, None)
-
-    assert fn.cloudtrail.describe_query.call_count == 3
-
-
-def test_failed_query_raises_instead_of_reporting_everything_stale(make_fn):
-    fn = make_fn([_account("111")], [], statuses=("FAILED",))
-
-    with pytest.raises(RuntimeError):
-        fn.lambda_handler({}, None)
-    fn.sns.publish.assert_not_called()
-
-
-def test_results_are_paginated(make_fn):
-    fn = make_fn([_account("111"), _account("222")], [])
-    fn.cloudtrail.get_query_results.side_effect = [
-        {"QueryResultRows": [_row("111")], "NextToken": "t"},
-        {"QueryResultRows": [_row("222")]},
-    ]
-
-    assert _body(fn.lambda_handler({}, None))["stale_account_count"] == 0
-
-
-def test_organizations_error_propagates(make_fn):
-    fn = make_fn([], [])
-    fn.organizations.get_paginator.return_value.paginate.side_effect = ClientError(
-        {"Error": {"Code": "AccessDenied"}}, "ListAccounts"
-    )
-
-    with pytest.raises(ClientError):
-        fn.lambda_handler({}, None)
+def test_inactive_key_and_root_row_are_ignored(fn):
+    module = fn()
+    assert module.check_iam_user(user_row(access_key_1_active="false", access_key_1_last_rotated=iso(300)), "1", NOW) == []
+    root = user_row(user="<root_account>", password_enabled="not_supported", access_key_1_active="true", access_key_1_last_rotated=iso(300))
+    assert module.check_iam_user(root, "1", NOW) == []

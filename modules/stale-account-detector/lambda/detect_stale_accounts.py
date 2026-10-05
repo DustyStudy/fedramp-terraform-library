@@ -1,236 +1,132 @@
 """
-Scans an AWS Organization for accounts with no CloudTrail activity in
-the last N days ("stale accounts") and emails a report via SNS - but
-only when it actually finds something. Queries an organization-wide
-CloudTrail Lake event data store with SQL, rather than parsing raw
-CloudTrail S3/CloudWatch Logs event-by-event, since Lake is purpose-built
-for exactly this kind of ad-hoc cross-account query.
+Reports inactive access across an AWS Organization: IAM users and their
+credentials, roles (pipeline roles separately), IAM Identity Center users
+and their account access, and whole AWS accounts. Report-only: every call
+this function makes is read-only, and nothing is disabled or deleted.
 
-How "stale" is determined:
-  1. List every ACTIVE account in the Organization.
-  2. Run one CloudTrail Lake query covering the last ACTIVITY_LOOKBACK_DAYS
-     days, grouped by recipientAccountId, returning each account's most
-     recent event of any kind and its most recent ConsoleLogin event
-     specifically.
-  3. Any ACTIVE account with NO row in those results had zero recorded
-     CloudTrail activity (management events) in the lookback window -
-     that's what gets reported as stale. An account that shows up with
-     only non-interactive API activity (no ConsoleLogin) is not treated
-     as stale, but is called out separately in the report for context -
-     it may be a legitimate automation-only account, or it may be a
-     human-owned account nobody has manually reviewed in a while.
+"Stale" means the later of an identity's creation time and its last-used
+time is older than INACTIVITY_DAYS. A new identity that has never been
+used is not reported until it is that old.
 
-This only sees what's actually in the event data store: if it was just
-created, "no activity in N days" for a brand-new store means "no
-activity since the store started ingesting," not necessarily "no
-activity ever." See this tool's README.
+Data sources:
+  - IAM credential report and RoleLastUsed, read in each account through
+    MEMBER_ROLE_NAME (the management account is read directly).
+  - CloudTrail event history (90 days) in the management account for
+    Identity Center sign-ins (UserAuthentication) and account access
+    (GetRoleCredentials).
 
 Env vars:
-  SNS_TOPIC_ARN            - where to send the stale-account report
-  EVENT_DATA_STORE_ARN     - ARN of the organization CloudTrail Lake
-                             event data store to query (the bare ID used
-                             in the SQL FROM clause is parsed from this
-                             at runtime)
-  ACTIVITY_LOOKBACK_DAYS   - accounts with no activity in this many days
-                             are reported as stale (default 90)
-  EXCLUDED_ACCOUNT_IDS     - comma-separated account IDs to always skip
-                             (break-glass accounts, intentionally-idle
-                             sandboxes, etc.)
-  EXEMPT_TAG_KEY           - optional Organizations account tag key;
-                             accounts carrying this tag are skipped
-  EXEMPT_TAG_VALUE         - optional value EXEMPT_TAG_KEY must match;
-                             if unset, the tag's presence alone exempts
-  QUERY_MAX_WAIT_SECONDS   - how long to poll for the Lake query to
-                             finish before giving up (default 240)
-  QUERY_POLL_INTERVAL_SECONDS - seconds between polls (default 5)
+  SNS_TOPIC_ARN        - where the report goes
+  INACTIVITY_DAYS      - window in days, 1-90 (default 90)
+  MEMBER_ROLE_NAME     - read-only role to assume in member accounts;
+                         empty reads only this account's IAM
+  IGNORED_ROLE_NAMES   - comma-separated roles whose use is not account
+                         activity (scanners that run everywhere)
+  EXCLUDED_ACCOUNT_IDS - comma-separated account IDs to skip
+  EXEMPT_TAG_KEY       - tag key that exempts an account, user or role
+  EXEMPT_TAG_VALUE     - optional value the tag must have
+  REPORT_POLL_SECONDS  - wait between credential report polls (default 2)
 """
 
-import json
 import logging
 import os
-import time
+from datetime import datetime, timedelta, timezone
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.config import Config
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
+# IAM Identity Center has no separate FIPS endpoints in the commercial
+# partition; in GovCloud the standard endpoint is the FIPS one.
+_NO_FIPS_VARIANT = Config(use_fips_endpoint=False)
+
 organizations = boto3.client("organizations")
+sso_admin = boto3.client("sso-admin", config=_NO_FIPS_VARIANT)
+identitystore = boto3.client("identitystore", config=_NO_FIPS_VARIANT)
 cloudtrail = boto3.client("cloudtrail")
+iam = boto3.client("iam")
+sts = boto3.client("sts")
 sns = boto3.client("sns")
 
+
+def _csv_env(name):
+    return {v.strip() for v in os.environ.get(name, "").split(",") if v.strip()}
+
+
 SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN")
-EVENT_DATA_STORE_ARN = os.environ["EVENT_DATA_STORE_ARN"]
-# The SQL FROM clause takes the bare event data store ID (the UUID),
-# not the full ARN - e.g. "FROM fc19d5bd-9dd5-4cbf-9071-4a7546954a7a".
-EVENT_DATA_STORE_ID = EVENT_DATA_STORE_ARN.rsplit("/", 1)[-1]
-ACTIVITY_LOOKBACK_DAYS = int(os.environ.get("ACTIVITY_LOOKBACK_DAYS", "90"))
-EXCLUDED_ACCOUNT_IDS = {
-    a.strip() for a in os.environ.get("EXCLUDED_ACCOUNT_IDS", "").split(",") if a.strip()
-}
-EXEMPT_TAG_KEY = os.environ.get("EXEMPT_TAG_KEY")
-# Terraform always sets this variable, to "" when unused, so treat empty
-# as unset: otherwise only tags with an empty value would exempt.
+INACTIVITY_DAYS = int(os.environ.get("INACTIVITY_DAYS", "90"))
+MEMBER_ROLE_NAME = os.environ.get("MEMBER_ROLE_NAME", "").strip()
+# The member role is assumed on every run, so it never counts as activity.
+IGNORED_ROLE_NAMES = _csv_env("IGNORED_ROLE_NAMES") | ({MEMBER_ROLE_NAME} if MEMBER_ROLE_NAME else set())
+EXCLUDED_ACCOUNT_IDS = _csv_env("EXCLUDED_ACCOUNT_IDS")
+EXEMPT_TAG_KEY = os.environ.get("EXEMPT_TAG_KEY") or None
 EXEMPT_TAG_VALUE = os.environ.get("EXEMPT_TAG_VALUE") or None
-QUERY_MAX_WAIT_SECONDS = int(os.environ.get("QUERY_MAX_WAIT_SECONDS", "240"))
-QUERY_POLL_INTERVAL_SECONDS = int(os.environ.get("QUERY_POLL_INTERVAL_SECONDS", "5"))
+REPORT_POLL_SECONDS = float(os.environ.get("REPORT_POLL_SECONDS", "2"))
 
-TERMINAL_FAILURE_STATUSES = {"FAILED", "CANCELLED", "TIMED_OUT"}
-
-
-def _notify(subject, message):
-    if not SNS_TOPIC_ARN:
-        logger.info("SNS_TOPIC_ARN not set, skipping notification")
-        return
-    try:
-        sns.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject[:100], Message=message)
-    except ClientError:
-        logger.exception("Failed to publish SNS notification")
+SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+_NO_TIME = {"", "N/A", "no_information", "not_supported"}
 
 
-def _iter_active_accounts():
-    paginator = organizations.get_paginator("list_accounts")
-    for page in paginator.paginate():
-        for account in page.get("Accounts", []):
-            if account.get("Status") == "ACTIVE":
-                yield account
+def _finding(severity, check, account_id, resource, detail):
+    return {"severity": severity, "check": check, "account": account_id, "resource": resource, "detail": detail}
 
 
-def _is_tag_exempt(account_id):
+def _as_list(value):
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def parse_time(value):
+    """A timezone-aware datetime, or None for a missing or placeholder value."""
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if value is None or value in _NO_TIME:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def is_stale(created, last_used, now):
+    latest = max((t for t in (created, last_used) if t), default=None)
+    return latest is None or now - latest > timedelta(days=INACTIVITY_DAYS)
+
+
+def _age(last_used, now):
+    return "never used" if last_used is None else f"last used {(now - last_used).days} days ago"
+
+
+def _exempt(tags):
     if not EXEMPT_TAG_KEY:
         return False
-    try:
-        tags = organizations.list_tags_for_resource(ResourceId=account_id).get("Tags", [])
-    except ClientError:
-        logger.exception("Failed to list tags for account %s", account_id)
-        return False
     return any(
-        tag.get("Key") == EXEMPT_TAG_KEY and (EXEMPT_TAG_VALUE is None or tag.get("Value") == EXEMPT_TAG_VALUE)
-        for tag in tags
+        tag["Key"] == EXEMPT_TAG_KEY and (EXEMPT_TAG_VALUE is None or tag["Value"] == EXEMPT_TAG_VALUE)
+        for tag in tags or []
     )
 
 
-def _run_activity_query():
-    query = f"""
-        SELECT
-          recipientAccountId,
-          MAX(eventTime) AS last_activity_time,
-          MAX(CASE WHEN eventName = 'ConsoleLogin' THEN eventTime END) AS last_console_login_time
-        FROM {EVENT_DATA_STORE_ID}
-        WHERE eventTime > date_add('day', -{ACTIVITY_LOOKBACK_DAYS}, current_timestamp)
-        GROUP BY recipientAccountId
-    """
-    start_resp = cloudtrail.start_query(QueryStatement=query)
-    query_id = start_resp["QueryId"]
-    logger.info("Started CloudTrail Lake query %s", query_id)
-
-    waited = 0
-    while waited < QUERY_MAX_WAIT_SECONDS:
-        status_resp = cloudtrail.describe_query(EventDataStore=EVENT_DATA_STORE_ARN, QueryId=query_id)
-        status = status_resp["QueryStatus"]
-        if status == "FINISHED":
-            break
-        if status in TERMINAL_FAILURE_STATUSES:
-            raise RuntimeError(f"CloudTrail Lake query {query_id} ended with status {status}")
-        time.sleep(QUERY_POLL_INTERVAL_SECONDS)
-        waited += QUERY_POLL_INTERVAL_SECONDS
-    else:
-        raise TimeoutError(f"CloudTrail Lake query {query_id} did not finish within {QUERY_MAX_WAIT_SECONDS}s")
-
-    activity_by_account = {}
-    next_token = None
-    while True:
-        kwargs = {"QueryId": query_id, "MaxQueryResults": 1000}
-        if next_token:
-            kwargs["NextToken"] = next_token
-        results_resp = cloudtrail.get_query_results(**kwargs)
-        for row in results_resp.get("QueryResultRows", []):
-            parsed = {}
-            for cell in row:
-                parsed.update(cell)
-            account_id = parsed.get("recipientaccountid") or parsed.get("recipientAccountId")
-            if account_id:
-                activity_by_account[account_id] = {
-                    "last_activity_time": parsed.get("last_activity_time"),
-                    "last_console_login_time": parsed.get("last_console_login_time"),
-                }
-        next_token = results_resp.get("NextToken")
-        if not next_token:
-            break
-
-    return activity_by_account
+# --- IAM users (one credential report row each) -------------------------------
 
 
-def lambda_handler(event, context):
-    logger.info("Starting stale-account scan (lookback: %d days)", ACTIVITY_LOOKBACK_DAYS)
+def check_iam_user(row, account_id, now):
+    if row["user"] == "<root_account>":
+        return []
+    findings = []
+    created = parse_time(row.get("user_creation_time"))
 
-    activity_by_account = _run_activity_query()
+    if row.get("password_enabled") == "true":
+        changed = parse_time(row.get("password_last_changed")) or created
+        used = parse_time(row.get("password_last_used"))
+        if is_stale(changed, used, now):
+            findings.append(_finding("MEDIUM", "iam-user-password", account_id, row["arn"], f"console password {_age(used, now)}"))
 
-    stale_accounts = []
-    no_login_accounts = []
-
-    for account in _iter_active_accounts():
-        account_id = account["Id"]
-        if account_id in EXCLUDED_ACCOUNT_IDS:
+    for slot in ("1", "2"):
+        if row.get(f"access_key_{slot}_active") != "true":
             continue
-        if _is_tag_exempt(account_id):
-            continue
-
-        activity = activity_by_account.get(account_id)
-        if activity is None:
-            stale_accounts.append(account)
-            continue
-
-        if not activity.get("last_console_login_time"):
-            no_login_accounts.append({"account": account, "last_activity_time": activity.get("last_activity_time")})
-
-    if stale_accounts:
-        lines = [
-            (
-                f"No CloudTrail activity recorded in the last {ACTIVITY_LOOKBACK_DAYS} days "
-                f"(event data store: {EVENT_DATA_STORE_ID}):"
-            ),
-            "",
-        ]
-        for a in stale_accounts:
-            lines.append(f"- {a['Id']}  {a.get('Name', '(no name)')}  <{a.get('Email', '(no email)')}>")
-
-        if no_login_accounts:
-            lines.append("")
-            lines.append(
-                f"Additionally, these ACTIVE accounts had some activity in the last "
-                f"{ACTIVITY_LOOKBACK_DAYS} days but no interactive console sign-in - "
-                "possibly automation-only, or just not manually reviewed recently:"
-            )
-            for entry in no_login_accounts:
-                a = entry["account"]
-                lines.append(
-                    f"- {a['Id']}  {a.get('Name', '(no name)')}  "
-                    f"(last activity: {entry['last_activity_time']})"
-                )
-
-        lines.append("")
-        lines.append(
-            "This reflects only what's in the event data store's lookback window - "
-            "if the store is newer than the lookback period, treat this as 'no "
-            "activity since monitoring started,' not 'no activity ever.'"
-        )
-
-        _notify(
-            subject=f"Stale AWS account report: {len(stale_accounts)} account(s) with no activity",
-            message="\n".join(lines),
-        )
-    else:
-        logger.info("No stale accounts found - no notification sent")
-
-    return {
-        "statusCode": 200,
-        "body": json.dumps(
-            {
-                "stale_account_count": len(stale_accounts),
-                "stale_account_ids": [a["Id"] for a in stale_accounts],
-                "no_login_account_count": len(no_login_accounts),
-            }
-        ),
-    }
+        rotated = parse_time(row.get(f"access_key_{slot}_last_rotated")) or created
+        used = parse_time(row.get(f"access_key_{slot}_last_used_date"))
+        if is_stale(rotated, used, now):
+            resource = f"{row['arn']} access key {slot}"
+            findings.append(_finding("HIGH", "iam-access-key", account_id, resource, f"active access key {_age(used, now)}"))
+    return findings
