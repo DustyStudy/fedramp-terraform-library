@@ -3,7 +3,7 @@
 This page covers the plan-time evidence: every check below runs offline,
 against the resources and policy JSON that Terraform renders, with dummy
 credentials in the test files. It lists what those checks cover, the
-numbers from the last run, and the gaps. Twelve modules have also been
+numbers from the last run, and the gaps. Thirteen modules have also been
 deployed to a real organization and probed with real API calls; that run
 is in [LIVE-PROOF.md](LIVE-PROOF.md).
 
@@ -80,7 +80,7 @@ checkov -d . --framework terraform
 
 ## Gaps
 
-- **Live deployment covers twelve modules, not the whole repo.** Plan-time
+- **Live deployment covers thirteen modules, not the whole repo.** Plan-time
   tests prove what Terraform will request. They do not prove what AWS
   accepts or how the policies behave at request time.
   [LIVE-PROOF.md](LIVE-PROOF.md) lists which modules were deployed and

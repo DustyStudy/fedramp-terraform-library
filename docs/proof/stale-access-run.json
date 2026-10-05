@@ -1,0 +1,34 @@
+{
+  "run_at": "2026-10-05",
+  "inactivity_days": 1,
+  "counts": {
+    "CRITICAL": 0,
+    "HIGH": 0,
+    "MEDIUM": 1,
+    "LOW": 3
+  },
+  "accounts_scanned": 2,
+  "errors": [
+    {
+      "account": "REDACTED",
+      "error": "AccessDenied on sts:AssumeRole (no member role in this account)"
+    },
+    {
+      "account": "REDACTED",
+      "error": "AccessDenied on sts:AssumeRole (no member role in this account)"
+    }
+  ],
+  "not_checked": [],
+  "findings_by_check": [
+    {
+      "check": "iam-role",
+      "severity": "LOW",
+      "count": 3
+    },
+    {
+      "check": "iam-user-password",
+      "severity": "MEDIUM",
+      "count": 1
+    }
+  ]
+}
