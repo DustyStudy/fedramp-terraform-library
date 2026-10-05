@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 LAMBDA = "modules/stale-account-detector/lambda/detect_stale_accounts.py"
 NOW = datetime(2026, 10, 1, tzinfo=timezone.utc)
@@ -322,6 +322,7 @@ def test_sso_activity_keeps_the_latest_successful_event(fn):
             trail_event(1, "u1", {"UserAuthentication": "Failure"}),
             trail_event(1, "u2", {"UserAuthentication": "Failure"}),
         ],
+        "Federate": [trail_event(1, "u3", {"account_id": "222222222222", "role_name": "ReadOnly"})],
         "GetRoleCredentials": [
             trail_event(5, "u1", {"account_id": "111111111111", "role_name": "Admin"}),
             trail_event(3, "u1", {"account_id": "111111111111", "role_name": "Admin"}),
@@ -331,7 +332,8 @@ def test_sso_activity_keeps_the_latest_successful_event(fn):
     module.cloudtrail = pages({"lookup_events": lambda **kw: [{"Events": events[kw["LookupAttributes"][0]["AttributeValue"]]}]})
     last_sign_in, last_access = module.sso_activity(days_ago(90), deadline=float("inf"))
     assert last_sign_in == {"u1": days_ago(2)}
-    assert last_access == {("u1", "111111111111", "Admin"): days_ago(3)}
+    # Console access through the portal is a Federate event; CLI access is GetRoleCredentials.
+    assert last_access == {("u1", "111111111111", "Admin"): days_ago(3), ("u3", "222222222222", "ReadOnly"): days_ago(1)}
 
 
 def test_sso_activity_stops_at_the_deadline(fn):
@@ -410,7 +412,8 @@ def handler(fn, monkeypatch):
                 raise result
             return result
 
-        def scan_identity_center(own_account_id, now, deadline):
+        def scan_identity_center(own_account_id, now, deadline, account_ids):
+            module.sso_account_ids = account_ids
             if isinstance(sso, Exception):
                 raise sso
             return sso
@@ -522,4 +525,85 @@ def test_scan_identity_center_returns_none_without_an_instance(fn):
     module = fn()
     module.sso_admin = MagicMock()
     module.sso_admin.list_instances.return_value = {"Instances": []}
-    assert module.scan_identity_center(OWN, NOW, float("inf")) is None
+    assert module.scan_identity_center(OWN, NOW, float("inf"), {OWN}) is None
+
+
+# --- review fixes -----------------------------------------------------------
+
+
+def test_accounts_are_filtered_on_state_when_status_is_gone(handler):
+    accounts = [
+        {"Id": OWN, "Name": "mgmt", "State": "ACTIVE", "JoinedTimestamp": days_ago(900)},
+        {"Id": MEMBER, "Name": "closed", "State": "SUSPENDED", "JoinedTimestamp": days_ago(900)},
+        {"Id": "333333333333", "Name": "unknown", "JoinedTimestamp": days_ago(900)},
+    ]
+    module = handler(accounts, MEMBER_ROLE_NAME="StaleAccountRead")
+    module.lambda_handler({}, None)
+    # An account with neither field is read, never silently dropped.
+    assert module.scanned == [OWN, "333333333333"]
+
+
+def test_running_out_of_time_still_publishes_and_lists_unread_accounts(handler):
+    module = handler([org_account(OWN), org_account(MEMBER)], MEMBER_ROLE_NAME="StaleAccountRead")
+    context = MagicMock()
+    context.get_remaining_time_in_millis.return_value = 0
+    result = module.lambda_handler({}, context)
+    assert module.scanned == []
+    assert result["not_checked"] == ["IAM in 2 account(s): ran out of time"]
+    assert "ran out of time" in module.sns.publish.call_args.kwargs["Message"]
+
+
+def test_connection_failure_on_one_account_is_an_error_not_a_crash(handler):
+    module = handler([org_account(OWN)], scans={OWN: EndpointConnectionError(endpoint_url="https://iam.amazonaws.com")})
+    result = module.lambda_handler({}, None)
+    assert [e["account"] for e in result["errors"]] == [OWN]
+
+
+def test_handler_passes_the_target_accounts_to_the_sso_checks(handler):
+    module = handler([org_account(OWN), org_account(MEMBER)], EXCLUDED_ACCOUNT_IDS=MEMBER)
+    module.lambda_handler({}, None)
+    assert module.sso_account_ids == {OWN}
+
+
+def test_list_roles_does_not_fetch_service_linked_roles(fn):
+    module = fn()
+    linked = {"RoleName": "AWSServiceRoleForSupport", "Path": "/aws-service-role/support.amazonaws.com/"}
+    client = pages({"list_roles": [{"Roles": [linked, {"RoleName": "app", "Path": "/"}]}]})
+    client.get_role.side_effect = lambda RoleName: {"Role": {"RoleName": RoleName, "Path": "/", "RoleLastUsed": {}}}
+    assert [r["RoleName"] for r in module.list_roles(client)] == ["AWSServiceRoleForSupport", "app"]
+    client.get_role.assert_called_once_with(RoleName="app")
+
+
+def test_oversized_report_is_cut_to_fit_sns(fn):
+    module = fn()
+    module.sns = MagicMock()
+    findings = [finding("LOW", "iam-role", MEMBER) | {"resource": f"arn:aws:iam::{MEMBER}:role/{'r' * 60}{i}"} for i in range(5000)]
+    module._publish(findings, [], [], {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 5000})
+    message = module.sns.publish.call_args.kwargs["Message"]
+    assert len(message.encode("utf-8")) <= 250_000
+    assert "more finding(s) not shown" in message
+    assert "5000 finding(s)" in message
+
+
+def sso_module(fn, monkeypatch, assignments, last_sign_in, last_access):
+    module = fn()
+    module.sso_admin = MagicMock()
+    module.sso_admin.list_instances.return_value = {"Instances": [{"InstanceArn": "ins", "IdentityStoreId": "d-1"}]}
+    monkeypatch.setattr(module, "identity_center_assignments", lambda instance: (USERS, assignments))
+    monkeypatch.setattr(module, "sso_activity", lambda start, deadline: (last_sign_in, last_access))
+    return module
+
+
+def test_sso_access_is_reported_only_for_target_accounts(fn, monkeypatch):
+    assignments = {("u-idle", MEMBER, "Admin"), ("u-idle", "222222222222", "Admin")}
+    module = sso_module(fn, monkeypatch, assignments, {}, {})
+    findings = module.scan_identity_center(OWN, NOW, float("inf"), {OWN, MEMBER})
+    assert [f["account"] for f in findings if f["check"] == "sso-access"] == [MEMBER]
+    # The user is still a stale sso-user: they hold assignments somewhere.
+    assert [f["check"] for f in findings if f["check"] == "sso-user"] == ["sso-user"]
+
+
+def test_recent_account_access_counts_as_sso_user_activity(fn, monkeypatch):
+    key = ("u-idle", MEMBER, "Admin")
+    module = sso_module(fn, monkeypatch, {key}, {}, {key: days_ago(1)})
+    assert module.scan_identity_center(OWN, NOW, float("inf"), {MEMBER}) == []

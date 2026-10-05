@@ -29,7 +29,9 @@ are never reported.
   400 days.
 - **Identity Center** has no last-sign-in API, so sign-ins and account
   access come from CloudTrail event history in the management account
-  (`UserAuthentication` and `GetRoleCredentials` events). Event history
+  (`UserAuthentication` for sign-ins; `Federate` and
+  `GetRoleCredentials` for opening an account's console or taking CLI
+  credentials). Event history
   goes back 90 days, which is why `inactivity_days` cannot be higher.
   Group assignments are expanded to their members. Disabled users are
   skipped.
@@ -83,6 +85,14 @@ The Lambda also returns
   minutes; the Lambda has a 15-minute timeout and lists the Identity
   Center checks as not checked if it runs out. An organization that
   outgrows this should read its organization trail with Athena instead.
+- Accounts are read one after another, with one `GetRole` call per
+  role. If the 15 minutes run out, the accounts not reached are listed
+  as not checked and the report is still sent. Very large
+  organizations should run one detector per group of accounts, using
+  `excluded_account_ids`.
+- SNS messages are limited to 256 KB. A longer report is cut, says how
+  many findings were left out, and the totals per check are in the
+  Lambda's log. Invoke the function directly for the full list.
 - Root user activity and unused permissions inside a role that is in use
   are out of scope.
 

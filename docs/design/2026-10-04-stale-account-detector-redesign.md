@@ -74,7 +74,7 @@ A finding has the same shape as the other auditors' findings:
 | `pipeline-role` | IAM role trusted by an OIDC provider | Not assumed in the window | MEDIUM |
 | `iam-role` | Any other IAM role | Not assumed in the window | LOW |
 | `sso-user` | Identity Center user with at least one assignment | No `UserAuthentication` event in the window | MEDIUM |
-| `sso-access` | User, account and permission set | Assigned, directly or through a group, with no `GetRoleCredentials` event for that combination in the window | LOW |
+| `sso-access` | User, account and permission set | Assigned, directly or through a group, with no `Federate` or `GetRoleCredentials` event for that combination in the window | LOW |
 | `aws-account` | AWS account | No password, key or role in the account was used in the window, after ignoring `ignored_role_names` | MEDIUM |
 
 Rules that apply to every check:
@@ -110,7 +110,7 @@ Rules that apply to every check:
 | Identity Center users and groups | `identitystore:ListUsers`, `ListGroupMemberships` | |
 | Assignments | `sso-admin:ListInstances`, `ListPermissionSets`, `ListAccountsForProvisionedPermissionSet`, `ListAccountAssignments` | Group assignments are expanded to their members |
 | Sign-ins | `cloudtrail:LookupEvents`, `EventName = UserAuthentication` | `userIdentity.onBehalfOf.userId` is the identity store user ID |
-| Account access | `cloudtrail:LookupEvents`, `EventName = GetRoleCredentials` | `serviceEventDetails` holds `account_id` and `role_name`; the role name maps to a permission set |
+| Account access | `cloudtrail:LookupEvents`, `EventName = Federate` (console) and `GetRoleCredentials` (CLI) | `serviceEventDetails` holds `account_id` and `role_name`; the role name maps to a permission set |
 
 Both event names were confirmed in a real management account's event
 history on 2026-10-04.
@@ -143,6 +143,14 @@ report that could not run.
 - An account whose role cannot be assumed, or whose IAM calls fail, is
   added to `errors` and named in the notification. The run continues.
 - An account with an error is never reported as a stale `aws-account`.
+- If the function runs out of time before reaching an account, that
+  account is counted in `not_checked` and the report is still sent.
+- A report too long for one SNS message is cut, and says how many
+  findings it left out.
+- Account access counts as activity for `sso-user`, because a portal
+  session can outlive a short window.
+- `sso-access` covers only the accounts being scanned: excluded, exempt
+  and closed accounts are skipped.
 - If a CloudTrail lookup fails, `sso-user` and `sso-access` are added to
   `not_checked` and the notification says they were not checked. They do
   not report zero findings.

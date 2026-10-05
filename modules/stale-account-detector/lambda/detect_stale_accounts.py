@@ -38,7 +38,7 @@ from datetime import datetime, timedelta, timezone
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -51,7 +51,10 @@ organizations = boto3.client("organizations")
 sso_admin = boto3.client("sso-admin", config=_NO_FIPS_VARIANT)
 identitystore = boto3.client("identitystore", config=_NO_FIPS_VARIANT)
 cloudtrail = boto3.client("cloudtrail")
-iam = boto3.client("iam")
+# One GetRole per role adds up; the default four attempts turn throttling
+# into an unread account.
+_IAM_RETRIES = Config(retries={"mode": "standard", "max_attempts": 10})
+iam = boto3.client("iam", config=_IAM_RETRIES)
 sts = boto3.client("sts")
 sns = boto3.client("sns")
 
@@ -71,6 +74,8 @@ EXEMPT_TAG_VALUE = os.environ.get("EXEMPT_TAG_VALUE") or None
 REPORT_POLL_SECONDS = float(os.environ.get("REPORT_POLL_SECONDS", "2"))
 
 SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+# SNS rejects messages over 256 KB.
+MAX_MESSAGE_BYTES = 250_000
 _NO_TIME = {"", "N/A", "no_information", "not_supported"}
 
 
@@ -240,10 +245,15 @@ def credential_report(iam_client):
 
 def list_roles(iam_client):
     # ListRoles leaves RoleLastUsed and Tags out; GetRole returns both.
+    # Service-linked roles are never reported and never count as activity,
+    # so their summary is enough.
     roles = []
     for page in iam_client.get_paginator("list_roles").paginate():
         for summary in page["Roles"]:
-            roles.append(iam_client.get_role(RoleName=summary["RoleName"])["Role"])
+            if classify_role(summary) == "service-linked":
+                roles.append(summary)
+            else:
+                roles.append(iam_client.get_role(RoleName=summary["RoleName"])["Role"])
     return roles
 
 
@@ -292,11 +302,14 @@ def sso_activity(start, deadline):
         user_id = _event_user(detail)
         if user_id and (detail.get("serviceEventDetails") or {}).get("UserAuthentication") == "Success":
             _keep_latest(last_sign_in, user_id, when)
-    for when, detail in _lookup_events("GetRoleCredentials", start, deadline):
-        details = detail.get("serviceEventDetails") or {}
-        key = (_event_user(detail), details.get("account_id"), details.get("role_name"))
-        if all(key) and not detail.get("errorCode"):
-            _keep_latest(last_access, key, when)
+    # The access portal logs Federate when a user opens an account console
+    # and GetRoleCredentials when they take credentials for the CLI.
+    for event_name in ("Federate", "GetRoleCredentials"):
+        for when, detail in _lookup_events(event_name, start, deadline):
+            details = detail.get("serviceEventDetails") or {}
+            key = (_event_user(detail), details.get("account_id"), details.get("role_name"))
+            if all(key) and not detail.get("errorCode"):
+                _keep_latest(last_access, key, when)
     return last_sign_in, last_access
 
 
@@ -350,7 +363,10 @@ def target_accounts():
     accounts = []
     for page in organizations.get_paginator("list_accounts").paginate():
         for account in page["Accounts"]:
-            if account["Status"] != "ACTIVE" or account["Id"] in EXCLUDED_ACCOUNT_IDS:
+            # Organizations is replacing Status with State. An account with
+            # neither is read, never silently dropped.
+            state = account.get("State") or account.get("Status")
+            if (state and state != "ACTIVE") or account["Id"] in EXCLUDED_ACCOUNT_IDS:
                 continue
             if EXEMPT_TAG_KEY and _exempt(organizations.list_tags_for_resource(ResourceId=account["Id"])["Tags"]):
                 continue
@@ -367,6 +383,7 @@ def iam_client_for(account_id, own_account_id, partition):
     credentials = sts.assume_role(RoleArn=role_arn, RoleSessionName="stale-account-detector")["Credentials"]
     return boto3.client(
         "iam",
+        config=_IAM_RETRIES,
         aws_access_key_id=credentials["AccessKeyId"],
         aws_secret_access_key=credentials["SecretAccessKey"],
         aws_session_token=credentials["SessionToken"],
@@ -386,15 +403,22 @@ def scan_account(account, iam_client, now):
     return findings + check_account(account, rows, roles, now)
 
 
-def scan_identity_center(own_account_id, now, deadline):
+def scan_identity_center(own_account_id, now, deadline, account_ids):
     instances = sso_admin.list_instances()["Instances"]
     if not instances:
         return None
     users, assignments = identity_center_assignments(instances[0])
     last_sign_in, last_access = sso_activity(now - timedelta(days=INACTIVITY_DAYS), deadline)
+    # A portal session can outlive a short window, so taking credentials or
+    # opening a console counts as the user being active too.
+    last_seen = dict(last_sign_in)
+    for (user_id, _, _), when in last_access.items():
+        _keep_latest(last_seen, user_id, when)
     assigned = {user_id for user_id, _, _ in assignments}
-    return check_sso_users(users, assigned, last_sign_in, own_account_id, now) + check_sso_access(
-        assignments, last_access, users, now
+    # Excluded, exempt and closed accounts are skipped here as everywhere else.
+    in_scope = {key for key in assignments if key[1] in account_ids}
+    return check_sso_users(users, assigned, last_seen, own_account_id, now) + check_sso_access(
+        in_scope, last_access, users, now
     )
 
 
@@ -410,8 +434,19 @@ def _publish(findings, errors, not_checked, counts):
             lines.append(f"\n=== {severity} ({len(matching)}) ===")
             lines += [f"[{f['check']}] {f['account']} {f['resource']}\n  {f['detail']}" for f in matching]
     subject = f"Stale access: {counts['HIGH']} high, {counts['MEDIUM']} medium, {counts['LOW']} low"
+    # The schedule discards the return value, so the log keeps the totals.
+    by_check = {check: sum(f["check"] == check for f in findings) for check in sorted({f["check"] for f in findings})}
+    logger.info("Findings by check: %s; errors: %d; not checked: %s", json.dumps(by_check), len(errors), not_checked)
+
+    kept, size = [], 0
+    for line in lines:
+        size += len(line.encode("utf-8")) + 1
+        if size > MAX_MESSAGE_BYTES - 200:  # room for the closing line
+            kept.append(f"\n... {len(lines) - len(kept)} more finding(s) not shown. Invoke the function for the full list.")
+            break
+        kept.append(line)
     if SNS_TOPIC_ARN:
-        sns.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject[:100], Message="\n".join(lines))
+        sns.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject[:100], Message="\n".join(kept))
 
 
 def lambda_handler(event, context):
@@ -423,9 +458,13 @@ def lambda_handler(event, context):
     identity = sts.get_caller_identity()
     own_account_id, partition = identity["Account"], identity["Arn"].split(":")[1]
     findings, errors, not_checked = [], [], []
-    scanned = unread = 0
+    scanned = unread = out_of_time = 0
 
-    for account in target_accounts():
+    accounts = target_accounts()
+    for account in accounts:
+        if time.monotonic() >= deadline:
+            out_of_time += 1
+            continue
         try:
             client = iam_client_for(account["Id"], own_account_id, partition)
             if client is None:
@@ -433,19 +472,21 @@ def lambda_handler(event, context):
                 continue
             findings += scan_account(account, client, now)
             scanned += 1
-        except (ClientError, RuntimeError) as exc:
+        except (ClientError, BotoCoreError, RuntimeError) as exc:
             logger.warning("Could not read account %s: %s", account["Id"], exc)
             errors.append({"account": account["Id"], "error": str(exc)})
     if unread:
         not_checked.append(f"IAM in {unread} member account(s): member_role_name is not set")
+    if out_of_time:
+        not_checked.append(f"IAM in {out_of_time} account(s): ran out of time")
 
     try:
-        sso_findings = scan_identity_center(own_account_id, now, deadline)
+        sso_findings = scan_identity_center(own_account_id, now, deadline, {a["Id"] for a in accounts})
         if sso_findings is None:
             not_checked.append("sso-user and sso-access: no IAM Identity Center instance in this region")
         else:
             findings += sso_findings
-    except (ClientError, LookupTimeout) as exc:
+    except (ClientError, BotoCoreError, LookupTimeout) as exc:
         logger.warning("Identity Center checks did not run: %s", exc)
         not_checked.append(f"sso-user and sso-access: {exc}")
 
