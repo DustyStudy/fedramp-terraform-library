@@ -51,73 +51,100 @@ override_resource {
   }
 }
 
-override_resource {
-  target          = aws_cloudtrail_event_data_store.org_activity
-  override_during = plan
-  values = {
-    arn = "arn:aws:cloudtrail:us-east-1:123456789012:eventdatastore/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-  }
-}
-
-run "creates_an_org_wide_management_events_store" {
+run "lambda_role_and_member_policy_are_read_only" {
   command = plan
 
   assert {
-    condition     = aws_cloudtrail_event_data_store.org_activity[0].organization_enabled && aws_cloudtrail_event_data_store.org_activity[0].multi_region_enabled
-    error_message = "The event data store must cover every account and region in the organization."
+    condition = alltrue([
+      for action in flatten([for s in jsondecode(aws_iam_role_policy.lambda_exec.policy).Statement : s.Action]) :
+      can(regex("^(logs:(CreateLogGroup|CreateLogStream|PutLogEvents)|sns:Publish|sqs:SendMessage|kms:(Decrypt|GenerateDataKey\\*)|xray:Put(TraceSegments|TelemetryRecords)|[a-z-]+:(List|Get|Describe|Lookup|GenerateCredentialReport))", action))
+    ])
+    error_message = "The Lambda role must hold only read actions plus its own logging, topic, DLQ and key use."
   }
 
   assert {
-    condition     = aws_cloudtrail_event_data_store.org_activity[0].termination_protection_enabled
-    error_message = "Deleting the store deletes its history, so termination protection must be on."
+    condition = alltrue([
+      for action in flatten([for s in jsondecode(data.aws_iam_policy_document.member_read.json).Statement : s.Action]) :
+      can(regex("^iam:(List|Get|GenerateCredentialReport)", action))
+    ])
+    error_message = "The member role policy must be read-only IAM."
   }
 
   assert {
-    condition     = tolist(one(one(aws_cloudtrail_event_data_store.org_activity[0].advanced_event_selector).field_selector).equals) == tolist(["Management"])
-    error_message = "The store must ingest management events only, to keep ingestion cost down."
+    condition     = !contains(flatten([for s in jsondecode(aws_iam_role_policy.lambda_exec.policy).Statement : s.Action]), "sts:AssumeRole")
+    error_message = "Without member_role_name the Lambda must not be able to assume any role."
   }
 }
 
-run "reuses_an_existing_store_when_asked" {
-  command = plan
-
-  variables {
-    create_event_data_store       = false
-    existing_event_data_store_arn = "arn:aws:cloudtrail:us-east-1:123456789012:eventdatastore/11111111-2222-3333-4444-555555555555"
-  }
-
-  assert {
-    condition     = length(aws_cloudtrail_event_data_store.org_activity) == 0
-    error_message = "No new event data store may be created when an existing one is supplied."
-  }
-
-  assert {
-    condition     = aws_lambda_function.detector.environment[0].variables.EVENT_DATA_STORE_ARN == "arn:aws:cloudtrail:us-east-1:123456789012:eventdatastore/11111111-2222-3333-4444-555555555555"
-    error_message = "The Lambda must query the supplied event data store."
-  }
-}
-
-run "lambda_uses_fips_endpoints_and_the_lookback" {
+run "assume_role_is_limited_to_the_member_role" {
   command = plan
 
   variables {
-    activity_lookback_days = 120
+    member_role_name = "StaleAccountRead"
+  }
+
+  assert {
+    condition = [
+      for s in jsondecode(aws_iam_role_policy.lambda_exec.policy).Statement : s.Resource
+      if contains(flatten([s.Action]), "sts:AssumeRole")
+    ] == ["arn:aws:iam::*:role/StaleAccountRead"]
+    error_message = "sts:AssumeRole must name only the member role."
+  }
+}
+
+run "settings_reach_the_lambda" {
+  command = plan
+
+  variables {
+    inactivity_days    = 35
+    member_role_name   = "StaleAccountRead"
+    ignored_role_names = ["ProwlerScan", "OtherScanner"]
+  }
+
+  assert {
+    condition     = aws_lambda_function.detector.environment[0].variables.INACTIVITY_DAYS == "35"
+    error_message = "inactivity_days must reach the Lambda."
+  }
+
+  assert {
+    condition     = aws_lambda_function.detector.environment[0].variables.MEMBER_ROLE_NAME == "StaleAccountRead"
+    error_message = "member_role_name must reach the Lambda."
+  }
+
+  assert {
+    condition     = aws_lambda_function.detector.environment[0].variables.IGNORED_ROLE_NAMES == "ProwlerScan,OtherScanner"
+    error_message = "ignored_role_names must reach the Lambda."
   }
 
   assert {
     condition     = aws_lambda_function.detector.environment[0].variables.AWS_USE_FIPS_ENDPOINT == "true"
-    error_message = "The Lambda's SDK calls must use FIPS endpoints by default."
+    error_message = "FIPS endpoints must be on by default."
   }
 
   assert {
-    condition     = aws_lambda_function.detector.environment[0].variables.ACTIVITY_LOOKBACK_DAYS == "120"
-    error_message = "activity_lookback_days must reach the Lambda."
+    condition     = aws_lambda_function.detector.timeout == 900
+    error_message = "The Lambda needs the maximum timeout for event history lookups."
+  }
+}
+
+run "rejects_a_window_longer_than_event_history" {
+  command = plan
+
+  variables {
+    inactivity_days = 91
   }
 
-  assert {
-    condition     = aws_cloudwatch_event_rule.schedule.schedule_expression == "rate(7 days)"
-    error_message = "The scan must run weekly by default."
+  expect_failures = [var.inactivity_days]
+}
+
+run "rejects_a_role_arn_as_the_member_role_name" {
+  command = plan
+
+  variables {
+    member_role_name = "arn:aws:iam::123456789012:role/StaleAccountRead"
   }
+
+  expect_failures = [var.member_role_name]
 }
 
 run "lambda_is_encrypted_and_has_a_dlq" {

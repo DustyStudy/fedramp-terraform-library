@@ -8,7 +8,12 @@ output "sns_topic_arn" {
   value       = aws_sns_topic.report.arn
 }
 
-output "event_data_store_arn" {
-  description = "ARN of the CloudTrail Lake event data store being queried (created by this module, or the existing one you supplied)."
-  value       = local.event_data_store_arn
+output "lambda_role_arn" {
+  description = "The Lambda's role. Trust it in the member-account role named by member_role_name."
+  value       = aws_iam_role.lambda_exec.arn
+}
+
+output "member_role_policy_json" {
+  description = "Read-only permissions the member-account role needs. Attach it to the role named by member_role_name in each account."
+  value       = data.aws_iam_policy_document.member_read.json
 }

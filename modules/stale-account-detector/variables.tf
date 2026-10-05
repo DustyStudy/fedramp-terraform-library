@@ -16,16 +16,6 @@ variable "schedule_expression" {
   default     = "rate(7 days)"
 }
 
-variable "activity_lookback_days" {
-  type        = number
-  description = <<-EOT
-    Accounts with no CloudTrail activity in this many days are reported
-    as stale. Also bounds the CloudTrail Lake query window - keep this
-    at or below the event data store's actual retention period.
-  EOT
-  default     = 90
-}
-
 variable "excluded_account_ids" {
   type        = list(string)
   description = "Account IDs to always skip (break-glass accounts, intentionally idle sandboxes, log-archive accounts, etc.)."
@@ -42,42 +32,6 @@ variable "exempt_tag_value" {
   type        = string
   description = "Optional value exempt_tag_key must match. Leave empty to exempt on the tag key's presence alone (any value)."
   default     = ""
-}
-
-variable "create_event_data_store" {
-  type        = bool
-  description = <<-EOT
-    Create a new organization-wide CloudTrail Lake event data store
-    (management events only, scoped to keep ingestion cost down). Set to
-    false if you already have a suitable one and supply its ARN via
-    existing_event_data_store_arn instead - CloudTrail Lake bills by
-    ingestion volume, so avoid standing up a duplicate store just for
-    this tool if one already exists.
-  EOT
-  default     = true
-}
-
-variable "existing_event_data_store_arn" {
-  type        = string
-  description = <<-EOT
-    ARN of an existing organization-wide CloudTrail Lake event data
-    store to query instead of creating a new one. Required if
-    create_event_data_store is false. It must be organization-enabled
-    and include management events, or this tool won't see activity from
-    member accounts.
-  EOT
-  default     = ""
-}
-
-variable "event_data_store_retention_days" {
-  type        = number
-  description = <<-EOT
-    Retention period (days) for the event data store this module
-    creates. Ignored if create_event_data_store is false. Minimum
-    supported by CloudTrail Lake is 7 days; keep this comfortably above
-    activity_lookback_days.
-  EOT
-  default     = 92
 }
 
 variable "code_signing_config_arn" {
@@ -109,4 +63,45 @@ variable "reserved_concurrent_executions" {
     condition     = var.reserved_concurrent_executions >= -1
     error_message = "reserved_concurrent_executions must be -1 (unreserved) or a non-negative number."
   }
+}
+
+variable "inactivity_days" {
+  type        = number
+  description = <<-EOT
+    Days without use after which an identity or account is reported.
+    1 through 90: CloudTrail event history, which the Identity Center
+    checks read, goes back 90 days. Use 35 for FedRAMP High.
+  EOT
+  default     = 90
+
+  validation {
+    condition     = var.inactivity_days >= 1 && var.inactivity_days <= 90 && floor(var.inactivity_days) == var.inactivity_days
+    error_message = "inactivity_days must be a whole number from 1 to 90."
+  }
+}
+
+variable "member_role_name" {
+  type        = string
+  description = <<-EOT
+    Name of the read-only role the Lambda assumes in each member account.
+    Create it in every account with the member_role_policy_json output and
+    a trust policy for the lambda_role_arn output. Empty reads only this
+    account's IAM, and the report says the member accounts were not checked.
+  EOT
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[\\w+=,.@-]{0,64}$", var.member_role_name))
+    error_message = "member_role_name must be a role name, not an ARN or a path."
+  }
+}
+
+variable "ignored_role_names" {
+  type        = list(string)
+  description = <<-EOT
+    Roles whose use does not count as account activity, such as scanner
+    roles that run in every account. The member role is always ignored.
+    These roles are still reported if they themselves go unused.
+  EOT
+  default     = []
 }
