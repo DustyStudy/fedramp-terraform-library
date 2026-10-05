@@ -213,3 +213,41 @@ def test_root_use_is_not_account_activity_and_new_account_is_not_stale(fn):
     root = user_row(user="<root_account>", password_last_used=iso(1))
     assert len(module.check_account(ACCOUNT, [root], [], NOW)) == 1
     assert module.check_account({**ACCOUNT, "JoinedTimestamp": days_ago(5)}, [], [], NOW) == []
+
+
+# --- Identity Center --------------------------------------------------------
+
+USERS = {
+    "u-active": {"name": "active", "created": days_ago(500), "enabled": True},
+    "u-idle": {"name": "idle", "created": days_ago(500), "enabled": True},
+    "u-new": {"name": "new", "created": days_ago(3), "enabled": True},
+    "u-off": {"name": "off", "created": days_ago(500), "enabled": False},
+    "u-unassigned": {"name": "unassigned", "created": days_ago(500), "enabled": True},
+}
+
+
+def test_sso_user_with_no_sign_in_is_medium(fn):
+    module = fn()
+    assigned = {"u-active", "u-idle", "u-new", "u-off"}
+    findings = module.check_sso_users(USERS, assigned, {"u-active": days_ago(2)}, "999999999999", NOW)
+    assert [(f["severity"], f["check"], f["resource"]) for f in findings] == [("MEDIUM", "sso-user", "user idle")]
+    assert findings[0]["account"] == "999999999999"
+
+
+def test_sso_user_unknown_to_the_identity_store_is_skipped(fn):
+    module = fn()
+    assert module.check_sso_users(USERS, {"u-deleted"}, {}, "999999999999", NOW) == []
+
+
+def test_unused_sso_access_is_low_per_user_account_and_permission_set(fn):
+    module = fn()
+    assignments = {
+        ("u-active", "111111111111", "Admin"),
+        ("u-active", "222222222222", "Admin"),
+        ("u-off", "111111111111", "Admin"),
+    }
+    last_access = {("u-active", "111111111111", "Admin"): days_ago(4)}
+    findings = module.check_sso_access(assignments, last_access, USERS, NOW)
+    assert [(f["severity"], f["check"], f["account"], f["resource"]) for f in findings] == [
+        ("LOW", "sso-access", "222222222222", "user active with permission set Admin")
+    ]

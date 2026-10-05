@@ -187,3 +187,35 @@ def check_account(account, rows, roles, now):
         return []
     resource = f"{account['Name']} ({account['Id']})"
     return [_finding("MEDIUM", "aws-account", account["Id"], resource, f"no user, access key or role in the account: {_age(used, now)}")]
+
+
+# --- IAM Identity Center ---------------------------------------------------------
+
+
+def check_sso_users(users, assigned_user_ids, last_sign_in, account_id, now):
+    findings = []
+    for user_id in sorted(assigned_user_ids):
+        user = users.get(user_id)
+        if not user or not user["enabled"]:
+            continue
+        used = last_sign_in.get(user_id)
+        if is_stale(user["created"], used, now):
+            detail = f"has account assignments and no sign-in in the last {INACTIVITY_DAYS} days"
+            findings.append(_finding("MEDIUM", "sso-user", account_id, f"user {user['name']}", detail))
+    return findings
+
+
+def check_sso_access(assignments, last_access, users, now):
+    findings = []
+    for key in sorted(assignments):
+        user_id, account_id, permission_set = key
+        user = users.get(user_id)
+        if not user or not user["enabled"]:
+            continue
+        # Identity Center does not record when an assignment was made, so a
+        # new, unused assignment is reported.
+        if is_stale(None, last_access.get(key), now):
+            resource = f"user {user['name']} with permission set {permission_set}"
+            detail = f"assigned to this account but not used in the last {INACTIVITY_DAYS} days"
+            findings.append(_finding("LOW", "sso-access", account_id, resource, detail))
+    return findings
