@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
+from botocore.exceptions import ClientError
 
 LAMBDA = "modules/stale-account-detector/lambda/detect_stale_accounts.py"
 NOW = datetime(2026, 10, 1, tzinfo=timezone.utc)
@@ -376,3 +377,149 @@ def test_identity_center_assignments_expand_groups(fn):
         "u2": {"name": "bob", "created": None, "enabled": False},
     }
     assert assignments == {("u1", "111111111111", "Admin"), ("u2", "111111111111", "Admin")}
+
+
+# --- handler ----------------------------------------------------------------
+
+OWN = "999999999999"
+MEMBER = "111111111111"
+
+
+def org_account(account_id, status="ACTIVE"):
+    return {"Id": account_id, "Name": f"acct-{account_id}", "Status": status, "JoinedTimestamp": days_ago(900)}
+
+
+@pytest.fixture
+def handler(fn, monkeypatch):
+    """The module with AWS replaced: accounts, per-account scans and SSO are injectable."""
+
+    def _make(accounts, scans=None, sso=(), tags=None, **env):
+        module = fn(**env)
+        module.organizations = pages({"list_accounts": [{"Accounts": accounts}]})
+        module.organizations.list_tags_for_resource.side_effect = lambda ResourceId: {"Tags": (tags or {}).get(ResourceId, [])}
+        module.sts = MagicMock()
+        module.sts.get_caller_identity.return_value = {"Account": OWN, "Arn": f"arn:aws-us-gov:sts::{OWN}:assumed-role/x/y"}
+        module.sts.assume_role.return_value = {"Credentials": {"AccessKeyId": "a", "SecretAccessKey": "s", "SessionToken": "t"}}
+        module.sns = MagicMock()
+        scanned = []
+
+        def scan_account(account, iam_client, now):
+            scanned.append(account["Id"])
+            result = (scans or {}).get(account["Id"], [])
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        def scan_identity_center(own_account_id, now, deadline):
+            if isinstance(sso, Exception):
+                raise sso
+            return sso
+
+        monkeypatch.setattr(module, "scan_account", scan_account)
+        monkeypatch.setattr(module, "scan_identity_center", scan_identity_center)
+        module.scanned = scanned
+        return module
+
+    return _make
+
+
+def finding(severity="LOW", check="iam-role", account=MEMBER):
+    return {"severity": severity, "check": check, "account": account, "resource": "r", "detail": "d"}
+
+
+def test_handler_scans_every_active_account_and_counts_by_severity(handler):
+    module = handler(
+        [org_account(OWN), org_account(MEMBER), org_account("222222222222", status="SUSPENDED")],
+        scans={OWN: [finding("HIGH", "iam-access-key", OWN)], MEMBER: [finding(), finding("MEDIUM", "aws-account")]},
+        MEMBER_ROLE_NAME="StaleAccountRead",
+    )
+    result = module.lambda_handler({}, None)
+    assert module.scanned == [OWN, MEMBER]
+    assert result["accounts_scanned"] == 2
+    assert result["counts"] == {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 1, "LOW": 1}
+    assert result["errors"] == [] and result["not_checked"] == []
+    role_arn = module.sts.assume_role.call_args.kwargs["RoleArn"]
+    assert role_arn == f"arn:aws-us-gov:iam::{MEMBER}:role/StaleAccountRead"
+    message = module.sns.publish.call_args.kwargs["Message"]
+    assert "HIGH (1)" in message and "[iam-access-key]" in message
+
+
+def test_handler_skips_excluded_and_exempt_accounts(handler):
+    module = handler(
+        [org_account(OWN), org_account(MEMBER), org_account("333333333333")],
+        tags={"333333333333": [{"Key": "stale-exempt", "Value": "true"}]},
+        MEMBER_ROLE_NAME="StaleAccountRead",
+        EXCLUDED_ACCOUNT_IDS=MEMBER,
+        EXEMPT_TAG_KEY="stale-exempt",
+    )
+    module.lambda_handler({}, None)
+    assert module.scanned == [OWN]
+
+
+def test_unreadable_account_is_an_error_and_never_a_stale_account(handler):
+    denied = ClientError({"Error": {"Code": "AccessDenied", "Message": "no"}}, "AssumeRole")
+    module = handler([org_account(OWN), org_account(MEMBER)], scans={MEMBER: denied}, MEMBER_ROLE_NAME="StaleAccountRead")
+    result = module.lambda_handler({}, None)
+    assert [e["account"] for e in result["errors"]] == [MEMBER]
+    assert "AccessDenied" in result["errors"][0]["error"]
+    assert result["findings"] == [] and result["accounts_scanned"] == 1
+    assert MEMBER in module.sns.publish.call_args.kwargs["Message"]
+
+
+def test_credential_report_timeout_is_an_error_not_a_crash(handler):
+    module = handler([org_account(OWN)], scans={OWN: RuntimeError("credential report was not ready after 30 polls")})
+    result = module.lambda_handler({}, None)
+    assert result["errors"] == [{"account": OWN, "error": "credential report was not ready after 30 polls"}]
+
+
+def test_without_a_member_role_only_this_account_is_read_and_the_report_says_so(handler):
+    module = handler([org_account(OWN), org_account(MEMBER), org_account("222222222222")])
+    result = module.lambda_handler({}, None)
+    assert module.scanned == [OWN]
+    assert result["not_checked"] == ["IAM in 2 member account(s): member_role_name is not set"]
+    module.sts.assume_role.assert_not_called()
+    assert "member_role_name is not set" in module.sns.publish.call_args.kwargs["Message"]
+
+
+def test_sso_findings_are_included(handler):
+    module = handler([org_account(OWN)], sso=[finding("MEDIUM", "sso-user", OWN)])
+    assert module.lambda_handler({}, None)["counts"]["MEDIUM"] == 1
+
+
+def test_failed_event_lookup_marks_sso_not_checked(handler):
+    module = handler([org_account(OWN)], sso=ClientError({"Error": {"Code": "ThrottlingException", "Message": "slow"}}, "LookupEvents"))
+    result = module.lambda_handler({}, None)
+    assert len(result["not_checked"]) == 1 and result["not_checked"][0].startswith("sso-user and sso-access:")
+    assert "not checked" in module.sns.publish.call_args.kwargs["Message"].lower()
+
+
+def test_no_identity_center_instance_marks_sso_not_checked(handler):
+    module = handler([org_account(OWN)], sso=None)
+    result = module.lambda_handler({}, None)
+    assert result["not_checked"] == ["sso-user and sso-access: no IAM Identity Center instance in this region"]
+
+
+def test_nothing_to_say_sends_no_notification(handler):
+    module = handler([org_account(OWN)])
+    result = module.lambda_handler({}, None)
+    assert result == {"counts": {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}, "accounts_scanned": 1, "errors": [], "not_checked": [], "findings": []}
+    module.sns.publish.assert_not_called()
+
+
+def test_scan_account_applies_user_exemptions_and_all_three_checks(fn):
+    module = fn(EXEMPT_TAG_KEY="stale-exempt")
+    client = MagicMock()
+    stale_key = {"access_key_1_active": "true", "access_key_1_last_rotated": iso(300)}
+    report = [user_row(user="alice", **stale_key), user_row(user="bot", arn="arn:aws:iam::1:user/bot", **stale_key)]
+    module.credential_report = lambda c: report
+    module.list_roles = lambda c: [role()]
+    module.exempt_user_names = lambda c, rows: {"bot"}
+    findings = module.scan_account(org_account(MEMBER), client, NOW)
+    assert sorted(f["check"] for f in findings) == ["aws-account", "iam-access-key", "iam-role"]
+
+
+def test_scan_identity_center_returns_none_without_an_instance(fn):
+    module = fn()
+    module.sso_admin = MagicMock()
+    module.sso_admin.list_instances.return_value = {"Instances": []}
+    assert module.scan_identity_center(OWN, NOW, float("inf")) is None

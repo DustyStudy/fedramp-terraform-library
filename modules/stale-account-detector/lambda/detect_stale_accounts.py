@@ -38,6 +38,7 @@ from datetime import datetime, timedelta, timezone
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -340,3 +341,117 @@ def identity_center_assignments(instance):
                             user_ids = [principal] if assignment["PrincipalType"] == "USER" else group_members(principal)
                             assignments.update((user_id, account_id, name) for user_id in user_ids)
     return users, assignments
+
+
+# --- handler ---------------------------------------------------------------------
+
+
+def target_accounts():
+    accounts = []
+    for page in organizations.get_paginator("list_accounts").paginate():
+        for account in page["Accounts"]:
+            if account["Status"] != "ACTIVE" or account["Id"] in EXCLUDED_ACCOUNT_IDS:
+                continue
+            if EXEMPT_TAG_KEY and _exempt(organizations.list_tags_for_resource(ResourceId=account["Id"])["Tags"]):
+                continue
+            accounts.append(account)
+    return accounts
+
+
+def iam_client_for(account_id, own_account_id, partition):
+    if account_id == own_account_id:
+        return iam
+    if not MEMBER_ROLE_NAME:
+        return None
+    role_arn = f"arn:{partition}:iam::{account_id}:role/{MEMBER_ROLE_NAME}"
+    credentials = sts.assume_role(RoleArn=role_arn, RoleSessionName="stale-account-detector")["Credentials"]
+    return boto3.client(
+        "iam",
+        aws_access_key_id=credentials["AccessKeyId"],
+        aws_secret_access_key=credentials["SecretAccessKey"],
+        aws_session_token=credentials["SessionToken"],
+    )
+
+
+def scan_account(account, iam_client, now):
+    rows = credential_report(iam_client)
+    roles = list_roles(iam_client)
+    exempt = exempt_user_names(iam_client, rows)
+    findings = []
+    for row in rows:
+        if row["user"] not in exempt:
+            findings += check_iam_user(row, account["Id"], now)
+    for role in roles:
+        findings += check_role(role, account["Id"], now)
+    return findings + check_account(account, rows, roles, now)
+
+
+def scan_identity_center(own_account_id, now, deadline):
+    instances = sso_admin.list_instances()["Instances"]
+    if not instances:
+        return None
+    users, assignments = identity_center_assignments(instances[0])
+    last_sign_in, last_access = sso_activity(now - timedelta(days=INACTIVITY_DAYS), deadline)
+    assigned = {user_id for user_id, _, _ in assignments}
+    return check_sso_users(users, assigned, last_sign_in, own_account_id, now) + check_sso_access(
+        assignments, last_access, users, now
+    )
+
+
+def _publish(findings, errors, not_checked, counts):
+    lines = [f"Stale access report: {len(findings)} finding(s) over {INACTIVITY_DAYS} days of inactivity."]
+    for item in not_checked:
+        lines.append(f"Not checked - {item}")
+    for error in errors:
+        lines.append(f"Could not read account {error['account']}: {error['error']}")
+    for severity in SEVERITIES:
+        matching = [f for f in findings if f["severity"] == severity]
+        if matching:
+            lines.append(f"\n=== {severity} ({len(matching)}) ===")
+            lines += [f"[{f['check']}] {f['account']} {f['resource']}\n  {f['detail']}" for f in matching]
+    subject = f"Stale access: {counts['HIGH']} high, {counts['MEDIUM']} medium, {counts['LOW']} low"
+    if SNS_TOPIC_ARN:
+        sns.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject[:100], Message="\n".join(lines))
+
+
+def lambda_handler(event, context):
+    now = datetime.now(timezone.utc)
+    # Leave two minutes to finish the report after the event lookups.
+    remaining = context.get_remaining_time_in_millis() / 1000 if context else 900
+    deadline = time.monotonic() + max(remaining - 120, 0)
+
+    identity = sts.get_caller_identity()
+    own_account_id, partition = identity["Account"], identity["Arn"].split(":")[1]
+    findings, errors, not_checked = [], [], []
+    scanned = unread = 0
+
+    for account in target_accounts():
+        try:
+            client = iam_client_for(account["Id"], own_account_id, partition)
+            if client is None:
+                unread += 1
+                continue
+            findings += scan_account(account, client, now)
+            scanned += 1
+        except (ClientError, RuntimeError) as exc:
+            logger.warning("Could not read account %s: %s", account["Id"], exc)
+            errors.append({"account": account["Id"], "error": str(exc)})
+    if unread:
+        not_checked.append(f"IAM in {unread} member account(s): member_role_name is not set")
+
+    try:
+        sso_findings = scan_identity_center(own_account_id, now, deadline)
+        if sso_findings is None:
+            not_checked.append("sso-user and sso-access: no IAM Identity Center instance in this region")
+        else:
+            findings += sso_findings
+    except (ClientError, LookupTimeout) as exc:
+        logger.warning("Identity Center checks did not run: %s", exc)
+        not_checked.append(f"sso-user and sso-access: {exc}")
+
+    counts = {severity: sum(f["severity"] == severity for f in findings) for severity in SEVERITIES}
+    if findings or errors or not_checked:
+        _publish(findings, errors, not_checked, counts)
+    else:
+        logger.info("No stale access found - no notification sent")
+    return {"counts": counts, "accounts_scanned": scanned, "errors": errors, "not_checked": not_checked, "findings": findings}
