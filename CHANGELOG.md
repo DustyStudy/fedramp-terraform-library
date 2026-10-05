@@ -12,6 +12,8 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-05
+
 ### Fixed
 - The four auditor modules take `reserved_concurrent_executions` (defaults
   unchanged; `-1` reserves none). Accounts at the 10-execution Lambda
