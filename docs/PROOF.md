@@ -16,7 +16,7 @@ request with Terraform 1.14.6.
 | Check | Result |
 |---|---|
 | `terraform test` (11 modules, recounted 2026-10-04) | 58 runs, 58 passed |
-| pytest (module Lambdas, recounted 2026-10-04) | 152 passed |
+| pytest (module Lambdas, recounted 2026-10-05) | 160 passed |
 | Provider allowlist guard (`tests/python/test_provider_sources.py`, added 2026-09-30) | 38 `required_providers` declarations checked, all allowlisted; 4 guard self-tests passed |
 | `terraform validate` | 18 of 18 modules and 14 of 14 roots under `moderate/`, `high/` and `examples/` valid |
 | Checkov (`--framework terraform`, 221 resources) | 787 passed, 0 failed, 150 skipped |
