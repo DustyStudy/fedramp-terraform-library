@@ -8,35 +8,25 @@ data "archive_file" "lambda_zip" {
   output_path = "${path.module}/build/lambda.zip"
 }
 
-# ---------------------------------------------------------------------
-# CloudTrail Lake - organization-wide, management events only. Data
-# events (S3 object reads, Lambda invocations, etc.) are deliberately
-# excluded: they're high-volume, they cost more to ingest, and account
-# staleness only needs to know whether *anyone did anything* in an
-# account, which management events already capture (including
-# ConsoleLogin).
-# ---------------------------------------------------------------------
-resource "aws_cloudtrail_event_data_store" "org_activity" {
-  count = var.create_event_data_store ? 1 : 0
-
-  name                           = "${var.name_prefix}-org-activity"
-  organization_enabled           = true
-  multi_region_enabled           = true
-  retention_period               = var.event_data_store_retention_days
-  termination_protection_enabled = true
-  kms_key_id                     = aws_kms_key.log_encryption.arn
-
-  advanced_event_selector {
-    name = "Management events only"
-    field_selector {
-      field  = "eventCategory"
-      equals = ["Management"]
-    }
-  }
+locals {
+  member_read_actions = [
+    "iam:GenerateCredentialReport",
+    "iam:GetCredentialReport",
+    "iam:GetRole",
+    "iam:ListRoles",
+    "iam:ListUserTags",
+  ]
 }
 
-locals {
-  event_data_store_arn = var.create_event_data_store ? aws_cloudtrail_event_data_store.org_activity[0].arn : var.existing_event_data_store_arn
+# What the role named by member_role_name needs in each member account.
+data "aws_iam_policy_document" "member_read" {
+  statement {
+    # checkov:skip=CKV_AWS_356: account-wide list and report actions that
+    # do not support resource-level permissions.
+    sid       = "StaleAccessRead"
+    actions   = local.member_read_actions
+    resources = ["*"]
+  }
 }
 
 # ---------------------------------------------------------------------
@@ -98,24 +88,6 @@ resource "aws_kms_key" "log_encryption" {
           StringEquals = { "kms:CallerAccount" = data.aws_caller_identity.current.account_id }
         }
       },
-      {
-        # CloudTrail Lake needs this to encrypt the event data store.
-        # aws:SourceAccount (not aws:SourceArn) is used deliberately -
-        # the key must exist before the event data store does (the
-        # store references the key's ARN), so the store's own ARN isn't
-        # available yet to scope a SourceArn condition against without
-        # a circular dependency. AWS's own docs call this out as a
-        # supported, if less strict, alternative for exactly this case.
-        Sid       = "AllowCloudTrailToEncryptEventDataStore"
-        Effect    = "Allow"
-        Principal = { Service = "cloudtrail.amazonaws.com" }
-        Action    = ["kms:GenerateDataKey*", "kms:Decrypt", "kms:DescribeKey"]
-        Resource  = "*"
-        Condition = {
-          StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
-          StringLike   = { "kms:EncryptionContext:aws:cloudtrail:arn" = "arn:${data.aws_partition.current.partition}:cloudtrail:*:${data.aws_caller_identity.current.account_id}:eventdatastore/*" }
-        }
-      },
     ]
   })
 }
@@ -148,56 +120,70 @@ resource "aws_iam_role_policy" "lambda_exec" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-        ]
-        Resource = "arn:${data.aws_partition.current.partition}:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:*"
-      },
-      {
-        # checkov:skip=CKV_AWS_355: Organizations' list/read APIs for
-        # the whole org don't support resource-level scoping.
-        Effect = "Allow"
-        Action = [
-          "organizations:ListAccounts",
-          "organizations:ListTagsForResource",
-        ]
-        Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "cloudtrail:StartQuery",
-          "cloudtrail:GetQueryResults",
-          "cloudtrail:DescribeQuery",
-        ]
-        Resource = local.event_data_store_arn
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["sns:Publish"]
-        Resource = aws_sns_topic.report.arn
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["sqs:SendMessage"]
-        Resource = aws_sqs_queue.dlq.arn
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["kms:Decrypt", "kms:GenerateDataKey*"]
-        Resource = aws_kms_key.log_encryption.arn
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords"]
-        Resource = "*"
-      },
-    ]
+    Statement = concat(
+      [
+        {
+          Effect = "Allow"
+          Action = [
+            "logs:CreateLogGroup",
+            "logs:CreateLogStream",
+            "logs:PutLogEvents",
+          ]
+          Resource = "arn:${data.aws_partition.current.partition}:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:*"
+        },
+        {
+          # checkov:skip=CKV_AWS_355: organization, Identity Center and
+          # event history read APIs do not support resource-level scoping.
+          Effect = "Allow"
+          Action = [
+            "cloudtrail:LookupEvents",
+            "identitystore:ListGroupMemberships",
+            "identitystore:ListUsers",
+            "organizations:ListAccounts",
+            "organizations:ListTagsForResource",
+            "sso:DescribePermissionSet",
+            "sso:ListAccountAssignments",
+            "sso:ListAccountsForProvisionedPermissionSet",
+            "sso:ListInstances",
+            "sso:ListPermissionSets",
+          ]
+          Resource = "*"
+        },
+        {
+          # The management account's own IAM, read without assuming a role.
+          Effect   = "Allow"
+          Action   = local.member_read_actions
+          Resource = "*"
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["sns:Publish"]
+          Resource = aws_sns_topic.report.arn
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["sqs:SendMessage"]
+          Resource = aws_sqs_queue.dlq.arn
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["kms:Decrypt", "kms:GenerateDataKey*"]
+          Resource = aws_kms_key.log_encryption.arn
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords"]
+          Resource = "*"
+        },
+      ],
+      var.member_role_name == "" ? [] : [
+        {
+          Effect   = "Allow"
+          Action   = ["sts:AssumeRole"]
+          Resource = "arn:${data.aws_partition.current.partition}:iam::*:role/${var.member_role_name}"
+        },
+      ]
+    )
   })
 }
 
@@ -205,15 +191,15 @@ resource "aws_iam_role_policy" "lambda_exec" {
 # Lambda
 # ---------------------------------------------------------------------
 resource "aws_lambda_function" "detector" {
-  # checkov:skip=CKV_AWS_117: Control-plane only Lambda (Organizations/
-  # CloudTrail Lake/SNS APIs over public AWS endpoints) - no customer
-  # VPC resources touched.
+  # checkov:skip=CKV_AWS_117: Control-plane only Lambda (Organizations,
+  # IAM, Identity Center, CloudTrail and SNS APIs over public AWS
+  # endpoints) - no customer VPC resources touched.
   function_name                  = "${var.name_prefix}-detect-stale-accounts"
-  description                    = "Scans the org for accounts with no CloudTrail activity in N days."
+  description                    = "Reports IAM, Identity Center and account access that has not been used in N days."
   role                           = aws_iam_role.lambda_exec.arn
   handler                        = "detect_stale_accounts.lambda_handler"
   runtime                        = "python3.12"
-  timeout                        = 300
+  timeout                        = 900
   memory_size                    = 256
   reserved_concurrent_executions = var.reserved_concurrent_executions
   filename                       = data.archive_file.lambda_zip.output_path
@@ -231,13 +217,14 @@ resource "aws_lambda_function" "detector" {
 
   environment {
     variables = {
-      SNS_TOPIC_ARN          = aws_sns_topic.report.arn
-      EVENT_DATA_STORE_ARN   = local.event_data_store_arn
-      ACTIVITY_LOOKBACK_DAYS = tostring(var.activity_lookback_days)
-      EXCLUDED_ACCOUNT_IDS   = join(",", var.excluded_account_ids)
-      EXEMPT_TAG_KEY         = var.exempt_tag_key
-      EXEMPT_TAG_VALUE       = var.exempt_tag_value
-      AWS_USE_FIPS_ENDPOINT  = tostring(var.use_fips_endpoint)
+      SNS_TOPIC_ARN         = aws_sns_topic.report.arn
+      INACTIVITY_DAYS       = tostring(var.inactivity_days)
+      MEMBER_ROLE_NAME      = var.member_role_name
+      IGNORED_ROLE_NAMES    = join(",", var.ignored_role_names)
+      EXCLUDED_ACCOUNT_IDS  = join(",", var.excluded_account_ids)
+      EXEMPT_TAG_KEY        = var.exempt_tag_key
+      EXEMPT_TAG_VALUE      = var.exempt_tag_value
+      AWS_USE_FIPS_ENDPOINT = tostring(var.use_fips_endpoint)
     }
   }
 }

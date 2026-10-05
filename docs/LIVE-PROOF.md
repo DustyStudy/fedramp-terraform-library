@@ -1,7 +1,7 @@
 # Live proof
 
-Twelve of the library's 23 modules were deployed to a real AWS Organization
-on 2026-10-04 and checked with real API calls. This page records the
+Thirteen of the library's 23 modules were deployed to a real AWS Organization
+on 2026-10-04 and 2026-10-05 and checked with real API calls. This page records the
 setup, the results, what the run changed in the library, and what it did
 not cover. Account IDs are replaced with `111122223333`.
 
@@ -64,7 +64,7 @@ In the management account:
 | Module | Check | Result |
 |---|---|---|
 | `identity-center-access-auditor` | The deployed Lambda audited the organization's real Identity Center instance in 1.7 s and returned one over-privileged permission set and three direct user assignments | pass |
-| `stale-account-detector` | Deploy | **not deployable** (see below) |
+| `stale-account-detector` 2.0 | Deployed on 2026-10-05 with a one-day window. In 3.2 s it read IAM in 2 accounts, listed the 2 accounts that had no member role as errors, and ran both Identity Center checks against real event history. It reported 1 unused console password and 3 unused roles, each of which matched the account's real state, and no unused Identity Center access: all 3 assignments had been used that day. [Result](proof/stale-access-run.json) | pass |
 
 ### FIPS endpoints
 
@@ -101,10 +101,10 @@ adds this page.
   account administrator. Where an SCP protects that setting, apply
   `account-baseline` with an exempt role, or set the block for the whole
   organization with an S3 policy in AWS Organizations.
-- **`stale-account-detector`.** AWS rejected the event data store:
-  "CloudTrail Lake is no longer accepting new customers." The module works
-  only in organizations that already use CloudTrail Lake. Its README now
-  says so.
+- **`stale-account-detector` 1.x.** AWS rejected its event data store:
+  "CloudTrail Lake is no longer accepting new customers." The module was
+  redesigned as 2.0, which reads IAM last-used data and CloudTrail event
+  history, and deployed on 2026-10-05 (see Results).
 - **Cross-account trust in a single account.** `trust-policy-auditor`
   compares trusted accounts with the organization's account list. Deployed
   in a member account it cannot read that list, so it reported nothing for
@@ -129,6 +129,9 @@ adds this page.
   organization-level `guardduty-org`, `security-hub-org`, `org-cloudtrail`,
   `org-governance` and `org-scp-boundary`, which would have replaced
   settings the organization already manages elsewhere.
+- **The stale-account detector's window.** It ran with one day of
+  inactivity, so its findings show that the checks work, not which access
+  is really unused. The member role existed in one account only.
 - **GovCloud.** The run was in the commercial partition.
 - **Data-plane behavior.** Nothing connected to the database, pushed an
   image, ran a task or sent traffic through the web ACL. Those modules were

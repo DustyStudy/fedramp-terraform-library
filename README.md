@@ -14,11 +14,11 @@ High**, or **FedRAMP 20x** authorization.
 - **Approach:** 18 hardened modules composed into Moderate and High
   tracks, plus a map from the 10 FedRAMP 20x KSI clusters to those modules.
   FIPS endpoints and partition-aware ARNs for GovCloud.
-- **Verification:** 43 `terraform test` runs assert the rendered IAM and
-  bucket policies at plan time, and 25 pytest tests cover the module
+- **Verification:** 58 `terraform test` runs assert the rendered IAM and
+  bucket policies at plan time, and 160 pytest tests cover the module
   Lambdas. Checkov, Trivy and Gitleaks run on every PR. See
   [what is verified, and what is not](docs/PROOF.md).
-- **Live use:** twelve modules were deployed to a real 4-account
+- **Live use:** thirteen modules were deployed to a real 4-account
   organization and checked with real API calls, including alarm,
   finding-routing and auditor paths end to end. See the
   [live proof](docs/LIVE-PROOF.md). Earlier, a read-only
@@ -108,7 +108,7 @@ docs/                 Control-to-module cross-reference
 | `org-governance` | Workload-perimeter SCP, AI-services opt-out policy, centralized backup policy |
 | `org-scp-boundary` | Region-lock SCP, security-service protection, insecure-transport deny, optional IMDSv2 enforcement |
 | `rds-postgres-hardened` | Multi-AZ PostgreSQL with enforced TLS, KMS encryption, managed master password |
-| `stale-account-detector` | Weekly CloudTrail Lake query for organization accounts with no activity in N days |
+| `stale-account-detector` | Reports unused IAM credentials, roles, Identity Center access and idle accounts across the organization |
 | `ssm-patching-hardened` | Automated patch baseline, weekly maintenance window, KMS-encrypted patch logs |
 | `waf-hardened` | Regional WAFv2 with AWS-managed rule groups, rate limiting, KMS-encrypted logging |
 | `iam-access-control` | Access Analyzer, permission boundary, enforced-MFA group, root usage alerting |
