@@ -143,9 +143,10 @@ adds this page.
 
 From the Prowler scan of the deployed modules:
 
-- Add an `aws:SourceAccount` condition to the service-role trust policies
-  in `network-perimeter-vpc`, `rds-postgres-hardened`,
-  `trust-policy-auditor` and `rds-access-auditor`.
+- Re-run the proof stacks to confirm the `aws:SourceAccount` conditions
+  added to the service-role trust policies after this run (flow logs, RDS
+  Enhanced Monitoring and the four auditor Lambda roles). They are tested
+  at plan time only.
 - Give the interface endpoints in `fips-vpc-endpoints` an endpoint policy
   limited to the organization.
 - Move `rds-postgres-hardened` off PostgreSQL 16.3, which RDS enrolls in

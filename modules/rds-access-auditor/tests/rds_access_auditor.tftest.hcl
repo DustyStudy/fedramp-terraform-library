@@ -167,3 +167,12 @@ run "malformed_region_is_rejected" {
 
   expect_failures = [var.regions]
 }
+
+run "exec_role_trust_limited_to_this_account" {
+  command = plan
+
+  assert {
+    condition     = jsondecode(aws_iam_role.lambda_exec.assume_role_policy).Statement[0].Condition.StringEquals["aws:SourceAccount"] == "123456789012"
+    error_message = "The Lambda execution role trust must carry an aws:SourceAccount condition for this account."
+  }
+}

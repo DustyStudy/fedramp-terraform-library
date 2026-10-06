@@ -12,6 +12,20 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Security
+- Service-role trust policies now carry confused-deputy conditions, so the
+  service can assume the role only for a resource in the deploying account:
+  - `network-perimeter-vpc` (VPC Flow Logs role): `aws:SourceAccount` and
+    `aws:SourceArn` for flow logs in this account and region.
+  - `rds-postgres-hardened` (Enhanced Monitoring role): `aws:SourceAccount`
+    and `aws:SourceArn` for this DB instance.
+  - `trust-policy-auditor`, `rds-access-auditor`,
+    `identity-center-access-auditor` and `stale-account-detector` (Lambda
+    execution roles): `aws:SourceAccount`.
+
+  Verified by plan-time tests only. The Lambda condition in particular has
+  not been applied to a live account yet.
+
 ## [2.0.0] - 2026-10-05
 
 ### Fixed
