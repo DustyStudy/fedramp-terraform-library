@@ -1,9 +1,11 @@
 locals {
   account_id = data.aws_caller_identity.current.account_id
+  region     = data.aws_region.current.name
   partition  = data.aws_partition.current.partition
 }
 
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 data "aws_partition" "current" {}
 
 # Customer-Managed KMS Key for RDS Storage & Performance Insights
@@ -98,6 +100,19 @@ data "aws_iam_policy_document" "rds_monitoring_assume" {
     principals {
       type        = "Service"
       identifiers = ["monitoring.rds.amazonaws.com"]
+    }
+
+    # Confused-deputy guard: Enhanced Monitoring can assume this role only
+    # for this DB instance.
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:${local.partition}:rds:${local.region}:${local.account_id}:db:${var.db_name}"]
     }
   }
 }

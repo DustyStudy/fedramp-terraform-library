@@ -69,6 +69,19 @@ data "aws_iam_policy_document" "flow_logs_assume" {
       type        = "Service"
       identifiers = ["vpc-flow-logs.amazonaws.com"]
     }
+
+    # Confused-deputy guard: the flow logs service can assume this role only
+    # for a flow log that this account owns in this region.
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:${local.partition}:ec2:${local.region}:${local.account_id}:vpc-flow-log/*"]
+    }
   }
 }
 

@@ -110,6 +110,11 @@ resource "aws_iam_role" "lambda_exec" {
       Effect    = "Allow"
       Principal = { Service = "lambda.amazonaws.com" }
       Action    = "sts:AssumeRole"
+      # Confused-deputy guard: Lambda can assume this role only for a
+      # function in this account.
+      Condition = {
+        StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
+      }
     }]
   })
 }

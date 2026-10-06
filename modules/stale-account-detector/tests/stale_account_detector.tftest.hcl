@@ -174,3 +174,12 @@ run "topic_uses_the_module_cmk" {
     error_message = "The SNS topic must be encrypted with the module's customer-managed key, not aws/sns."
   }
 }
+
+run "exec_role_trust_limited_to_this_account" {
+  command = plan
+
+  assert {
+    condition     = jsondecode(aws_iam_role.lambda_exec.assume_role_policy).Statement[0].Condition.StringEquals["aws:SourceAccount"] == "123456789012"
+    error_message = "The Lambda execution role trust must carry an aws:SourceAccount condition for this account."
+  }
+}
