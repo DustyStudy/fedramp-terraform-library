@@ -12,6 +12,8 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-10-06
+
 ### Added
 - Live data-plane proof (`proof/member/dataplane.tf`,
   `dataplane_probe.py`): an image pushed to `ecr-hardened` and a second
