@@ -1,7 +1,9 @@
 # Live proof
 
 Thirteen of the library's 23 modules were deployed to a real AWS Organization
-on 2026-10-04 and 2026-10-05 and checked with real API calls. This page records the
+on 2026-10-04 and 2026-10-05 and checked with real API calls. A
+[later run](#later-run-data-plane) used four of them: it pushed an image,
+sent requests through the web ACL and connected to the database. This page records the
 setup, the results, what the run changed in the library, and what it did
 not cover. Account IDs are replaced with `111122223333`.
 
@@ -108,7 +110,58 @@ resources.
 | `rds-postgres-hardened` Enhanced Monitoring role | `aws:SourceAccount`, `aws:SourceArn` of the DB instance | Monitoring stream in `RDSOSMetrics` | Streams for the primary and the standby, both receiving events |
 
 The other three auditor modules use the same Lambda trust statement and
-were not deployed in this run.
+were not deployed in this run. `rds-access-auditor` was invoked under it
+in the [data-plane run](#later-run-data-plane).
+
+## Later run: data plane
+
+On 2026-10-07 the member stack was applied again with two additions, so
+that the modules could be used and not only read back: a REST API with a
+mock method attached to the web ACL, and a function inside the VPC that
+connects to the hardened database
+([`proof/member/dataplane.tf`](../proof/member/dataplane.tf)).
+[`dataplane_probe.py`](../proof/member/dataplane_probe.py) ran 13 checks
+and all 13 passed. Its raw output is in
+[`proof/dataplane-run.json`](proof/dataplane-run.json).
+
+| Module | Check | Result |
+|---|---|---|
+| `ecr-hardened` | An image was pushed under the tag `v1` | pass |
+| `ecr-hardened` | A second, different image under `v1` was rejected with `ImageTagAlreadyExistsException` | pass |
+| `ecr-hardened` | The push started a scan | pass (see below) |
+| `waf-hardened` | A plain request through the web ACL returned 200 | pass |
+| `waf-hardened` | A cross-site scripting query string returned 403 (common rule set) | pass |
+| `waf-hardened` | A Log4j lookup in a header returned 403 (known bad inputs) | pass |
+| `waf-hardened` | The log recorded allowed and blocked requests, with the `authorization` value written as `REDACTED` and the bearer value sent absent from the log | pass |
+| `rds-postgres-hardened` | A connection without TLS was refused: `no pg_hba.conf entry ... no encryption` | pass |
+| `rds-postgres-hardened` | A TLS connection verified against the RDS certificate bundle was accepted, on TLS 1.3 with `TLS_AES_256_GCM_SHA384` | pass |
+| `rds-postgres-hardened` | A database user in `rds_iam` signed in with an IAM token | pass |
+| `rds-postgres-hardened` | The same user was refused with a password | pass |
+| `rds-postgres-hardened` | The same token was refused without TLS | pass |
+| `rds-access-auditor` | All five queries of `audit_postgres_roles.sql` ran on RDS PostgreSQL 16.3, which until now had run only against a PostgreSQL container in CI | pass |
+
+The image was built and pushed with the ECR API, without Docker, and holds
+one text file. The scan that the push started therefore ended as `FAILED`
+with `UnsupportedImageError`: there is no operating system in it to scan.
+That shows scan-on-push fires; it does not show findings on a real image.
+
+The modules needed no changes. Two things about probing them are worth
+knowing:
+
+- A PostgreSQL driver may fall back to TLS on its own. `pg8000` treats
+  `ssl_context=None` as "use TLS if the server offers it", so the first
+  attempt at a connection without TLS succeeded, over TLS. The probe
+  passes `False`, which sends no TLS request at all.
+- `SHOW rds.force_ssl` is not available inside the engine. The setting is
+  read from the parameter group, and its effect from the refused
+  connection.
+
+`probe.py` was run again on the same deployment: 16 of 17 checks passed,
+the exception being the account-level S3 public access block described
+under [What the run could not do](#what-the-run-could-not-do). That run
+invoked the `rds-access-auditor` function under the `aws:SourceAccount`
+trust condition added on 2026-10-06, with the same three findings on the
+weak fixture and none on the hardened instance.
 
 ## What the run could not do
 
@@ -150,9 +203,10 @@ were not deployed in this run.
   inactivity, so its findings show that the checks work, not which access
   is really unused. The member role existed in one account only.
 - **GovCloud.** The run was in the commercial partition.
-- **Data-plane behavior.** Nothing connected to the database, pushed an
-  image, ran a task or sent traffic through the web ACL. Those modules were
-  checked by reading their configuration back from AWS.
+- **The rest of the data plane.** No ECS task was run, the web ACL's rate
+  limit and IP reputation rules were not triggered, and no image with an
+  operating system was scanned. The database, the repository and the two
+  managed rule groups are covered by the [later run](#later-run-data-plane).
 - **The Moderate and High roots** under `moderate/`, `high/` and
   `examples/` were not applied as a whole.
 
@@ -182,6 +236,11 @@ export AWS_REGION=us-east-1
 terraform init && terraform plan -out=proof.tfplan && terraform apply proof.tfplan
 terraform output -json probe > probe-inputs.json
 python probe.py probe-inputs.json > member-run.json
+
+# Data plane (build the function package before the plan)
+./dataplane/build.sh
+terraform output -json dataplane > dataplane-inputs.json
+python dataplane_probe.py dataplane-inputs.json > dataplane-run.json
 
 # Management account, Identity Center home region
 cd ../management

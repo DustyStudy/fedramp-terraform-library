@@ -1,0 +1,158 @@
+{
+  "run_at": "2026-10-07T02:26:50+00:00",
+  "region": "us-east-1",
+  "passed": 13,
+  "total": 13,
+  "results": [
+    {
+      "module": "ecr-hardened",
+      "check": "An image can be pushed",
+      "passed": true,
+      "observed": {
+        "tag": "v1",
+        "digest": "sha256:cfea1f62a9fcab18a4871739848f3436d9abf38a1ab76911f19aaba881b38553"
+      }
+    },
+    {
+      "module": "ecr-hardened",
+      "check": "A second image under the same tag is rejected",
+      "passed": true,
+      "observed": "ImageTagAlreadyExistsException"
+    },
+    {
+      "module": "ecr-hardened",
+      "check": "The push started a scan",
+      "passed": true,
+      "observed": {
+        "status": "FAILED",
+        "description": "UnsupportedImageError: The operating system and/or package manager are not supported."
+      }
+    },
+    {
+      "module": "waf-hardened",
+      "check": "A plain request passes",
+      "passed": true,
+      "observed": {
+        "http_status": 200
+      }
+    },
+    {
+      "module": "waf-hardened",
+      "check": "A cross-site scripting query string is blocked (common rule set)",
+      "passed": true,
+      "observed": {
+        "http_status": 403
+      }
+    },
+    {
+      "module": "waf-hardened",
+      "check": "A Log4j lookup in a header is blocked (known bad inputs)",
+      "passed": true,
+      "observed": {
+        "http_status": 403
+      }
+    },
+    {
+      "module": "waf-hardened",
+      "check": "The log records requests with the authorization header redacted",
+      "passed": true,
+      "observed": {
+        "log_records": 9,
+        "actions_logged": [
+          "ALLOW",
+          "BLOCK"
+        ],
+        "authorization_values_logged": [
+          "REDACTED"
+        ],
+        "bearer_value_found_in_log": false
+      }
+    },
+    {
+      "module": "rds-postgres-hardened",
+      "check": "A connection without TLS is refused",
+      "passed": true,
+      "observed": {
+        "accepted": false,
+        "observed": "DatabaseError: {'S': 'FATAL', 'V': 'FATAL', 'C': '28000', 'M': 'no pg_hba.conf entry for host \"10.x.x.x\", user \"dbadmin\", database \"postgres\", no encryption', 'F': 'auth.c', 'L': '542', 'R': 'ClientAuthentication'}"
+      }
+    },
+    {
+      "module": "rds-postgres-hardened",
+      "check": "A connection with TLS, verified against the RDS certificate bundle, is accepted",
+      "passed": true,
+      "observed": {
+        "accepted": true,
+        "observed": [
+          [
+            "TLSv1.3",
+            "TLS_AES_256_GCM_SHA384"
+          ]
+        ]
+      }
+    },
+    {
+      "module": "rds-postgres-hardened",
+      "check": "A database user in rds_iam signs in with an IAM token",
+      "passed": true,
+      "observed": {
+        "accepted": true,
+        "observed": [
+          [
+            "proof_iam"
+          ]
+        ]
+      }
+    },
+    {
+      "module": "rds-postgres-hardened",
+      "check": "The same user is refused with a password",
+      "passed": true,
+      "observed": {
+        "accepted": false,
+        "observed": "DatabaseError: {'S': 'FATAL', 'V': 'FATAL', 'C': '28000', 'M': 'PAM authentication failed for user \"proof_iam\"', 'F': 'auth.c', 'L': '326', 'R': 'auth_failed'}"
+      }
+    },
+    {
+      "module": "rds-postgres-hardened",
+      "check": "The same token is refused without TLS",
+      "passed": true,
+      "observed": {
+        "accepted": false,
+        "observed": "DatabaseError: {'S': 'FATAL', 'V': 'FATAL', 'C': '28000', 'M': 'pg_hba.conf rejects connection for host \"10.x.x.x\", user \"proof_iam\", database \"postgres\", no encryption', 'F': 'auth.c', 'L': '473', 'R': 'ClientAuthentication'}"
+      }
+    },
+    {
+      "module": "rds-access-auditor",
+      "check": "audit_postgres_roles.sql runs on RDS PostgreSQL",
+      "passed": true,
+      "observed": [
+        {
+          "query": "SELECT r.rolname, r.rolcanlogin AS can_login, pg_has_role(r.oid, 'rds_superuser'",
+          "ran": true,
+          "rows": 1
+        },
+        {
+          "query": "SELECT r.rolname, pg_has_role(r.oid, 'pg_read_all_data', 'MEMBER') AS read_all, ",
+          "ran": true,
+          "rows": 1
+        },
+        {
+          "query": "SELECT r.rolname, coalesce(array_to_string(s.setconfig, ', '), '(none)') AS role",
+          "ran": true,
+          "rows": 0
+        },
+        {
+          "query": "SELECT n.nspname AS schema FROM pg_namespace n WHERE has_schema_privilege('publi",
+          "ran": true,
+          "rows": 0
+        },
+        {
+          "query": "SELECT r.rolname FROM pg_roles r WHERE r.rolcanlogin AND r.rolvaliduntil IS NULL",
+          "ran": true,
+          "rows": 0
+        }
+      ]
+    }
+  ]
+}
