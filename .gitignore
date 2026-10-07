@@ -52,3 +52,5 @@ Thumbs.db
 
 # Live proof inputs (hold account IDs)
 probe-inputs.json
+dataplane-inputs.json
+proof/member/dataplane/db-client.zip

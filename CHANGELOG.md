@@ -12,6 +12,15 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Added
+- Live data-plane proof (`proof/member/dataplane.tf`,
+  `dataplane_probe.py`): an image pushed to `ecr-hardened` and a second
+  one refused under the same tag, requests allowed and blocked by
+  `waf-hardened` with the authorization header redacted in its log, and
+  `rds-postgres-hardened` refusing connections without TLS and accepting
+  IAM tokens. `audit_postgres_roles.sql` ran on RDS for the first time.
+  13 of 13 checks passed and no module changed (`docs/LIVE-PROOF.md`).
+
 ## [2.0.1] - 2026-10-06
 
 ### Security
