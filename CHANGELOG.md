@@ -12,6 +12,8 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-06
+
 ### Security
 - Service-role trust policies now carry confused-deputy conditions, so the
   service can assume the role only for a resource in the deploying account:
