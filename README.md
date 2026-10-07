@@ -11,11 +11,11 @@ High**, or **FedRAMP 20x** authorization.
 
 - **Problem:** FedRAMP control implementations get rebuilt by hand for every
   system, and a plan that passes `terraform validate` can still grant too much.
-- **Approach:** 18 hardened modules composed into Moderate and High
+- **Approach:** 23 hardened modules composed into Moderate and High
   tracks, plus a map from the 10 FedRAMP 20x KSI clusters to those modules.
   FIPS endpoints and partition-aware ARNs for GovCloud.
-- **Verification:** 58 `terraform test` runs assert the rendered IAM and
-  bucket policies at plan time, and 160 pytest tests cover the module
+- **Verification:** 62 `terraform test` runs assert the rendered IAM and
+  bucket policies at plan time, and 209 pytest tests cover the module
   Lambdas. Checkov, Trivy and Gitleaks run on every PR. See
   [what is verified, and what is not](docs/PROOF.md).
 - **Live use:** thirteen modules were deployed to a real 4-account

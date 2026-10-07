@@ -7,7 +7,8 @@ numbers from the last run, and the gaps. Thirteen modules have also been
 deployed to a real organization and probed with real API calls; that run
 is in [LIVE-PROOF.md](LIVE-PROOF.md).
 
-Numbers are from a local run on 2026-09-29 at commit `01496ee`
+Numbers are from 2026-10-06 at commit `9f1c85b`. `terraform test` and pytest
+counts come from that commit's CI run; the rest are from a local run
 (Terraform 1.16.4, Checkov 3.3.20). CI runs the same checks on every pull
 request with Terraform 1.14.6.
 
@@ -15,16 +16,16 @@ request with Terraform 1.14.6.
 
 | Check | Result |
 |---|---|
-| `terraform test` (11 modules, recounted 2026-10-04) | 58 runs, 58 passed |
-| pytest (module Lambdas, recounted 2026-10-05) | 160 passed |
-| Provider allowlist guard (`tests/python/test_provider_sources.py`, added 2026-09-30) | 38 `required_providers` declarations checked, all allowlisted; 4 guard self-tests passed |
-| `terraform validate` | 18 of 18 modules and 14 of 14 roots under `moderate/`, `high/` and `examples/` valid |
-| Checkov (`--framework terraform`, 221 resources) | 787 passed, 0 failed, 150 skipped |
+| `terraform test` (11 modules, CI run of 2026-10-06 at `9f1c85b`) | 62 runs, 62 passed |
+| pytest (module Lambdas, CI run of 2026-10-06 at `9f1c85b`) | 209 passed |
+| Provider allowlist guard (`tests/python/test_provider_sources.py`, added 2026-09-30) | 45 `required_providers` declarations checked, all allowlisted; 4 guard self-tests passed |
+| `terraform validate` | 23 of 23 modules and 14 of 14 roots under `moderate/`, `high/` and `examples/` valid |
+| Checkov (`--framework terraform`, 257 resources) | 908 passed, 0 failed, 204 skipped |
 | Trivy config scan, Gitleaks, `terraform fmt`, TFLint | Run in CI on every PR |
 
 Every Checkov skip is an inline `checkov:skip=<ID>: <reason>` comment next
 to the resource, so each exception is reviewable in the code. The most
-common are `CKV_AWS_109`, `CKV_AWS_111` and `CKV_AWS_356` (20 each),
+common are `CKV_AWS_356` (23), `CKV_AWS_109` and `CKV_AWS_111` (20 each),
 mostly on KMS key policies, which must grant the account root `kms:*` on
 `*`.
 
@@ -87,8 +88,9 @@ checkov -d . --framework terraform
   which were not. For SCP and permissions-boundary behavior tested with
   real API calls, see the live proof in
   [aws-org-guardrails](https://github.com/DustyStudy/aws-org-guardrails/blob/main/docs/PROOF.md).
-- **9 of 18 modules have no `terraform test` suite yet:** `ecr-hardened`,
+- **12 of 23 modules have no `terraform test` suite yet:** `ecr-hardened`,
   `ecs-fargate-hardened`, `eks-hardened`, `fips-vpc-endpoints`,
+  `iam-access-control`, `incident-notifications`, `logging-monitoring`,
   `network-perimeter-vpc`, `org-governance`, `rds-postgres-hardened`,
   `ssm-patching-hardened` and `waf-hardened`. They are covered by
   `terraform validate`, Checkov, Trivy and TFLint only.
