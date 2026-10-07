@@ -93,6 +93,23 @@ adds this page.
 | IAM Identity Center has no FIPS endpoints in the commercial partition: `sso-fips.<region>` and `identitystore-fips.<region>` do not resolve | The Identity Center auditor's `sso-admin` and `identitystore` clients no longer follow `AWS_USE_FIPS_ENDPOINT`. Its other clients still do. |
 | PostgreSQL 15 and later already default `rds.force_ssl` to 1, so RDS reports the parameter as `pending-reboot` and every later plan showed the parameter group as changed | `rds-postgres-hardened` sets `apply_method = "pending-reboot"` on that parameter. The next plan was empty. |
 
+## Later run: service-role trust conditions
+
+On 2026-10-06 the service-role trust policies gained `aws:SourceAccount`
+and `aws:SourceArn` conditions. Three modules from the member stack were
+applied again to the same sandbox account, with `-target`, to check that
+each service can still assume its role. Terraform created all 30 planned
+resources.
+
+| Role | Condition read back from IAM | Check | Result |
+|---|---|---|---|
+| `trust-policy-auditor` Lambda execution role | `aws:SourceAccount` | Invoked the function | Status 200, one account scanned, no errors |
+| `network-perimeter-vpc` flow logs role | `aws:SourceAccount`, `aws:SourceArn` like `vpc-flow-log/*` | Flow log status, then log streams | `ACTIVE`, delivery `SUCCESS`, streams written for two network interfaces |
+| `rds-postgres-hardened` Enhanced Monitoring role | `aws:SourceAccount`, `aws:SourceArn` of the DB instance | Monitoring stream in `RDSOSMetrics` | Streams for the primary and the standby, both receiving events |
+
+The other three auditor modules use the same Lambda trust statement and
+were not deployed in this run.
+
 ## What the run could not do
 
 - **S3 account-level public access block.** The organization's own SCP
@@ -143,10 +160,6 @@ adds this page.
 
 From the Prowler scan of the deployed modules:
 
-- Re-run the proof stacks to confirm the `aws:SourceAccount` conditions
-  added to the service-role trust policies after this run (flow logs, RDS
-  Enhanced Monitoring and the four auditor Lambda roles). They are tested
-  at plan time only.
 - Give the interface endpoints in `fips-vpc-endpoints` an endpoint policy
   limited to the organization.
 - Move `rds-postgres-hardened` off PostgreSQL 16.3, which RDS enrolls in
