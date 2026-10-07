@@ -23,8 +23,10 @@ FedRAMP expects.
     `identity-center-access-auditor` and `stale-account-detector` (Lambda
     execution roles): `aws:SourceAccount`.
 
-  Verified by plan-time tests only. The Lambda condition in particular has
-  not been applied to a live account yet.
+  Applied to a real account on 2026-10-06: the auditor Lambda ran, flow
+  logs were delivered and Enhanced Monitoring published, each through its
+  conditioned role. See `docs/LIVE-PROOF.md`. The other three auditor
+  roles use the same Lambda trust and were not deployed in that run.
 
 ## [2.0.0] - 2026-10-05
 
