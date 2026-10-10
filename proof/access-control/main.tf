@@ -38,8 +38,8 @@ module "iam_access_control" {
 }
 
 # A role capped by the developer permissions boundary. Its identity policy
-# is read-only access to everything, so whatever the probe is refused is
-# refused by the boundary. Only principals of this account can assume it.
+# allows the three read calls the probe makes, so the two that are refused
+# are refused by the boundary. Only principals of this account can assume it.
 resource "aws_iam_role" "boundary_fixture" {
   name                 = "ftlproof-boundary-fixture"
   permissions_boundary = module.iam_access_control.permission_boundary_arn
@@ -55,9 +55,18 @@ resource "aws_iam_role" "boundary_fixture" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "boundary_fixture" {
-  role       = aws_iam_role.boundary_fixture.name
-  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/ReadOnlyAccess"
+resource "aws_iam_role_policy" "boundary_fixture" {
+  name = "probe-read-calls"
+  role = aws_iam_role.boundary_fixture.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:ListBucket", "ec2:DescribeVpcs", "iam:ListRoles"]
+      Resource = "*"
+    }]
+  })
 }
 
 output "probe" {

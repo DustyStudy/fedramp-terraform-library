@@ -219,9 +219,10 @@ data "aws_iam_policy_document" "patch_log_writer" {
   }
 
   statement {
-    sid       = "EncryptPatchOutput"
-    effect    = "Allow"
-    actions   = ["kms:GenerateDataKey"]
+    sid    = "EncryptPatchOutput"
+    effect = "Allow"
+    # Decrypt is for multipart uploads, which S3 uses for output over 5 MiB.
+    actions   = ["kms:GenerateDataKey", "kms:Decrypt"]
     resources = [aws_kms_key.ssm.arn]
   }
 }

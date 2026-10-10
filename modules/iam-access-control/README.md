@@ -27,6 +27,10 @@ module "iam_access_control" {
 - The require-MFA group governs IAM *users* only — SSO/Identity Center
   users authenticate through your IdP, so their MFA enforcement lives
   there, not in this module.
+- The boundary allows `lambda:*` on this account's functions. A role under
+  it whose identity policy also allows updating a function can run code as
+  that function's execution role, so scope the identity policy to the
+  team's own functions.
 - The permission boundary is a ceiling, not a grant — attach it via
   `permissions_boundary` when creating roles/users; it doesn't do anything
   by itself until referenced.

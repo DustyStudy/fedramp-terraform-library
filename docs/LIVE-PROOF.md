@@ -180,8 +180,9 @@ deployed, one Moderate stack, and one statement of `org-cloudtrail`:
   log group, without a trail.
 - [`proof/access-control`](../proof/access-control/main.tf), in the
   management account: `iam-access-control`, and a role whose permissions
-  boundary is the module's developer boundary and whose identity policy is
-  `ReadOnlyAccess`.
+  boundary is the module's developer boundary. In the run its identity
+  policy was `ReadOnlyAccess`; the stack now allows only the three calls
+  the probe makes.
 
 [`controls_probe.py`](../proof/controls_probe.py) ran 12 checks. On the
 final run all 12 passed. Raw output:
@@ -210,7 +211,9 @@ Each of these came from the run and is fixed in the same change that adds
 this section. The patching stack was probed three times:
 [run 1](proof/patching-run-1.json) with no extra policy on the instance,
 [run 2](proof/patching-run-2.json) with the new one, and run 3 after the
-key policy was trimmed.
+key policy was trimmed. The error texts quoted here come from the
+Terraform apply output and from the maintenance-window task invocation's
+status details; the probe output records only that the check failed.
 
 | Found | Change |
 |---|---|
@@ -231,6 +234,8 @@ used the flow-log key.
   and the log group were created.
 - **Installing a patch.** The node had nothing missing, so the window's
   `Install` task succeeded without installing anything.
+- **Patch output over 5 MiB.** S3 uploads it in parts, which also needs
+  `kms:Decrypt`. The writer policy grants it; the run's output was small.
 - **Actions with no resource to name.** `s3:ListAllMyBuckets` and similar
   list calls were not tried under the developer boundary.
 - **`iam-access-control` in a member account.** The organization's SCP

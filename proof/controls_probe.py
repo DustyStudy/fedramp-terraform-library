@@ -255,7 +255,7 @@ def boundary_allows_s3_in_this_account():
 
 def boundary_refuses_other_services():
     capped = _as_boundary_fixture()
-    # The fixture's identity policy is ReadOnlyAccess, so these refusals come
+    # The fixture's identity policy allows both calls, so these refusals come
     # from the boundary: neither service is in its allow list.
     seen = {
         "ec2:DescribeVpcs": _outcome(lambda: capped.client("ec2").describe_vpcs()),
