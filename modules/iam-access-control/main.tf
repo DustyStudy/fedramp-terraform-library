@@ -90,7 +90,7 @@ resource "aws_accessanalyzer_analyzer" "external_access" {
 # Unused Access Analyzer
 resource "aws_accessanalyzer_analyzer" "unused_access" {
   analyzer_name = "fedramp-moderate-unused-analyzer"
-  type          = var.analyzer_type
+  type          = "${var.analyzer_type}_UNUSED_ACCESS"
 
   configuration {
     unused_access {
@@ -178,8 +178,21 @@ data "aws_iam_policy_document" "developer_permission_boundary" {
   statement {
     sid       = "AllowScopedServices"
     effect    = "Allow"
-    actions   = ["s3:*", "dynamodb:*", "lambda:*", "sqs:*", "sns:*"]
+    actions   = ["dynamodb:*", "lambda:*", "sqs:*", "sns:*"]
     resources = ["arn:${local.partition}:*:*:${local.account_id}:*"]
+  }
+
+  # S3 ARNs carry no account ID, so ownership is checked with a condition.
+  statement {
+    sid       = "AllowS3InThisAccount"
+    effect    = "Allow"
+    actions   = ["s3:*"]
+    resources = ["arn:${local.partition}:s3:::*"]
+    condition {
+      test     = "StringEquals"
+      variable = "s3:ResourceAccount"
+      values   = [local.account_id]
+    }
   }
 
   statement {

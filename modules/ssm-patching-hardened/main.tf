@@ -119,6 +119,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "patch_logs" {
     id     = "fedramp-patch-log-retention"
     status = "Enabled"
 
+    filter {}
+
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
@@ -169,6 +171,12 @@ resource "aws_ssm_patch_baseline" "amazon_linux" {
       values = ["Medium", "Low"]
     }
   }
+}
+
+# Without this, instances in the patch group fall back to the AWS default baseline.
+resource "aws_ssm_patch_group" "fedramp" {
+  baseline_id = aws_ssm_patch_baseline.amazon_linux.id
+  patch_group = "FedRAMPCompliance"
 }
 
 # IAM Role for Maintenance Window Execution

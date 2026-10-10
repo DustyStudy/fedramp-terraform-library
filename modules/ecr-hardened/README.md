@@ -29,10 +29,10 @@ module "ecr_hardened" {
   `kms:GenerateDataKey`/`kms:Decrypt` for the actual pushing/pulling
   principals via an IAM identity policy on their role, or an additional
   key-policy statement in your root configuration.
-- The lifecycle policy's "retain 30 tagged images" rule only matches tags
-  prefixed `v`, `prod`, or `release` (`tagPrefixList`). Images tagged some
+- The lifecycle policy keeps the newest 30 images for each of the tag
+  prefixes `v`, `prod` and `release` (one rule per prefix). Images tagged some
   other way (e.g. a bare commit SHA) aren't covered by that rule and will
-  accumulate — adjust the prefix list or add a rule if your tagging
+  accumulate — adjust the prefixes or add a rule if your tagging
   convention differs.
 
 <!-- BEGIN_TF_DOCS -->

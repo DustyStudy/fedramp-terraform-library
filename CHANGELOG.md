@@ -12,6 +12,33 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Added
+- `account-baseline`: `set_ebs_default_kms_key`, so a caller that creates
+  the EBS key in the same plan can set it as the default key. The High
+  baseline uses it and has a plan-only test.
+- `ssm-patching-hardened`: the `FedRAMPCompliance` patch group is
+  registered to the module's patch baseline.
+- CI runs `terraform validate` on every module and root.
+
+### Changed
+- `org-cloudtrail`: the CloudWatch Logs statement on the trail key uses
+  the log-group encryption context, as the auditor modules do.
+- `iam-access-control`: the unused-access analyzer is created with the
+  `*_UNUSED_ACCESS` type, and the developer permissions boundary scopes
+  S3 with `s3:ResourceAccount`.
+- `org-governance`: the backup selection uses the default role's
+  `service-role/` path.
+- `ecr-hardened`: one lifecycle rule per tag prefix (`v`, `prod`,
+  `release`), 30 images kept for each.
+- `moderate/` and `high/` `org-scp-boundary` and `org-governance` pick
+  GovCloud regions in the `aws-us-gov` partition.
+- `rds-access-auditor` and `trust-policy-auditor` read the Organizations
+  account `State` field, falling back to `Status`.
+- The four auditor modules require AWS provider 6.0 or later, which their
+  use of `aws_region.region` already needed.
+- Every CMK sets `deletion_window_in_days` and every S3 lifecycle rule
+  has a `filter`.
+
 ## [2.0.2] - 2026-10-06
 
 ### Added

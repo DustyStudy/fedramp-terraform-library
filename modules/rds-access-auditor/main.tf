@@ -50,8 +50,9 @@ resource "aws_sns_topic_subscription" "email" {
 }
 
 resource "aws_kms_key" "log_encryption" {
-  description         = "Encrypts the ${var.name_prefix} Lambda's log group, DLQ, SNS topic and environment variables."
-  enable_key_rotation = true
+  description             = "Encrypts the ${var.name_prefix} Lambda's log group, DLQ, SNS topic and environment variables."
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
 
   policy = jsonencode({
     Version = "2012-10-17"

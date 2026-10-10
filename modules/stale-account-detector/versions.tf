@@ -4,8 +4,9 @@ terraform {
   required_providers {
     aws = {
       source = "hashicorp/aws"
-      # See modules/org-cloudtrail/versions.tf for how this range is kept.
-      version = ">= 5.0, < 6.67"
+      # The floor is 6.0 because this module reads aws_region's `region`
+      # attribute. See modules/org-cloudtrail/versions.tf for the upper bound.
+      version = ">= 6.0, < 6.67"
     }
     archive = {
       source  = "hashicorp/archive"

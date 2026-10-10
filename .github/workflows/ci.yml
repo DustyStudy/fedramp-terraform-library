@@ -107,10 +107,16 @@ jobs:
 
       # Plan-only tests: dummy credentials in each test file keep the AWS
       # provider offline, so no cloud access is needed.
-      - name: Run terraform test for every module with a tests/ directory
+      - name: Validate every module and root, then run terraform test where a tests/ directory exists
         run: |
           mkdir -p "$TF_PLUGIN_CACHE_DIR"
           status=0
+          for dir in $(find modules moderate high examples -name '*.tf' -not -path '*/.terraform/*' -exec dirname {} \; | sort -u); do
+            echo "::group::validate $dir"
+            terraform -chdir="$dir" init -backend=false -input=false >/dev/null
+            terraform -chdir="$dir" validate || status=1
+            echo "::endgroup::"
+          done
           for dir in $(find . -path '*/tests/*.tftest.hcl' -not -path '*/.terraform/*' -exec dirname {} \; | xargs -n1 dirname | sort -u); do
             echo "::group::$dir"
             terraform -chdir="$dir" init -backend=false -input=false >/dev/null
