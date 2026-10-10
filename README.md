@@ -233,7 +233,7 @@ see `CONTRIBUTING.md` for the pattern.
    configuration:
    ```hcl
    module "org_cloudtrail" {
-     source          = "github.com/DustyStudy/fedramp-terraform-library//modules/org-cloudtrail?ref=v2.0.2"
+     source          = "github.com/DustyStudy/fedramp-terraform-library//modules/org-cloudtrail?ref=v2.1.0"
      organization_id = "o-xxxxxxxxxx"
    }
    ```

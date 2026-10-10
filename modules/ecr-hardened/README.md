@@ -21,14 +21,12 @@ module "ecr_hardened" {
 
 ## Notes
 
-- **You must grant KMS access to whoever pushes/pulls images.** Unlike
-  CloudWatch Logs, ECR authorizes image push/pull through the calling IAM
-  principal (a developer, CI/CD role, or ECS/EKS task execution role)
-  rather than through a fixed service-principal grant on the key. This
-  module's key policy only grants the account root — add
-  `kms:GenerateDataKey`/`kms:Decrypt` for the actual pushing/pulling
-  principals via an IAM identity policy on their role, or an additional
-  key-policy statement in your root configuration.
+- **Pushing and pulling need no KMS permissions.** ECR adds grants to the
+  key when the repository is created and uses them to encrypt and decrypt
+  image layers. The principal that creates or deletes the repository (the
+  role running Terraform) needs `kms:CreateGrant`, `kms:RetireGrant` and
+  `kms:DescribeKey` on the key. Don't revoke the grants ECR creates:
+  pushes and pulls stop working at once.
 - The lifecycle policy keeps the newest 30 images for each of the tag
   prefixes `v`, `prod` and `release` (one rule per prefix). Images tagged some
   other way (e.g. a bare commit SHA) aren't covered by that rule and will

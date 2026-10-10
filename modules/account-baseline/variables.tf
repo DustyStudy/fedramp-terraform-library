@@ -75,3 +75,9 @@ variable "backup_vault_kms_key_arn" {
   type        = string
   default     = ""
 }
+
+variable "create_backup_vault_kms_key" {
+  description = "Create the dedicated backup vault CMK. Leave null to decide from backup_vault_kms_key_arn; set false when that key is created in the same plan, where its ARN is not known yet."
+  type        = bool
+  default     = null
+}

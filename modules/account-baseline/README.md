@@ -69,6 +69,7 @@ module "account_baseline" {
 | backup_vault_kms_key_arn | Optional existing CMK ARN for the backup vault. Empty creates a dedicated CMK with rotation enabled. | `string` | `""` | no |
 | backup_vault_name | Backup vault name; must match org-governance's backup_vault_name. | `string` | `"FedRAMPComplianceVault"` | no |
 | create_backup_vault | Create the AWS Backup vault that modules/org-governance's backup policy targets. Deploy once per region listed in that policy's backup_regions. | `bool` | `true` | no |
+| create_backup_vault_kms_key | Create the dedicated backup vault CMK. Leave null to decide from backup_vault_kms_key_arn; set false when that key is created in the same plan, where its ARN is not known yet. | `bool` | `null` | no |
 | kms_key_arn | Optional custom KMS Key ARN to use for default EBS encryption. | `string` | `""` | no |
 | manage_default_vpc | Whether to adopt and restrict default VPC security groups. | `bool` | `true` | no |
 | max_password_age | Days before a password must be changed; 0 disables expiry. NIST SP 800-63B-4 says verifiers SHALL NOT require periodic changes, so 0 is the default. Set a value only if your own policy requires rotation. | `number` | `0` | no |

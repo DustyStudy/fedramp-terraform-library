@@ -74,11 +74,17 @@ resource "aws_default_security_group" "default" {
 data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
 
+locals {
+  # As with set_ebs_default_kms_key: a key created in the same plan has an
+  # unknown ARN, so the caller can say outright that it supplies the key.
+  create_backup_kms_key = var.create_backup_vault && (var.create_backup_vault_kms_key != null ? var.create_backup_vault_kms_key : var.backup_vault_kms_key_arn == "")
+}
+
 data "aws_iam_policy_document" "backup_kms" {
   #checkov:skip=CKV_AWS_109:KMS administrative operations require root account wildcard
   #checkov:skip=CKV_AWS_111:KMS key management requires write access for key admins
   #checkov:skip=CKV_AWS_356:KMS key policies require wildcard resource within the key definition itself
-  count = var.create_backup_vault && var.backup_vault_kms_key_arn == "" ? 1 : 0
+  count = local.create_backup_kms_key ? 1 : 0
 
   statement {
     sid    = "AllowRootAccountAdmin"
@@ -93,7 +99,7 @@ data "aws_iam_policy_document" "backup_kms" {
 }
 
 resource "aws_kms_key" "backup" {
-  count                   = var.create_backup_vault && var.backup_vault_kms_key_arn == "" ? 1 : 0
+  count                   = local.create_backup_kms_key ? 1 : 0
   description             = "CMK for the AWS Backup vault ${var.backup_vault_name}"
   deletion_window_in_days = 30
   enable_key_rotation     = true
@@ -103,5 +109,12 @@ resource "aws_kms_key" "backup" {
 resource "aws_backup_vault" "this" {
   count       = var.create_backup_vault ? 1 : 0
   name        = var.backup_vault_name
-  kms_key_arn = var.backup_vault_kms_key_arn != "" ? var.backup_vault_kms_key_arn : aws_kms_key.backup[0].arn
+  kms_key_arn = local.create_backup_kms_key ? aws_kms_key.backup[0].arn : var.backup_vault_kms_key_arn
+
+  lifecycle {
+    precondition {
+      condition     = local.create_backup_kms_key || var.backup_vault_kms_key_arn != ""
+      error_message = "create_backup_vault_kms_key = false requires backup_vault_kms_key_arn; without a key the vault would use the AWS-managed one."
+    }
+  }
 }

@@ -12,12 +12,22 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-10
+
 ### Added
 - `trust-policy-auditor`: a GitHub OIDC trust that is otherwise clean but
   has no `job_workflow_ref` condition is reported as LOW. A `sub` pinned
   to a branch matches every workflow file on it. Trusts pinned to a
   deployment environment are not reported. Expect one new LOW finding per
   branch-pinned GitHub role on the first run after upgrading.
+- `account-baseline`: `set_ebs_default_kms_key`, so a caller that creates
+  the EBS key in the same plan can set it as the default key. The High
+  baseline uses it and has a plan-only test.
+- `ssm-patching-hardened`: the `FedRAMPCompliance` patch group is
+  registered to the module's patch baseline.
+- CI runs `terraform validate` on every module and root.
+- `account-baseline`: `create_backup_vault_kms_key`, so a caller that
+  creates the backup vault key in the same plan can say so.
 
 ### Changed
 - `trust-policy-auditor`: a scoping condition on `Principal: "*"` or a
@@ -32,16 +42,6 @@ FedRAMP expects.
 - All three auditors cut a report to the SNS size limit and fail the
   invocation when the publish fails. Accounts that were not scanned are
   listed above the findings, so a cut report keeps them.
-
-### Added
-- `account-baseline`: `set_ebs_default_kms_key`, so a caller that creates
-  the EBS key in the same plan can set it as the default key. The High
-  baseline uses it and has a plan-only test.
-- `ssm-patching-hardened`: the `FedRAMPCompliance` patch group is
-  registered to the module's patch baseline.
-- CI runs `terraform validate` on every module and root.
-
-### Changed
 - `org-cloudtrail`: the CloudWatch Logs statement on the trail key uses
   the log-group encryption context, as the auditor modules do.
 - `iam-access-control`: the unused-access analyzer is created with the
@@ -59,6 +59,15 @@ FedRAMP expects.
   use of `aws_region.region` already needed.
 - Every CMK sets `deletion_window_in_days` and every S3 lifecycle rule
   has a `filter`.
+- `guardduty-org`: the three protections are set with
+  `aws_guardduty_detector_feature` and
+  `aws_guardduty_organization_configuration_feature` in place of the
+  deprecated `datasources` block. Upgrading adds six resources to the
+  plan and changes nothing in the account. The module requires AWS
+  provider 5.21 or later.
+- `ecr-hardened` README: pushing and pulling need no KMS permissions;
+  the repository creator needs `kms:CreateGrant`, `kms:RetireGrant` and
+  `kms:DescribeKey`.
 
 ## [2.0.2] - 2026-10-06
 
