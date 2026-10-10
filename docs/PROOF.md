@@ -7,20 +7,21 @@ numbers from the last run, and the gaps. Thirteen modules have also been
 deployed to a real organization and probed with real API calls; that run
 is in [LIVE-PROOF.md](LIVE-PROOF.md).
 
-Numbers are from 2026-10-06 at commit `9f1c85b`. `terraform test` and pytest
-counts come from that commit's CI run; the rest are from a local run
-(Terraform 1.16.4, Checkov 3.3.20). CI runs the same checks on every pull
-request with Terraform 1.14.6.
+Numbers are from 2026-10-10 at commit `dd2604e`. The `terraform test`,
+pytest and Checkov counts come from that commit's CI run (Terraform
+1.14.6); the `terraform validate` and provider allowlist rows are from a
+local run (Terraform 1.16.4). CI runs the same checks on every pull
+request.
 
 ## Summary
 
 | Check | Result |
 |---|---|
-| `terraform test` (11 modules, CI run of 2026-10-06 at `9f1c85b`) | 62 runs, 62 passed |
-| pytest (module Lambdas, CI run of 2026-10-06 at `9f1c85b`) | 209 passed |
+| `terraform test` (11 modules and the High account baseline, CI run of 2026-10-10 at `dd2604e`) | 65 runs, 65 passed |
+| pytest (module Lambdas, CI run of 2026-10-10 at `dd2604e`) | 250 passed |
 | Provider allowlist guard (`tests/python/test_provider_sources.py`, added 2026-09-30) | 45 `required_providers` declarations checked, all allowlisted; 4 guard self-tests passed |
 | `terraform validate` | 23 of 23 modules and 14 of 14 roots under `moderate/`, `high/` and `examples/` valid |
-| Checkov (`--framework terraform`, 257 resources) | 908 passed, 0 failed, 204 skipped |
+| Checkov (`--framework terraform`, CI run of 2026-10-10 at `dd2604e`) | 939 passed, 0 failed, 217 skipped |
 | Trivy config scan, Gitleaks, `terraform fmt`, TFLint | Run in CI on every PR |
 
 Every Checkov skip is an inline `checkov:skip=<ID>: <reason>` comment next
