@@ -65,7 +65,9 @@ already has real findings to report, never as the sole reason to notify.
 
 Findings are combined into a single SNS summary. A clean scan (no
 over-privileged permission sets and no direct-to-user assignments) sends
-nothing, even if unused permission sets exist.
+nothing, even if unused permission sets exist. An inline policy that
+can't be read fails the invocation instead of counting as clean, as does
+a failed publish; a report over the SNS size limit is cut and says so.
 
 ## Using Terraform
 

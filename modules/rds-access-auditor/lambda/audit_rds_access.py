@@ -59,6 +59,7 @@ MEMBER_ROLE_NAME = os.environ.get("MEMBER_ROLE_NAME", "").strip()
 REGIONS = [r.strip() for r in os.environ.get("REGIONS", "").split(",") if r.strip()]
 
 SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+MAX_MESSAGE_BYTES = 250_000  # SNS rejects a message over 256 KB
 
 # describe_db_instances and describe_db_clusters also return DocumentDB
 # and Neptune, which this audit doesn't cover.
@@ -344,6 +345,10 @@ def _report(findings, errors, org_listed):
     lines = [f"RDS access audit: {len(findings)} finding(s)."]
     if MEMBER_ROLE_NAME and not org_listed:
         lines.append("Organization accounts could not be listed, so only this account was scanned.")
+    # Above the findings, so a report cut to the SNS size limit keeps them.
+    if errors:
+        lines.append(f"\n=== Accounts not scanned ({len(errors)}) ===")
+        lines.extend(f"{account}: {error}" for account, error in errors)
     for severity in SEVERITIES:
         matching = [f for f in findings if f["severity"] == severity]
         if not matching:
@@ -351,9 +356,6 @@ def _report(findings, errors, org_listed):
         lines.append(f"\n=== {severity} ({len(matching)}) ===")
         for f in matching:
             lines.append(f"[{f['check']}] {f['account']} {f['resource']}\n  {f['detail']}")
-    if errors:
-        lines.append(f"\n=== Accounts not scanned ({len(errors)}) ===")
-        lines.extend(f"{account}: {error}" for account, error in errors)
     return "\n".join(lines)
 
 
@@ -361,10 +363,12 @@ def _notify(subject, message):
     if not SNS_TOPIC_ARN:
         logger.info("SNS_TOPIC_ARN not set, skipping notification")
         return
-    try:
-        sns.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject[:100], Message=message)
-    except ClientError:
-        logger.exception("Failed to publish SNS notification")
+    body = message.encode("utf-8")
+    if len(body) > MAX_MESSAGE_BYTES:
+        message = body[:MAX_MESSAGE_BYTES].decode("utf-8", "ignore") + "\n... report truncated to fit SNS. Findings are listed most severe first; invoke the function for the full list."
+    # A publish error propagates: a report nobody received must fail the run
+    # (Lambda Errors metric / DLQ), not look delivered.
+    sns.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject[:100], Message=message)
 
 
 def lambda_handler(event, context):
@@ -393,7 +397,9 @@ def lambda_handler(event, context):
     counts = {s: sum(f["severity"] == s for f in findings) for s in SEVERITIES}
     logger.info(json.dumps({"counts": counts, "accounts": len(targets), "errors": len(errors)}))
 
-    if findings or errors:
+    # Member accounts that couldn't be listed weren't scanned, so the run is
+    # reported even when nothing else was found.
+    if findings or errors or (MEMBER_ROLE_NAME and org_accounts is None):
         subject = f"RDS access audit: {counts['CRITICAL']} critical, {counts['HIGH']} high"
         _notify(subject, _report(findings, errors, org_accounts is not None))
 

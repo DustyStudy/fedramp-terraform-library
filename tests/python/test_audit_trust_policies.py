@@ -418,3 +418,153 @@ def test_single_character_wildcard_in_the_ref_is_medium(fn, ctx):
     }))
 
     assert _severities(fn.check_role_trust(role, ACCOUNT, ctx)) == ["MEDIUM"]
+
+
+# --- conditions that don't restrict the caller --------------------------------
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        {"ArnLike": {"aws:PrincipalArn": "*"}},
+        {"ArnLike": {"aws:PrincipalArn": "arn:aws:iam::*:role/*"}},
+        {"ArnEquals": {"aws:PrincipalArn": "arn:aws:iam::*:role/*"}},
+        {"StringLike": {"aws:PrincipalAccount": "????????????"}},
+        {"StringEquals": {"aws:PrincipalAccount": "${aws:PrincipalAccount}"}},
+        {"StringNotEquals": {"aws:PrincipalAccount": OUTSIDER}},
+        {"StringEqualsIfExists": {"aws:PrincipalOrgID": "o-abc"}},
+        {"ForAllValues:StringLike": {"aws:PrincipalOrgPaths": "o-abc/r-1/*"}},
+        {"Null": {"aws:PrincipalOrgID": "false"}},
+    ],
+)
+def test_any_principal_with_a_condition_that_does_not_restrict_is_critical(fn, ctx, condition):
+    statement = {"Effect": "Allow", "Principal": "*", "Action": "sts:AssumeRole", "Condition": condition}
+
+    findings = fn.check_role_trust(_role(statement), ACCOUNT, ctx)
+
+    assert _severities(findings) == ["CRITICAL"]
+    assert "does not restrict" in findings[0]["detail"]
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        {"ArnLike": {"aws:PrincipalArn": f"arn:aws:iam::{ORG_PEER}:role/deploy-*"}},
+        {"ForAnyValue:StringLike": {"aws:PrincipalOrgPaths": "o-abc/r-1/ou-1/*"}},
+        {"StringEquals": {"aws:PrincipalAccount": [ACCOUNT, ORG_PEER]}},
+        # The key is in every request, so IfExists still restricts.
+        {"StringEqualsIfExists": {"aws:PrincipalAccount": ACCOUNT}},
+        # ForAllValues guarded against an empty set, as AWS recommends.
+        {"ForAllValues:StringLike": {"aws:PrincipalOrgPaths": "o-abc/r-1/*"}, "Null": {"aws:PrincipalOrgPaths": "false"}},
+        # One condition that restricts is enough; the other is noise.
+        {"StringEquals": {"aws:PrincipalOrgID": "o-abc"}, "ArnLike": {"aws:PrincipalArn": "*"}},
+    ],
+)
+def test_any_principal_with_a_restricting_condition_is_clean(fn, ctx, condition):
+    statement = {"Effect": "Allow", "Principal": "*", "Action": "sts:AssumeRole", "Condition": condition}
+
+    assert fn.check_role_trust(_role(statement), ACCOUNT, ctx) == []
+
+
+def test_public_invoke_with_a_wildcard_source_is_critical(fn, ctx):
+    policy = _policy({
+        "Effect": "Allow",
+        "Principal": "*",
+        "Action": "lambda:InvokeFunction",
+        "Condition": {"ArnLike": {"aws:SourceArn": "*"}},
+    })
+
+    assert _severities(fn.check_function_policy(FUNCTION, policy, ACCOUNT, ctx)) == ["CRITICAL"]
+
+
+def test_service_principal_with_a_wildcard_source_is_medium(fn, ctx):
+    policy = _policy({
+        "Effect": "Allow",
+        "Principal": {"Service": "s3.amazonaws.com"},
+        "Action": "lambda:InvokeFunction",
+        "Condition": {"ArnLike": {"aws:SourceArn": "*"}},
+    })
+
+    assert _severities(fn.check_function_policy(FUNCTION, policy, ACCOUNT, ctx)) == ["MEDIUM"]
+
+
+def test_service_principal_with_any_bucket_as_source_is_medium(fn, ctx):
+    policy = _policy({
+        "Effect": "Allow",
+        "Principal": {"Service": "s3.amazonaws.com"},
+        "Action": "lambda:InvokeFunction",
+        "Condition": {"ArnLike": {"aws:SourceArn": "arn:aws:s3:::*"}},
+    })
+
+    assert _severities(fn.check_function_policy(FUNCTION, policy, ACCOUNT, ctx)) == ["MEDIUM"]
+
+
+def test_service_principal_with_a_bucket_source_arn_is_clean(fn, ctx):
+    # S3 ARNs have an empty account field; that is not a wildcard.
+    policy = _policy({
+        "Effect": "Allow",
+        "Principal": {"Service": "s3.amazonaws.com"},
+        "Action": "lambda:InvokeFunction",
+        "Condition": {"ArnLike": {"aws:SourceArn": "arn:aws:s3:::uploads"}},
+    })
+
+    assert fn.check_function_policy(FUNCTION, policy, ACCOUNT, ctx) == []
+
+
+# --- incomplete audits and delivery -------------------------------------------
+
+
+def test_clean_scan_still_reports_an_org_that_could_not_be_listed(handler, monkeypatch):
+    module = handler()
+    module.organizations.get_paginator.side_effect = ClientError({"Error": {"Code": "AccessDenied"}}, "ListAccounts")
+    monkeypatch.setattr(module, "audit_account", lambda *args: [])
+
+    module.lambda_handler({}, None)
+
+    assert "could not be listed" in module.sns.publish.call_args.kwargs["Message"]
+
+
+def test_account_outside_any_organization_treats_every_other_account_as_outside(handler, monkeypatch):
+    module = handler()
+    module.organizations.get_paginator.side_effect = ClientError(
+        {"Error": {"Code": "AWSOrganizationsNotInUseException"}}, "ListAccounts"
+    )
+    seen = []
+    monkeypatch.setattr(module, "audit_account", lambda account_id, client, regions, ctx: seen.append(ctx) or [])
+
+    module.lambda_handler({}, None)
+
+    assert seen[0].is_external(OUTSIDER)
+    module.sns.publish.assert_not_called()
+
+
+def test_oversized_report_is_cut_to_fit_sns(handler, monkeypatch):
+    module = handler()
+    many = [module._finding("LOW", "oidc-trust", ACCOUNT, f"role-{i}", "d" * 400) for i in range(1000)]
+    monkeypatch.setattr(module, "audit_account", lambda *args: list(many))
+
+    module.lambda_handler({}, None)
+
+    message = module.sns.publish.call_args.kwargs["Message"]
+    assert len(message.encode("utf-8")) <= 256 * 1024
+    assert "truncated" in message
+
+
+def test_failed_publish_fails_the_run(handler):
+    module = handler()
+    module.sns.publish.side_effect = ClientError({"Error": {"Code": "KMSAccessDenied"}}, "Publish")
+
+    with pytest.raises(ClientError):
+        module.lambda_handler({}, None)
+
+
+def test_cut_report_keeps_the_accounts_that_were_not_scanned(handler, monkeypatch):
+    module = handler(member_role_name="audit-read", assume_fails=[ORG_PEER])
+    many = [module._finding("LOW", "oidc-trust", ACCOUNT, f"role-{i}", "d" * 400) for i in range(1000)]
+    monkeypatch.setattr(module, "audit_account", lambda *args: list(many))
+
+    module.lambda_handler({}, None)
+
+    message = module.sns.publish.call_args.kwargs["Message"]
+    assert "truncated" in message
+    assert f"{ORG_PEER}: AccessDenied" in message

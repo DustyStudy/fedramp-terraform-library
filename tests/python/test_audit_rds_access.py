@@ -399,3 +399,33 @@ def test_unlisted_organization_is_called_out(fn, monkeypatch):
 
     assert result["accounts_scanned"] == 1
     assert "only this account was scanned" in fn.sns.publish.call_args.kwargs["Message"]
+
+
+def test_clean_scan_still_reports_an_unlisted_organization(fn, monkeypatch):
+    _handler_env(fn, monkeypatch, member_role="audit-read")
+    monkeypatch.setattr(fn, "_client_factory", lambda credentials=None: _account_clients())
+
+    result = fn.lambda_handler({}, None)
+
+    assert result["counts"] == {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    assert "only this account was scanned" in fn.sns.publish.call_args.kwargs["Message"]
+
+
+def test_oversized_report_is_cut_to_fit_sns(fn, monkeypatch):
+    monkeypatch.setattr(fn, "SNS_TOPIC_ARN", "arn:aws:sns:us-east-1:111111111111:t")
+    fn.sns = MagicMock()
+
+    fn._notify("subject", "x" * 400_000)
+
+    message = fn.sns.publish.call_args.kwargs["Message"]
+    assert len(message.encode("utf-8")) <= 256 * 1024
+    assert "truncated" in message
+
+
+def test_failed_publish_fails_the_run(fn, monkeypatch):
+    monkeypatch.setattr(fn, "SNS_TOPIC_ARN", "arn:aws:sns:us-east-1:111111111111:t")
+    fn.sns = MagicMock()
+    fn.sns.publish.side_effect = ClientError({"Error": {"Code": "KMSAccessDenied"}}, "Publish")
+
+    with pytest.raises(ClientError):
+        fn._notify("subject", "message")
