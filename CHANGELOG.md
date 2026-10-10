@@ -12,6 +12,13 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Added
+- `trust-policy-auditor`: a GitHub OIDC trust that is otherwise clean but
+  has no `job_workflow_ref` condition is reported as LOW. A `sub` pinned
+  to a branch matches every workflow file on it. Trusts pinned to a
+  deployment environment are not reported. Expect one new LOW finding per
+  branch-pinned GitHub role on the first run after upgrading.
+
 ### Changed
 - `trust-policy-auditor`: a scoping condition on `Principal: "*"` or a
   service principal counts only when it restricts the caller. Negated

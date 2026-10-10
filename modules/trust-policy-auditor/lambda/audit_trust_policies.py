@@ -9,7 +9,9 @@ Four checks:
 1. OIDC trust (IAM roles). A role trusting an OIDC provider with no
    subject condition, or a wildcard in the owner or repository part of a
    GitHub subject, can be assumed by other people's workflows. A missing
-   audience condition is reported too.
+   audience condition is reported too, and so is a GitHub trust that is
+   otherwise clean but lets any workflow file on the branch assume the
+   role.
 2. Cross-account trust (IAM roles). A role any AWS principal can assume
    ("*" with no organization, account or ARN condition), or one trusting
    an account outside the organization without an sts:ExternalId
@@ -221,6 +223,19 @@ def _github_sub_problem(pattern):
     return None
 
 
+def _pins_workflow(conditions, key):
+    """True when the job_workflow_ref condition restricts and names workflow
+    files: a wildcard in the path (before @ref) admits any file added there."""
+    if not _restricts(conditions, {key}):
+        return False
+    return not any(
+        _wild(value.split("@", 1)[0])
+        for operator, values in conditions[key]
+        if "Like" in operator and "Not" not in operator
+        for value in values
+    )
+
+
 def _check_oidc(statement, federated, account_id, role_arn):
     # Lowercased to match _conditions: EKS provider IDs are upper case.
     host = federated.split("oidc-provider/", 1)[-1].lower()
@@ -251,6 +266,19 @@ def _check_oidc(statement, federated, account_id, role_arn):
             problem = _github_sub_problem(value)
             if problem:
                 findings.append(_finding(problem[0], "oidc-trust", account_id, role_arn, problem[1]))
+
+    # Reported only once the rest is clean, so it reads as the next step and
+    # not as noise beside a wildcard. A deployment environment has its own
+    # protection rules, so a sub pinned to one is left alone.
+    # Negated and Null operators say what the subject is not, never what it is.
+    values = [v for operator, vs in subs if "Not" not in operator and operator != "Null" for v in vs]
+    environment_only = bool(values) and all(v.split(":", 2)[-1].startswith("environment:") for v in values)
+    # GitHub can put the claim in a customized sub instead.
+    in_sub = bool(values) and all(":job_workflow_ref:" in v for v in values)
+    pinned = environment_only or in_sub or _pins_workflow(conditions, f"{host}:job_workflow_ref")
+    if not findings and not pinned:
+        detail = "any workflow file on the trusted ref can assume it; add a job_workflow_ref condition naming the workflow"
+        findings.append(_finding("LOW", "oidc-trust", account_id, role_arn, detail))
     return findings
 
 

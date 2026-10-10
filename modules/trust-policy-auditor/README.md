@@ -35,6 +35,7 @@ This module does.
 | | No `aud` condition | HIGH |
 | | `sub` wildcard in the branch or environment (`repo:acme/app:*`) | MEDIUM |
 | | Owner and repository IDs not pinned in the `repo:OWNER@ID/REPO@ID` format | LOW |
+| | GitHub trust pinned to a branch, tag or pull request with no `job_workflow_ref` condition | LOW |
 | Cross-account trust | `Principal: "*"` with no `aws:PrincipalOrgID`, account or ARN condition | CRITICAL |
 | | An account outside the organization, with no `sts:ExternalId` condition | HIGH |
 | Lambda function policy | `Principal: "*"` with no source or organization condition | CRITICAL |
@@ -47,6 +48,17 @@ This module does.
 `sub` patterns are only treated as wildcards under a `*Like` operator.
 Under `StringEquals`, a `*` is a literal character and matches nothing
 else. Condition keys are compared case-insensitively, as IAM does.
+
+The `job_workflow_ref` finding is reported only when the trust has no
+other OIDC finding. A `sub` pinned to a branch matches every workflow
+file on that branch, so anyone who can push a workflow there can assume
+the role; the October 2026 GhostAction campaign did that with stolen
+maintainer tokens
+([Socket](https://socket.dev/blog/ghostaction-cloud-credentials)). A
+`sub` pinned to a deployment environment is not reported, because the
+environment's protection rules decide which runs reach it. A
+`job_workflow_ref` with a wildcard in the file path does not count as a
+pin, and one embedded in a customized `sub` does.
 
 A condition only counts when it restricts the caller. `Principal: "*"`
 or a service principal is still reported when its only condition is
