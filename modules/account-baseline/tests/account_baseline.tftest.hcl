@@ -87,3 +87,27 @@ run "backup_vault_uses_supplied_key" {
     error_message = "A supplied backup_vault_kms_key_arn must be used instead of creating a CMK."
   }
 }
+
+run "backup_vault_key_can_be_declared_as_supplied" {
+  command = plan
+
+  variables {
+    create_backup_vault_kms_key = false
+    backup_vault_kms_key_arn    = "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+  }
+
+  assert {
+    condition     = length(aws_kms_key.backup) == 0
+    error_message = "create_backup_vault_kms_key = false must not create a CMK."
+  }
+}
+
+run "backup_vault_without_any_key_is_rejected" {
+  command = plan
+
+  variables {
+    create_backup_vault_kms_key = false
+  }
+
+  expect_failures = [aws_backup_vault.this]
+}

@@ -4,8 +4,9 @@ terraform {
   required_providers {
     aws = {
       source = "hashicorp/aws"
-      # See modules/org-cloudtrail/versions.tf for how this range is kept.
-      version = ">= 5.0, < 6.67"
+      # 5.21 is the first release with both GuardDuty feature resources. See
+      # modules/org-cloudtrail/versions.tf for the upper bound.
+      version = ">= 5.21, < 6.67"
     }
   }
 }

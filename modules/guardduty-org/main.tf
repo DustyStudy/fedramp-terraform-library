@@ -5,38 +5,29 @@
 # organization auto-enrollment IS a native Terraform resource
 # (aws_guardduty_organization_configuration) — no custom scripting needed.
 #
-# Note: this module enables the three long-standing protections (S3 Logs,
-# Kubernetes Audit Logs, EBS Malware Protection) via the classic
-# `datasources` block. GuardDuty has since added newer protections (RDS
-# Protection, Lambda Protection, EKS Runtime Monitoring) that may be
-# exposed via a newer `feature`-style block depending on your AWS provider
-# version — check current provider docs if you want those enabled too.
+# The three protections are set with feature resources. Destroying a
+# feature resource only removes it from state; it does not turn the
+# protection off.
 #
 # Control mapping:
 #   Rev5 (Moderate/High): SI-4, IR-4, RA-5
 #   FedRAMP 20x: KSI-CNA-EIS (automated security assessment/enforcement), KSI-INR-RPI (pattern review feeding incident response)
 
+locals {
+  features = toset(["S3_DATA_EVENTS", "EKS_AUDIT_LOGS", "EBS_MALWARE_PROTECTION"])
+}
+
 resource "aws_guardduty_detector" "this" {
   enable                       = true
   finding_publishing_frequency = var.finding_publishing_frequency
+}
 
-  datasources {
-    s3_logs {
-      enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          enable = true
-        }
-      }
-    }
-  }
+resource "aws_guardduty_detector_feature" "this" {
+  for_each = local.features
+
+  detector_id = aws_guardduty_detector.this.id
+  name        = each.key
+  status      = "ENABLED"
 }
 
 resource "aws_guardduty_organization_configuration" "this" {
@@ -50,24 +41,18 @@ resource "aws_guardduty_organization_configuration" "this" {
       error_message = "auto_enable = false now requires auto_enable_organization_members = \"NONE\" (AWS provider v6 removed auto_enable)."
     }
   }
+}
 
-  datasources {
-    s3_logs {
-      auto_enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          auto_enable = true
-        }
-      }
-    }
-  }
+resource "aws_guardduty_organization_configuration_feature" "this" {
+  for_each = local.features
+
+  detector_id = aws_guardduty_detector.this.id
+  name        = each.key
+  # What the datasources block's auto_enable = true meant, whatever
+  # auto_enable_organization_members is set to.
+  auto_enable = "NEW"
+
+  depends_on = [aws_guardduty_organization_configuration.this]
 }
 
 data "aws_caller_identity" "current" {}

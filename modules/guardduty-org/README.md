@@ -24,12 +24,14 @@ module "guardduty_org" {
   (`aws_guardduty_organization_configuration`) — the CloudFormation version
   of this library needed a Lambda-backed custom resource for the same
   thing, since no equivalent CFN resource type exists.
-- This module enables the three long-standing protections (S3 Logs,
-  Kubernetes Audit Logs, EBS Malware Protection) via the classic
-  `datasources` block. GuardDuty has since added newer protections (RDS
-  Protection, Lambda Protection, EKS Runtime Monitoring) that may be
-  exposed differently depending on your AWS provider version — check
-  current provider docs if you want those too.
+- Three protections are enabled: S3 data events, EKS audit logs and EBS
+  malware protection, each as an `aws_guardduty_detector_feature` with a
+  matching `aws_guardduty_organization_configuration_feature` that turns
+  it on for accounts joining the organization. Newer protections (RDS login events,
+  Lambda network logs, Runtime Monitoring) are not enabled here.
+- Upgrading from a release that used the `datasources` block adds six
+  feature resources to the plan. The protections are already on, so
+  nothing changes in the account.
 
 <!-- BEGIN_TF_DOCS -->
 ## Inputs

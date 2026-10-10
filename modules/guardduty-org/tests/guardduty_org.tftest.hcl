@@ -33,8 +33,13 @@ run "detector_enables_all_classic_protections" {
   }
 
   assert {
-    condition     = one(one(aws_guardduty_detector.this.datasources).s3_logs).enable
-    error_message = "S3 data event protection must be on."
+    condition     = alltrue([for f in aws_guardduty_detector_feature.this : f.status == "ENABLED"])
+    error_message = "Every protection must be on."
+  }
+
+  assert {
+    condition     = toset(keys(aws_guardduty_detector_feature.this)) == toset(["S3_DATA_EVENTS", "EKS_AUDIT_LOGS", "EBS_MALWARE_PROTECTION"])
+    error_message = "S3, EKS audit log and EBS malware protection must all be managed."
   }
 }
 
@@ -44,6 +49,11 @@ run "new_accounts_are_enrolled" {
   assert {
     condition     = aws_guardduty_organization_configuration.this.auto_enable_organization_members == "NEW"
     error_message = "Accounts joining the organization must be enrolled automatically by default."
+  }
+
+  assert {
+    condition     = alltrue([for f in aws_guardduty_organization_configuration_feature.this : f.auto_enable == "NEW"])
+    error_message = "Each protection must be turned on for accounts that join the organization."
   }
 }
 
