@@ -233,10 +233,14 @@ see `CONTRIBUTING.md` for the pattern.
    configuration:
    ```hcl
    module "org_cloudtrail" {
-     source          = "github.com/DustyStudy/fedramp-terraform-library//modules/org-cloudtrail"
+     source          = "github.com/DustyStudy/fedramp-terraform-library//modules/org-cloudtrail?ref=v2.0.2"
      organization_id = "o-xxxxxxxxxx"
    }
    ```
+   Pin module sources to a reviewed release tag (or full commit SHA) and upgrade
+   explicitly after reviewing the changelog and Terraform plan. The provider lock
+   file does not pin Git module sources.
+
 3. Check `docs/control-mapping.md` to see which NIST 800-53 control IDs (or
    KSI IDs) each module addresses, and use it to build your control
    implementation evidence for your SSP.
