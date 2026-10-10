@@ -176,10 +176,14 @@ data "aws_iam_policy_document" "developer_permission_boundary" {
   #checkov:skip=CKV_AWS_356:Boundary structure requires foundational Allow with overriding Deny blocks
 
   statement {
-    sid       = "AllowScopedServices"
-    effect    = "Allow"
-    actions   = ["dynamodb:*", "lambda:*", "sqs:*", "sns:*"]
-    resources = ["arn:${local.partition}:*:*:${local.account_id}:*"]
+    sid     = "AllowScopedServices"
+    effect  = "Allow"
+    actions = ["dynamodb:*", "lambda:*", "sqs:*", "sns:*"]
+    # One ARN per service: IAM rejects a wildcard in the service field.
+    resources = [
+      for service in ["dynamodb", "lambda", "sqs", "sns"] :
+      "arn:${local.partition}:${service}:*:${local.account_id}:*"
+    ]
   }
 
   # S3 ARNs carry no account ID, so ownership is checked with a condition.

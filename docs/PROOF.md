@@ -3,7 +3,7 @@
 This page covers the plan-time evidence: every check below runs offline,
 against the resources and policy JSON that Terraform renders, with dummy
 credentials in the test files. It lists what those checks cover, the
-numbers from the last run, and the gaps. Thirteen modules have also been
+numbers from the last run, and the gaps. Fifteen modules have also been
 deployed to a real organization and probed with real API calls; that run
 is in [LIVE-PROOF.md](LIVE-PROOF.md).
 
@@ -82,18 +82,18 @@ checkov -d . --framework terraform
 
 ## Gaps
 
-- **Live deployment covers thirteen modules, not the whole repo.** Plan-time
+- **Live deployment covers fifteen modules, not the whole repo.** Plan-time
   tests prove what Terraform will request. They do not prove what AWS
   accepts or how the policies behave at request time.
   [LIVE-PROOF.md](LIVE-PROOF.md) lists which modules were deployed and
   which were not. For SCP and permissions-boundary behavior tested with
   real API calls, see the live proof in
   [aws-org-guardrails](https://github.com/DustyStudy/aws-org-guardrails/blob/main/docs/PROOF.md).
-- **12 of 23 modules have no `terraform test` suite yet:** `ecr-hardened`,
+- **10 of 23 modules have no `terraform test` suite yet:** `ecr-hardened`,
   `ecs-fargate-hardened`, `eks-hardened`, `fips-vpc-endpoints`,
-  `iam-access-control`, `incident-notifications`, `logging-monitoring`,
-  `network-perimeter-vpc`, `org-governance`, `rds-postgres-hardened`,
-  `ssm-patching-hardened` and `waf-hardened`. They are covered by
+  `incident-notifications`, `logging-monitoring`, `network-perimeter-vpc`,
+  `org-governance`, `rds-postgres-hardened` and `waf-hardened`. They are
+  covered by
   `terraform validate`, Checkov, Trivy and TFLint only.
 - **`fedramp-20x/` holds no Terraform.** It maps each KSI cluster to the
   modules above. Whether a module's evidence satisfies a KSI's validation

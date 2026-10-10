@@ -5,7 +5,7 @@ terraform {
     aws = {
       source = "hashicorp/aws"
       # See modules/org-cloudtrail/versions.tf for how this range is kept.
-      version = ">= 5.0, < 6.0"
+      version = ">= 5.0, < 6.67"
     }
   }
 }

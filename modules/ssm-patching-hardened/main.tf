@@ -22,22 +22,10 @@ data "aws_iam_policy_document" "ssm_kms" {
     resources = ["*"]
   }
 
-  # Required: whichever role actually writes patch output to the S3
-  # bucket needs explicit kms:GenerateDataKey/Decrypt rights on this CMK
-  # for SSE-KMS to work — the root-admin statement above doesn't imply
-  # this by itself, and the maintenance-window role's attached managed
-  # policy (AmazonSSMMaintenanceWindowRole) doesn't grant KMS access to a
-  # customer-managed key.
-  statement {
-    sid    = "AllowPatchLogWriterKeyUsage"
-    effect = "Allow"
-    principals {
-      type        = "AWS"
-      identifiers = [aws_iam_role.ssm_maintenance_window.arn]
-    }
-    actions   = ["kms:GenerateDataKey*", "kms:Decrypt", "kms:DescribeKey"]
-    resources = ["*"]
-  }
+  # Nothing else is granted here. Patch output is written by SSM Agent with
+  # the managed node's instance profile, which gets key use from the
+  # patch-log-writer policy below; the statement above is what lets an IAM
+  # policy grant it.
 }
 
 resource "aws_kms_key" "ssm" {
@@ -188,6 +176,18 @@ data "aws_iam_policy_document" "ssm_mw_assume" {
       type        = "Service"
       identifiers = ["ssm.amazonaws.com"]
     }
+
+    # Confused-deputy guard: only Systems Manager acting for this account.
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:${local.partition}:ssm:*:${local.account_id}:*"]
+    }
   }
 }
 
@@ -199,6 +199,37 @@ resource "aws_iam_role" "ssm_maintenance_window" {
 resource "aws_iam_role_policy_attachment" "ssm_mw_policy" {
   role       = aws_iam_role.ssm_maintenance_window.name
   policy_arn = "arn:${local.partition}:iam::aws:policy/service-role/AmazonSSMMaintenanceWindowRole"
+}
+
+# SSM Agent uploads Run Command output with the managed node's instance
+# profile. Attach this policy to that profile's role.
+data "aws_iam_policy_document" "patch_log_writer" {
+  statement {
+    sid       = "WritePatchOutput"
+    effect    = "Allow"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.patch_logs.arn}/*"]
+  }
+
+  statement {
+    sid       = "ReadBucketEncryption"
+    effect    = "Allow"
+    actions   = ["s3:GetEncryptionConfiguration"]
+    resources = [aws_s3_bucket.patch_logs.arn]
+  }
+
+  statement {
+    sid       = "EncryptPatchOutput"
+    effect    = "Allow"
+    actions   = ["kms:GenerateDataKey"]
+    resources = [aws_kms_key.ssm.arn]
+  }
+}
+
+resource "aws_iam_policy" "patch_log_writer" {
+  name        = "${var.environment}-ssm-patch-log-writer"
+  description = "Lets a managed node write patch output to the encrypted patch log bucket"
+  policy      = data.aws_iam_policy_document.patch_log_writer.json
 }
 
 # Maintenance Window
@@ -232,6 +263,15 @@ resource "aws_ssm_maintenance_window_task" "patch_task" {
   max_concurrency  = "50%"
   max_errors       = "0"
 
+  # Systems Manager rejects a role IAM created seconds ago with an
+  # iam:PassRole error (seen in the live proof). The bucket's lifecycle
+  # configuration takes about a minute, which is enough.
+  # shortcut: ordering, not a guarantee; if a first apply still fails here, apply again.
+  depends_on = [
+    aws_iam_role_policy_attachment.ssm_mw_policy,
+    aws_s3_bucket_lifecycle_configuration.patch_logs,
+  ]
+
   targets {
     key    = "WindowTargetIds"
     values = [aws_ssm_maintenance_window_target.target.id]
@@ -241,7 +281,6 @@ resource "aws_ssm_maintenance_window_task" "patch_task" {
     run_command_parameters {
       output_s3_bucket     = aws_s3_bucket.patch_logs.id
       output_s3_key_prefix = "patch-outputs/"
-      service_role_arn     = aws_iam_role.ssm_maintenance_window.arn
       timeout_seconds      = 3600
 
       parameter {

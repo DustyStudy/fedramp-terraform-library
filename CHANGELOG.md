@@ -12,6 +12,30 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Added
+- Live proof of `ssm-patching-hardened`, `iam-access-control`,
+  `moderate/network-boundary/vpc-flow-logs` and the `org-cloudtrail` key
+  statement (`proof/patching`, `proof/cloudtrail-key`,
+  `proof/access-control`, `proof/controls_probe.py`). 12 of 12 checks
+  passed on the final run (`docs/LIVE-PROOF.md`).
+- `ssm-patching-hardened`: `patch_log_writer_policy_arn`, a policy for
+  the instance profile role of each patched node. SSM Agent writes patch
+  output with the node's credentials.
+- `terraform test` suites for `ssm-patching-hardened`,
+  `iam-access-control` and `vpc-flow-logs`.
+
+### Changed
+- `ssm-patching-hardened`: the maintenance-window role trust carries
+  `aws:SourceAccount` and `aws:SourceArn`. The patch task no longer passes
+  that role to Run Command as a notification role, which made every task
+  fail. The key policy no longer grants the window role.
+- `iam-access-control`: the developer permissions boundary lists one ARN
+  per service. IAM rejects a wildcard in an ARN's service field.
+- `vpc-flow-logs`: the log-delivery grant on the key carries
+  `aws:SourceAccount` and `aws:SourceArn`. The access-log bucket name is
+  shortened when the long one would pass S3's 63 characters, as it does
+  with a 17-character VPC ID. The provider range now allows 6.x.
+
 ## [2.1.0] - 2026-10-10
 
 ### Added

@@ -1,0 +1,40 @@
+{
+  "ran_at": "2026-10-10T20:23:50+00:00",
+  "region": "us-east-1",
+  "passed": 3,
+  "total": 3,
+  "results": [
+    {
+      "module": "iam-access-control",
+      "check": "Both analyzers are active, one for external and one for unused access",
+      "passed": true,
+      "observed": {
+        "external_access_analyzer": {
+          "type": "ACCOUNT",
+          "status": "ACTIVE"
+        },
+        "unused_access_analyzer": {
+          "type": "ACCOUNT_UNUSED_ACCESS",
+          "status": "ACTIVE"
+        }
+      }
+    },
+    {
+      "module": "iam-access-control",
+      "check": "A role under the developer boundary can read S3 in its own account",
+      "passed": true,
+      "observed": {
+        "s3:ListBucket on a bucket this account owns": "allowed"
+      }
+    },
+    {
+      "module": "iam-access-control",
+      "check": "The same role is refused services outside the boundary",
+      "passed": true,
+      "observed": {
+        "ec2:DescribeVpcs": "UnauthorizedOperation",
+        "iam:ListRoles": "AccessDenied"
+      }
+    }
+  ]
+}
