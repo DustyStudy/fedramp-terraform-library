@@ -4,6 +4,12 @@ variable "kms_key_arn" {
   default     = ""
 }
 
+variable "set_ebs_default_kms_key" {
+  description = "Set kms_key_arn as the default EBS key. Leave null to decide from kms_key_arn; set true when the key is created in the same plan, where its ARN is not known yet."
+  type        = bool
+  default     = null
+}
+
 variable "minimum_password_length" {
   description = "Minimum password length. NIST SP 800-63B-4: at least 15 for single-factor passwords; 8 only when always used with MFA. FedRAMP assigns no separate value."
   type        = number

@@ -318,7 +318,7 @@ def _organization_accounts():
             a["Id"]
             for page in organizations.get_paginator("list_accounts").paginate()
             for a in page["Accounts"]
-            if a.get("Status", "ACTIVE") == "ACTIVE"
+            if (a.get("State") or a.get("Status") or "ACTIVE") == "ACTIVE"
         ]
     except ClientError:
         logger.exception("Could not list organization accounts; scanning this account only")

@@ -68,9 +68,10 @@ data "aws_iam_policy_document" "cmk" {
 }
 
 resource "aws_kms_key" "this" {
-  description         = "Customer-managed key for ${var.key_alias}"
-  enable_key_rotation = true
-  policy              = data.aws_iam_policy_document.cmk.json
+  description             = "Customer-managed key for ${var.key_alias}"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+  policy                  = data.aws_iam_policy_document.cmk.json
 }
 
 resource "aws_kms_alias" "this" {

@@ -154,7 +154,7 @@ resource "aws_organizations_policy" "backup_policy" {
                 # resolves per-account at evaluation time and is untouched
                 # by Terraform's ${...} interpolation syntax, so it's safe
                 # to leave as-is alongside the partition interpolation.
-                "@@assign" = "arn:${local.partition}:iam::$account:role/AWSBackupDefaultServiceRole"
+                "@@assign" = "arn:${local.partition}:iam::$account:role/service-role/AWSBackupDefaultServiceRole"
               },
               tag_key = {
                 "@@assign" = "Backup"

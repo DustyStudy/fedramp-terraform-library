@@ -78,6 +78,7 @@ module "account_baseline" {
 | require_numbers | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
 | require_symbols | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
 | require_uppercase_characters | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
+| set_ebs_default_kms_key | Set kms_key_arn as the default EBS key. Leave null to decide from kms_key_arn; set true when the key is created in the same plan, where its ARN is not known yet. | `bool` | `null` | no |
 
 ## Outputs
 

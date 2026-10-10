@@ -57,7 +57,7 @@ resource "aws_ecr_lifecycle_policy" "this" {
   repository = aws_ecr_repository.this.name
 
   policy = jsonencode({
-    rules = [
+    rules = concat([
       {
         rulePriority = 1
         description  = "Expire untagged images older than 14 days"
@@ -70,13 +70,16 @@ resource "aws_ecr_lifecycle_policy" "this" {
         action = {
           type = "expire"
         }
-      },
-      {
-        rulePriority = 2
-        description  = "Retain max 30 tagged production images"
+      }
+      ], [
+      # One rule per prefix: a single tagPrefixList only selects images that
+      # carry a tag for every prefix in the list.
+      for i, prefix in ["v", "prod", "release"] : {
+        rulePriority = i + 2
+        description  = "Retain max 30 images tagged ${prefix}*"
         selection = {
           tagStatus     = "tagged"
-          tagPrefixList = ["v", "prod", "release"]
+          tagPrefixList = [prefix]
           countType     = "imageCountMoreThan"
           countNumber   = 30
         }
@@ -84,6 +87,6 @@ resource "aws_ecr_lifecycle_policy" "this" {
           type = "expire"
         }
       }
-    ]
+    ])
   })
 }

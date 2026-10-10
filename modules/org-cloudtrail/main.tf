@@ -57,13 +57,13 @@ data "aws_iam_policy_document" "cloudtrail_kms" {
       type        = "Service"
       identifiers = ["logs.${local.region}.amazonaws.com"]
     }
-    actions   = ["kms:Decrypt", "kms:GenerateDataKey*"]
+    actions   = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
     resources = ["*"]
 
     condition {
-      test     = "StringEquals"
-      variable = "aws:SourceArn"
-      values   = ["arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group:${var.trail_name}-logs:*"]
+      test     = "ArnLike"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values   = ["arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group:${var.trail_name}-logs"]
     }
   }
 }

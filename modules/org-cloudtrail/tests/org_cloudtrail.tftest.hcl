@@ -94,6 +94,13 @@ run "bucket_policy_prevents_confused_deputy_and_plain_http" {
   }
 
   assert {
+    condition = length([
+      for s in jsondecode(data.aws_iam_policy_document.s3_cloudtrail_policy.json).Statement : s if s.Effect == "Allow"
+    ]) >= 2
+    error_message = "The bucket policy must keep CloudTrail's ACL check and log write grants."
+  }
+
+  assert {
     condition = anytrue([
       for s in jsondecode(data.aws_iam_policy_document.s3_cloudtrail_policy.json).Statement :
       s.Effect == "Deny" && s.Condition.Bool["aws:SecureTransport"] == "false"

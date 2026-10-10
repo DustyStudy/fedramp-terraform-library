@@ -12,7 +12,9 @@ resource "aws_ebs_encryption_by_default" "this" {
 }
 
 resource "aws_ebs_default_kms_key" "this" {
-  count   = var.kms_key_arn != "" ? 1 : 0
+  # A key created in the same plan has an unknown ARN, so callers that create
+  # the key pass set_ebs_default_kms_key instead of relying on the comparison.
+  count   = (var.set_ebs_default_kms_key != null ? var.set_ebs_default_kms_key : var.kms_key_arn != "") ? 1 : 0
   key_arn = var.kms_key_arn
 }
 

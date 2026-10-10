@@ -31,6 +31,7 @@ module "account_baseline" {
   source = "../../modules/account-baseline"
 
   kms_key_arn               = aws_kms_key.ebs.arn
+  set_ebs_default_kms_key   = true
   minimum_password_length   = 16
   max_password_age          = 0 # NIST SP 800-63B-4: no periodic expiry
   password_reuse_prevention = 24

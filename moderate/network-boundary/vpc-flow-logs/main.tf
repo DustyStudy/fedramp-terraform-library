@@ -60,6 +60,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "flow_log_access_log" {
   rule {
     id     = "expire-access-logs"
     status = "Enabled"
+    filter {}
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
@@ -152,9 +153,10 @@ data "aws_iam_policy_document" "flow_log_kms" {
 }
 
 resource "aws_kms_key" "flow_log" {
-  description         = "KMS key for VPC Flow Logs S3 delivery bucket"
-  enable_key_rotation = true
-  policy              = data.aws_iam_policy_document.flow_log_kms.json
+  description             = "KMS key for VPC Flow Logs S3 delivery bucket"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+  policy                  = data.aws_iam_policy_document.flow_log_kms.json
 }
 
 resource "aws_kms_alias" "flow_log" {
@@ -211,6 +213,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "flow_log" {
   rule {
     id     = "archive-and-expire"
     status = "Enabled"
+    filter {}
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
