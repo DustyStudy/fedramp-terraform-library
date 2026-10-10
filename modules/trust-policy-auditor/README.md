@@ -48,9 +48,20 @@ This module does.
 Under `StringEquals`, a `*` is a literal character and matches nothing
 else. Condition keys are compared case-insensitively, as IAM does.
 
-Findings go to one SNS summary, grouped by severity. A clean run sends
-nothing. An account the Lambda couldn't reach is listed under "Accounts
-not scanned" rather than left out, so a failure never looks clean.
+A condition only counts when it restricts the caller. `Principal: "*"`
+or a service principal is still reported when its only condition is
+negated (`StringNotEquals`), is `Null` alone, or matches everyone (`"*"`,
+or an ARN pattern open to any account such as `arn:aws:iam::*:role/*`).
+`...IfExists` and `ForAllValues` count only when the key is certain to be
+in the request: `aws:PrincipalAccount` and `aws:PrincipalArn` always are,
+and any key is when the statement also sets `Null` to `false` for it. A
+value with a policy variable is reported for review by hand.
+
+Findings go to one SNS summary, grouped by severity. A clean, complete
+run sends nothing. An account the Lambda couldn't reach is listed under
+"Accounts not scanned" rather than left out, so a failure never looks
+clean. A report over the SNS size limit is cut at the least severe end
+and says so, and a failed publish fails the invocation.
 
 ## Using Terraform
 
@@ -146,7 +157,9 @@ Detective only: a human still decides what to change.
 
 - Without `organizations:ListAccounts` (for example, deployed in a member
   account), "outside the organization" can't be known. Those checks are
-  skipped and the report says so; the OIDC and `"*"` checks still run.
+  skipped and every run sends a report that says so; the OIDC and `"*"`
+  checks still run. An account that isn't in an organization treats every
+  other account as outside.
 - Service-linked roles and SAML federation are skipped: AWS manages the
   first, and SAML trust is governed by your identity provider.
 - False positives are expected. A vendor role with an `sts:ExternalId` is

@@ -112,16 +112,19 @@ ESCALATION_ACTIONS = [
 FLAG_DIRECT_USER_ASSIGNMENTS = os.environ.get("FLAG_DIRECT_USER_ASSIGNMENTS", "true").lower() == "true"
 REPORT_UNUSED_PERMISSION_SETS = os.environ.get("REPORT_UNUSED_PERMISSION_SETS", "true").lower() == "true"
 ADMIN_POLICY_ARN_SUFFIX = "/AdministratorAccess"
+MAX_MESSAGE_BYTES = 250_000  # SNS rejects a message over 256 KB
 
 
 def _notify(subject, message):
     if not SNS_TOPIC_ARN:
         logger.info("SNS_TOPIC_ARN not set, skipping notification")
         return
-    try:
-        sns.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject[:100], Message=message)
-    except ClientError:
-        logger.exception("Failed to publish SNS notification")
+    body = message.encode("utf-8")
+    if len(body) > MAX_MESSAGE_BYTES:
+        message = body[:MAX_MESSAGE_BYTES].decode("utf-8", "ignore") + "\n... report truncated to fit SNS. The rest is not shown."
+    # A publish error propagates: a report nobody received must fail the run
+    # (Lambda Errors metric / DLQ), not look delivered.
+    sns.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject[:100], Message=message)
 
 
 def _paginate(client, operation, result_key, **kwargs):
@@ -207,13 +210,11 @@ def _statement_is_risky(statement):
 
 def _inline_policy_findings(instance_arn, permission_set_arn):
     findings = []
-    try:
-        doc_str = sso_admin.get_inline_policy_for_permission_set(
-            InstanceArn=instance_arn, PermissionSetArn=permission_set_arn
-        ).get("InlinePolicy")
-    except ClientError:
-        logger.exception("Failed to get inline policy for %s", permission_set_arn)
-        return findings
+    # An API error propagates, as in _paginate: a policy that couldn't be
+    # read must not look like a policy with nothing risky in it.
+    doc_str = sso_admin.get_inline_policy_for_permission_set(
+        InstanceArn=instance_arn, PermissionSetArn=permission_set_arn
+    ).get("InlinePolicy")
 
     if not doc_str:
         return findings
@@ -222,7 +223,7 @@ def _inline_policy_findings(instance_arn, permission_set_arn):
         doc = json.loads(doc_str)
     except (TypeError, ValueError):
         logger.exception("Inline policy for %s was not valid JSON", permission_set_arn)
-        return findings
+        return ["inline policy could not be parsed; review it by hand"]
 
     # "Statement" may be a single object rather than a list - both are valid IAM.
     for statement in _as_list(doc.get("Statement")):

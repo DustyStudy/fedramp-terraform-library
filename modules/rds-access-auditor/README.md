@@ -54,9 +54,12 @@ administrator access with
 [`identity-center-access-auditor`](../identity-center-access-auditor/)
 and IAM Access Analyzer instead.
 
-Findings go to one SNS summary, grouped by severity. A clean run sends
-nothing. An account the Lambda couldn't reach is listed under "Accounts
-not scanned" rather than left out, so a failure never looks clean.
+Findings go to one SNS summary, grouped by severity. A clean, complete
+run sends nothing. An account the Lambda couldn't reach is listed under
+"Accounts not scanned" rather than left out, and a run that couldn't list
+the organization's accounts always sends a report, so a failure never
+looks clean. A report over the SNS size limit is cut at the least severe
+end and says so, and a failed publish fails the invocation.
 
 ## What happens inside the database
 

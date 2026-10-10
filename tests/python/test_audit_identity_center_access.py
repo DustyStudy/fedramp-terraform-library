@@ -217,3 +217,43 @@ def test_sso_access_denied_fails_instead_of_reporting_clean(make_fn):
 
     with pytest.raises(ClientError):
         fn.lambda_handler({}, None)
+
+
+def test_unreadable_inline_policy_fails_instead_of_reporting_clean(make_fn):
+    fn = make_fn([_permission_set("Dev")])
+    fn.sso_admin.get_inline_policy_for_permission_set.side_effect = ClientError(
+        {"Error": {"Code": "AccessDenied"}}, "GetInlinePolicyForPermissionSet"
+    )
+
+    with pytest.raises(ClientError):
+        fn.lambda_handler({}, None)
+
+
+def test_inline_policy_that_is_not_json_is_reported(make_fn):
+    fn = make_fn([_permission_set("Dev")])
+    fn.sso_admin.get_inline_policy_for_permission_set.side_effect = lambda InstanceArn, PermissionSetArn: {
+        "InlinePolicy": "{not json"
+    }
+
+    response = fn.lambda_handler({}, None)
+
+    assert _body(response)["over_privileged_permission_set_count"] == 1
+    assert "could not be parsed" in _message(fn)
+
+
+def test_oversized_report_is_cut_to_fit_sns(make_fn):
+    fn = make_fn([])
+
+    fn._notify("subject", "x" * 400_000)
+
+    message = _message(fn)
+    assert len(message.encode("utf-8")) <= 256 * 1024
+    assert "truncated" in message
+
+
+def test_failed_publish_fails_the_run(make_fn):
+    fn = make_fn([_permission_set("Admin", managed=["AdministratorAccess"])])
+    fn.sns.publish.side_effect = ClientError({"Error": {"Code": "KMSAccessDenied"}}, "Publish")
+
+    with pytest.raises(ClientError):
+        fn.lambda_handler({}, None)

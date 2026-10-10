@@ -23,7 +23,9 @@ Four checks:
 
 "Outside the organization" needs organizations:ListAccounts, so run this
 from the management account or a delegated administrator. Without it the
-cross-account parts of checks 2-4 are skipped and the report says so.
+cross-account parts of checks 2-4 are skipped and every run's report says
+so. An account that isn't in an organization treats every other account
+as outside.
 
 Set MEMBER_ROLE_NAME to scan every active account in the organization by
 assuming that role in each; leave it empty to scan only this account.
@@ -60,11 +62,13 @@ REGIONS = [r.strip() for r in os.environ.get("REGIONS", "").split(",") if r.stri
 TRUSTED_ACCOUNT_IDS = {a.strip() for a in os.environ.get("TRUSTED_ACCOUNT_IDS", "").split(",") if a.strip()}
 
 SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+MAX_MESSAGE_BYTES = 250_000  # SNS rejects a message over 256 KB
 GITHUB_OIDC_HOST = "token.actions.githubusercontent.com"
 ACCOUNT_ID = re.compile(r"^\d{12}$")
 
-# Any of these on a statement pins "*" or a service principal to known
-# callers, so it isn't reported as open.
+# One of these on a statement pins "*" or a service principal to known
+# callers, so it isn't reported as open - if the condition restricts
+# anything (see _restricts).
 PRINCIPAL_SCOPING_KEYS = {
     "aws:principalorgid",
     "aws:principalorgpaths",
@@ -76,6 +80,8 @@ PRINCIPAL_SCOPING_KEYS = {
     "aws:sourceorgpaths",
 }
 SERVICE_SCOPING_KEYS = {"aws:sourcearn", "aws:sourceaccount", "aws:sourceorgid", "lambda:eventsourcetoken"}
+# In every request an AWS principal makes, so ...IfExists on them still restricts.
+ALWAYS_PRESENT_KEYS = {"aws:principalaccount", "aws:principalarn"}
 
 
 class Context:
@@ -125,6 +131,46 @@ def _conditions(statement):
         for key, values in keyed.items():
             found.setdefault(key.lower(), []).append((operator, [str(v) for v in _as_list(values)]))
     return found
+
+
+def _matches_everyone(pattern):
+    """A wildcard value that is all wildcards, an ARN open to any account,
+    or an ARN with no account field (S3) open to any resource."""
+    if not pattern.strip("*?"):
+        return True
+    parts = pattern.split(":")
+    if parts[0] != "arn":
+        return False
+    account = parts[4] if len(parts) > 4 else parts[-1]
+    return _wild(account) or (not account and not "".join(parts[5:]).strip("*?"))
+
+
+def _restricts(conditions, keys):
+    """True when one of these condition keys narrows who can call. The
+    operator has to require a matching value: a negated one admits everyone
+    else and Null only asks whether the key exists. ...IfExists passes when
+    the key is absent and ForAllValues passes on an empty set, so those two
+    count only when the key is certain to be in the request. A value with a
+    policy variable can't be judged here, so it doesn't count."""
+    for key in keys & conditions.keys():
+        present = key in ALWAYS_PRESENT_KEYS or any(
+            operator == "Null" and [v.lower() for v in values] == ["false"] for operator, values in conditions[key]
+        )
+        for operator, values in conditions[key]:
+            if "Not" in operator or operator == "Null":
+                continue
+            if (operator.endswith("IfExists") or operator.startswith("ForAllValues")) and not present:
+                continue
+            # ArnEquals matches wildcards exactly as ArnLike does.
+            wildcards = "Like" in operator or "Arn" in operator
+            if values and not any("${" in v or (wildcards and _matches_everyone(v)) for v in values):
+                return True
+    return False
+
+
+def _unrestricting_note(conditions, keys):
+    present = sorted(keys & conditions.keys())
+    return f"; its {', '.join(present)} condition does not restrict the caller" if present else ""
 
 
 def _account_of(principal):
@@ -220,8 +266,9 @@ def check_role_trust(role, account_id, ctx):
             if kind == "Federated" and "saml-provider/" not in value:
                 findings += _check_oidc(statement, value, account_id, role_arn)
             elif kind == "AWS" and value == "*":
-                if not PRINCIPAL_SCOPING_KEYS & conditions.keys():
+                if not _restricts(conditions, PRINCIPAL_SCOPING_KEYS):
                     detail = "any AWS principal in any account can assume it (Principal '*' with no org, account or ARN condition)"
+                    detail += _unrestricting_note(conditions, PRINCIPAL_SCOPING_KEYS)
                     findings.append(_finding("CRITICAL", "cross-account-trust", account_id, role_arn, detail))
             elif kind == "AWS":
                 other = _account_of(value)
@@ -244,15 +291,16 @@ def check_function_policy(function_arn, policy, account_id, ctx):
                 if "NONE" in url_auth:
                     detail = "has a public function URL (AuthType NONE): anyone on the internet can invoke it"
                     findings.append(_finding("HIGH", "lambda-policy", account_id, function_arn, detail))
-                elif not PRINCIPAL_SCOPING_KEYS & conditions.keys():
+                elif not _restricts(conditions, PRINCIPAL_SCOPING_KEYS):
                     detail = "any AWS principal can invoke it (Principal '*' with no source or org condition)"
+                    detail += _unrestricting_note(conditions, PRINCIPAL_SCOPING_KEYS)
                     findings.append(_finding("CRITICAL", "lambda-policy", account_id, function_arn, detail))
             elif kind == "Service":
-                if not SERVICE_SCOPING_KEYS & conditions.keys():
+                if not _restricts(conditions, SERVICE_SCOPING_KEYS):
                     detail = (
                         f"{value} can invoke it with no aws:SourceArn or aws:SourceAccount condition, "
                         "so another account's resource can trigger it (confused deputy)"
-                    )
+                    ) + _unrestricting_note(conditions, SERVICE_SCOPING_KEYS)
                     findings.append(_finding("MEDIUM", "lambda-policy", account_id, function_arn, detail))
             elif kind == "AWS":
                 other = _account_of(value)
@@ -330,7 +378,9 @@ def _organization_accounts():
             for a in page["Accounts"]
             if (a.get("State") or a.get("Status") or "ACTIVE") == "ACTIVE"
         ]
-    except ClientError:
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "AWSOrganizationsNotInUseException":
+            return []  # a standalone account: every other account is outside
         logger.exception("Could not list organization accounts; outside-the-org checks are off")
         return None
 
@@ -356,6 +406,10 @@ def _report(findings, errors, ctx):
         lines.append(
             "Organization accounts could not be listed, so trust in accounts outside the organization was not checked."
         )
+    # Above the findings, so a report cut to the SNS size limit keeps them.
+    if errors:
+        lines.append(f"\n=== Accounts not scanned ({len(errors)}) ===")
+        lines.extend(f"{account}: {error}" for account, error in errors)
     for severity in SEVERITIES:
         matching = [f for f in findings if f["severity"] == severity]
         if not matching:
@@ -363,9 +417,6 @@ def _report(findings, errors, ctx):
         lines.append(f"\n=== {severity} ({len(matching)}) ===")
         for f in matching:
             lines.append(f"[{f['check']}] {f['account']} {f['resource']}\n  {f['detail']}")
-    if errors:
-        lines.append(f"\n=== Accounts not scanned ({len(errors)}) ===")
-        lines.extend(f"{account}: {error}" for account, error in errors)
     return "\n".join(lines)
 
 
@@ -373,10 +424,12 @@ def _notify(subject, message):
     if not SNS_TOPIC_ARN:
         logger.info("SNS_TOPIC_ARN not set, skipping notification")
         return
-    try:
-        sns.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject[:100], Message=message)
-    except ClientError:
-        logger.exception("Failed to publish SNS notification")
+    body = message.encode("utf-8")
+    if len(body) > MAX_MESSAGE_BYTES:
+        message = body[:MAX_MESSAGE_BYTES].decode("utf-8", "ignore") + "\n... report truncated to fit SNS. Findings are listed most severe first; invoke the function for the full list."
+    # A publish error propagates: a report nobody received must fail the run
+    # (Lambda Errors metric / DLQ), not look delivered.
+    sns.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject[:100], Message=message)
 
 
 def lambda_handler(event, context):
@@ -407,7 +460,9 @@ def lambda_handler(event, context):
     counts = {s: sum(f["severity"] == s for f in findings) for s in SEVERITIES}
     logger.info(json.dumps({"counts": counts, "accounts": len(targets), "errors": len(errors)}))
 
-    if findings or errors:
+    # An organization that couldn't be listed turns checks off, so the run
+    # is reported even when nothing else was found.
+    if findings or errors or org_accounts is None:
         subject = f"Trust policy audit: {counts['CRITICAL']} critical, {counts['HIGH']} high"
         _notify(subject, _report(findings, errors, ctx))
 

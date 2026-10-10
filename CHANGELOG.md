@@ -12,6 +12,20 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Changed
+- `trust-policy-auditor`: a scoping condition on `Principal: "*"` or a
+  service principal counts only when it restricts the caller. Negated
+  and `Null`-only conditions, unguarded `...IfExists` and `ForAllValues`
+  operators, and values that match everyone are reported.
+- `trust-policy-auditor`, `rds-access-auditor`: a run that could not list
+  the organization's accounts always sends a report. An account outside
+  any organization treats every other account as outside.
+- `identity-center-access-auditor`: an inline policy that cannot be read
+  fails the invocation, and one that cannot be parsed is reported.
+- All three auditors cut a report to the SNS size limit and fail the
+  invocation when the publish fails. Accounts that were not scanned are
+  listed above the findings, so a cut report keeps them.
+
 ### Added
 - `account-baseline`: `set_ebs_default_kms_key`, so a caller that creates
   the EBS key in the same plan can set it as the default key. The High
