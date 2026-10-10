@@ -1,7 +1,9 @@
 # Live proof
 
-Thirteen of the library's 23 modules were deployed to a real AWS Organization
-on 2026-10-04 and 2026-10-05 and checked with real API calls. A
+Fifteen of the library's 23 modules have been deployed to a real AWS
+Organization and checked with real API calls: thirteen on 2026-10-04 and
+2026-10-05, and two more on
+[2026-10-10](#later-run-patching-flow-logs-and-access-control). A
 [later run](#later-run-data-plane) used four of them: it pushed an image,
 sent requests through the web ACL and connected to the database. This page records the
 setup, the results, what the run changed in the library, and what it did
@@ -163,6 +165,83 @@ invoked the `rds-access-auditor` function under the `aws:SourceAccount`
 trust condition added on 2026-10-06, with the same three findings on the
 weak fixture and none on the hardened instance.
 
+## Later run: patching, flow logs and access control
+
+On 2026-10-10 three small stacks covered two modules that had not been
+deployed, one Moderate stack, and one statement of `org-cloudtrail`:
+
+- [`proof/patching`](../proof/patching/main.tf), in the sandbox member
+  account: `ssm-patching-hardened` with one Amazon Linux 2023 instance in
+  the patch group, in private subnets that reach AWS only through
+  `fips-vpc-endpoints`, and `moderate/network-boundary/vpc-flow-logs` on
+  the same VPC. The patch window was set to open every 15 minutes.
+- [`proof/cloudtrail-key`](../proof/cloudtrail-key/main.tf), in the same
+  account, applied with `-target`: the `org-cloudtrail` key and the trail's
+  log group, without a trail.
+- [`proof/access-control`](../proof/access-control/main.tf), in the
+  management account: `iam-access-control`, and a role whose permissions
+  boundary is the module's developer boundary. In the run its identity
+  policy was `ReadOnlyAccess`; the stack now allows only the three calls
+  the probe makes.
+
+[`controls_probe.py`](../proof/controls_probe.py) ran 12 checks. On the
+final run all 12 passed. Raw output:
+[`patching-run-3.json`](proof/patching-run-3.json),
+[`cloudtrail-key-run.json`](proof/cloudtrail-key-run.json) and
+[`access-control-run.json`](proof/access-control-run.json).
+
+| Module | Check | Result |
+|---|---|---|
+| `ssm-patching-hardened` | The instance registered as a managed node through the VPC endpoints | pass |
+| `ssm-patching-hardened` | The `FedRAMPCompliance` patch group resolves to the module's baseline | pass |
+| `ssm-patching-hardened` | `AWS-RunPatchBaseline` scanned the node under the module's baseline: 139 installed, 0 missing | pass |
+| `ssm-patching-hardened` | Run Command output reached the bucket, encrypted with its customer managed key | pass |
+| `ssm-patching-hardened` | The maintenance-window role trust carries `aws:SourceAccount` and `aws:SourceArn` | pass |
+| `ssm-patching-hardened` | A window opened during the run and its patch task finished `SUCCESS` under that role | pass |
+| `vpc-flow-logs` | The log-delivery grant on the key carries `aws:SourceAccount` and `aws:SourceArn` | pass |
+| `vpc-flow-logs` | Flow log status `ACTIVE`, delivery `SUCCESS`, records in the bucket encrypted with its customer managed key | pass |
+| `org-cloudtrail` | CloudWatch Logs created the trail log group under the trail key, and one event was written and read back | pass |
+| `iam-access-control` | Both analyzers are `ACTIVE`: one `ACCOUNT`, one `ACCOUNT_UNUSED_ACCESS` | pass |
+| `iam-access-control` | The role under the developer boundary read a bucket its account owns | pass |
+| `iam-access-control` | The same role was refused `ec2:DescribeVpcs` and `iam:ListRoles`, which its identity policy allows | pass |
+
+### What this run changed
+
+Each of these came from the run and is fixed in the same change that adds
+this section. The patching stack was probed three times:
+[run 1](proof/patching-run-1.json) with no extra policy on the instance,
+[run 2](proof/patching-run-2.json) with the new one, and run 3 after the
+key policy was trimmed. The error texts quoted here come from the
+Terraform apply output and from the maintenance-window task invocation's
+status details; the probe output records only that the check failed.
+
+| Found | Change |
+|---|---|
+| With a 17-character VPC ID, the flow-log access-log bucket name is 70 characters; S3 allows 63 | `vpc-flow-logs` uses a shorter name when the long one does not fit. Names that already fit are unchanged. |
+| Run 1: the patch scan reported `Success`, but its output never reached the bucket. SSM Agent uploads output with the managed node's instance profile, which had no access to the bucket or its key | `ssm-patching-hardened` outputs `patch_log_writer_policy_arn`, a policy to attach to instance profile roles. The key policy no longer grants the maintenance-window role, which never writes there. |
+| Run 1: the window opened and its task failed: "The provided role does not contain the iam:PassRole permission, which is required when providing a role as a task parameter." The window role was also passed as Run Command's notification role | The task no longer sets `service_role_arn` in `run_command_parameters`. No notification is configured, so nothing used it. |
+| On a first apply, registering the task was refused with an `iam:PassRole` error two seconds after IAM created the role. The same apply succeeded minutes later | The task is ordered after the bucket's lifecycle configuration, which takes about a minute. |
+| IAM rejected the developer boundary: "Resource vendor must be fully qualified and cannot contain regexes." Its allow statement used `arn:aws:*:*:<account>:*` | The boundary lists one ARN per service. |
+
+The source conditions added in this change held up: Systems Manager
+assumed the maintenance-window role and ran the task, and log delivery
+used the flow-log key.
+
+### What this run did not cover
+
+- **The CloudTrail role for CloudWatch Logs.** Its trust has no source
+  condition, and testing one needs an organization trail. Only the key
+  and the log group were created.
+- **Installing a patch.** The node had nothing missing, so the window's
+  `Install` task succeeded without installing anything.
+- **Patch output over 5 MiB.** S3 uploads it in parts, which also needs
+  `kms:Decrypt`. The writer policy grants it; the run's output was small.
+- **Actions with no resource to name.** `s3:ListAllMyBuckets` and similar
+  list calls were not tried under the developer boundary.
+- **`iam-access-control` in a member account.** The organization's SCP
+  denies `access-analyzer:DeleteAnalyzer` there, so the stack ran in the
+  management account, where it could be destroyed.
+
 ## What the run could not do
 
 - **S3 account-level public access block.** The organization's own SCP
@@ -192,13 +271,13 @@ weak fixture and none on the hardened instance.
 
 ## Not covered
 
-- **Ten modules were not deployed:** `config-conformance-pack` (AWS
+- **Eight modules were not deployed:** `config-conformance-pack` (AWS
   Config is off in this organization by choice), `eks-hardened`,
-  `ssm-patching-hardened`, `iam-access-control`, `iam-password-policy`
-  (the same policy is applied by `account-baseline`), and the
-  organization-level `guardduty-org`, `security-hub-org`, `org-cloudtrail`,
-  `org-governance` and `org-scp-boundary`, which would have replaced
-  settings the organization already manages elsewhere.
+  `iam-password-policy` (the same policy is applied by `account-baseline`),
+  and the organization-level `guardduty-org`, `security-hub-org`,
+  `org-cloudtrail`, `org-governance` and `org-scp-boundary`, which would
+  have replaced settings the organization already manages elsewhere. Of
+  `org-cloudtrail`, only the key and the log group were created.
 - **The stale-account detector's window.** It ran with one day of
   inactivity, so its findings show that the checks work, not which access
   is really unused. The member role existed in one account only.
@@ -246,6 +325,25 @@ python dataplane_probe.py dataplane-inputs.json > dataplane-run.json
 cd ../management
 terraform init && terraform apply -var region=<home-region>
 aws lambda invoke --function-name ftlproof-idc-auditor-audit-identity-center out.json
+
+# Patching and flow logs (member account)
+cd ../patching
+terraform init && terraform plan -out=proof.tfplan && terraform apply proof.tfplan
+terraform output -json probe > probe-inputs.json
+python ../controls_probe.py probe-inputs.json > patching-run.json
+python ../controls_probe.py probe-inputs.json --empty-buckets   # before destroy
+
+# Trail key and log group only (member account)
+cd ../cloudtrail-key
+terraform init && terraform apply -target=module.org_cloudtrail.aws_cloudwatch_log_group.trail
+echo '{"region":"us-east-1","cloudtrail_log_group":"ftlproof-trail-logs"}' > probe-inputs.json
+python ../controls_probe.py probe-inputs.json
+
+# Access control (an account where analyzers can be deleted)
+cd ../access-control
+terraform init && terraform plan -out=proof.tfplan && terraform apply proof.tfplan
+terraform output -json probe > probe-inputs.json
+python ../controls_probe.py probe-inputs.json
 ```
 
 Teardown needs three steps Terraform cannot do alone:

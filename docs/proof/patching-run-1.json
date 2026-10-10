@@ -1,0 +1,92 @@
+{
+  "ran_at": "2026-10-10T20:01:00+00:00",
+  "region": "us-east-1",
+  "passed": 6,
+  "total": 8,
+  "results": [
+    {
+      "module": "ssm-patching-hardened",
+      "check": "The instance registers as a managed node through the VPC endpoints",
+      "passed": true,
+      "observed": {
+        "PingStatus": "Online",
+        "PlatformName": "Amazon Linux",
+        "PlatformVersion": "2023"
+      }
+    },
+    {
+      "module": "ssm-patching-hardened",
+      "check": "The FedRAMPCompliance patch group resolves to the module's baseline",
+      "passed": true,
+      "observed": {
+        "baseline": "pb-075437e0b616f50a5",
+        "module_baseline": "pb-075437e0b616f50a5"
+      }
+    },
+    {
+      "module": "ssm-patching-hardened",
+      "check": "AWS-RunPatchBaseline scans the node under the module's baseline",
+      "passed": true,
+      "observed": {
+        "scan": "Success",
+        "baseline": "pb-075437e0b616f50a5",
+        "module_baseline": "pb-075437e0b616f50a5",
+        "InstalledCount": 139,
+        "MissingCount": 0,
+        "FailedCount": 0
+      }
+    },
+    {
+      "module": "ssm-patching-hardened",
+      "check": "Run Command output reaches the bucket, encrypted with its customer managed key",
+      "passed": false,
+      "observed": {
+        "writer_policy_attached": false,
+        "objects_under_prefix": false
+      }
+    },
+    {
+      "module": "ssm-patching-hardened",
+      "check": "The maintenance-window role trust has source conditions",
+      "passed": true,
+      "observed": {
+        "aws:SourceAccount": "111122223333",
+        "aws:SourceArn": "arn:aws:ssm:*:111122223333:*"
+      }
+    },
+    {
+      "module": "ssm-patching-hardened",
+      "check": "The maintenance window ran its patch task under that role",
+      "passed": false,
+      "observed": {
+        "execution": "FAILED",
+        "tasks": [
+          {
+            "task": "AWS-RunPatchBaseline",
+            "status": "FAILED"
+          }
+        ]
+      }
+    },
+    {
+      "module": "vpc-flow-logs",
+      "check": "The log-delivery grant on the key has source conditions",
+      "passed": true,
+      "observed": {
+        "aws:SourceAccount": "111122223333",
+        "aws:SourceArn": "arn:aws:logs:us-east-1:111122223333:*"
+      }
+    },
+    {
+      "module": "vpc-flow-logs",
+      "check": "Flow log records are delivered to the bucket, encrypted with its customer managed key",
+      "passed": true,
+      "observed": {
+        "status": "ACTIVE",
+        "delivery": "SUCCESS",
+        "objects_in_bucket": true,
+        "encrypted_with_bucket_key": true
+      }
+    }
+  ]
+}

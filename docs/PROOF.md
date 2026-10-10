@@ -3,11 +3,11 @@
 This page covers the plan-time evidence: every check below runs offline,
 against the resources and policy JSON that Terraform renders, with dummy
 credentials in the test files. It lists what those checks cover, the
-numbers from the last run, and the gaps. Thirteen modules have also been
+numbers from the last run, and the gaps. Fifteen modules have also been
 deployed to a real organization and probed with real API calls; that run
 is in [LIVE-PROOF.md](LIVE-PROOF.md).
 
-Numbers are from 2026-10-10 at commit `dd2604e`. The `terraform test`,
+Numbers are from 2026-10-10 at commit `57a1db4`. The `terraform test`,
 pytest and Checkov counts come from that commit's CI run (Terraform
 1.14.6); the `terraform validate` and provider allowlist rows are from a
 local run (Terraform 1.16.4). CI runs the same checks on every pull
@@ -17,11 +17,11 @@ request.
 
 | Check | Result |
 |---|---|
-| `terraform test` (11 modules and the High account baseline, CI run of 2026-10-10 at `dd2604e`) | 65 runs, 65 passed |
-| pytest (module Lambdas, CI run of 2026-10-10 at `dd2604e`) | 250 passed |
+| `terraform test` (13 modules, the High account baseline and the Moderate flow-log stack, CI run of 2026-10-10 at `57a1db4`) | 74 runs, 74 passed |
+| pytest (module Lambdas, CI run of 2026-10-10 at `57a1db4`) | 253 passed |
 | Provider allowlist guard (`tests/python/test_provider_sources.py`, added 2026-09-30) | 45 `required_providers` declarations checked, all allowlisted; 4 guard self-tests passed |
 | `terraform validate` | 23 of 23 modules and 14 of 14 roots under `moderate/`, `high/` and `examples/` valid |
-| Checkov (`--framework terraform`, CI run of 2026-10-10 at `dd2604e`) | 939 passed, 0 failed, 217 skipped |
+| Checkov (`--framework terraform`, CI run of 2026-10-10 at `57a1db4`) | 992 passed, 0 failed, 235 skipped |
 | Trivy config scan, Gitleaks, `terraform fmt`, TFLint | Run in CI on every PR |
 
 Every Checkov skip is an inline `checkov:skip=<ID>: <reason>` comment next
@@ -82,18 +82,18 @@ checkov -d . --framework terraform
 
 ## Gaps
 
-- **Live deployment covers thirteen modules, not the whole repo.** Plan-time
+- **Live deployment covers fifteen modules, not the whole repo.** Plan-time
   tests prove what Terraform will request. They do not prove what AWS
   accepts or how the policies behave at request time.
   [LIVE-PROOF.md](LIVE-PROOF.md) lists which modules were deployed and
   which were not. For SCP and permissions-boundary behavior tested with
   real API calls, see the live proof in
   [aws-org-guardrails](https://github.com/DustyStudy/aws-org-guardrails/blob/main/docs/PROOF.md).
-- **12 of 23 modules have no `terraform test` suite yet:** `ecr-hardened`,
+- **10 of 23 modules have no `terraform test` suite yet:** `ecr-hardened`,
   `ecs-fargate-hardened`, `eks-hardened`, `fips-vpc-endpoints`,
-  `iam-access-control`, `incident-notifications`, `logging-monitoring`,
-  `network-perimeter-vpc`, `org-governance`, `rds-postgres-hardened`,
-  `ssm-patching-hardened` and `waf-hardened`. They are covered by
+  `incident-notifications`, `logging-monitoring`, `network-perimeter-vpc`,
+  `org-governance`, `rds-postgres-hardened` and `waf-hardened`. They are
+  covered by
   `terraform validate`, Checkov, Trivy and TFLint only.
 - **`fedramp-20x/` holds no Terraform.** It maps each KSI cluster to the
   modules above. Whether a module's evidence satisfies a KSI's validation

@@ -1,0 +1,20 @@
+{
+  "ran_at": "2026-10-10T20:22:05+00:00",
+  "region": "us-east-1",
+  "passed": 1,
+  "total": 1,
+  "results": [
+    {
+      "module": "org-cloudtrail",
+      "check": "CloudWatch Logs writes and reads the trail log group under the trail key",
+      "passed": true,
+      "observed": {
+        "customer_managed_key": true,
+        "key_statement_conditions": {
+          "kms:EncryptionContext:aws:logs:arn": "arn:aws:logs:us-east-1:111122223333:log-group:ftlproof-trail-logs"
+        },
+        "event_read_back": true
+      }
+    }
+  ]
+}

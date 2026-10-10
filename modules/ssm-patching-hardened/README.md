@@ -26,13 +26,13 @@ module "ssm_patching_hardened" {
 - Targets instances by tag: `PatchGroup = FedRAMPCompliance`. Tag your
   EC2 instances accordingly — this module doesn't create or discover
   instances itself.
-- **The patch-output KMS key policy grants the maintenance-window role
-  explicitly**, not just the account root. `AmazonSSMMaintenanceWindowRole`
-  (the AWS-managed policy attached to that role) does not grant KMS access
-  to a customer-managed key on its own — without the explicit
-  `AllowPatchLogWriterKeyUsage` statement in `main.tf`, patch output
-  delivery to the SSE-KMS bucket would fail at runtime. If you swap in
-  your own execution role, add the equivalent grant for it.
+- **Attach `patch_log_writer_policy_arn` to your instance profile role.**
+  SSM Agent uploads patch output with the managed node's own credentials,
+  not the maintenance-window role's. Without this policy the patch still
+  runs, but its output never reaches the bucket and nothing reports the
+  missing upload.
+- The maintenance-window role can be assumed only by Systems Manager acting
+  for this account (`aws:SourceAccount` and `aws:SourceArn`).
 - Patch baseline currently covers `AMAZON_LINUX_2023` only. Add additional
   `aws_ssm_patch_baseline` resources (and corresponding maintenance-window
   tasks) for other operating systems in your fleet.
@@ -51,5 +51,6 @@ module "ssm_patching_hardened" {
 | ---- | ----------- |
 | maintenance_window_id | SSM Maintenance Window ID |
 | patch_baseline_id | SSM Patch Baseline ID |
+| patch_log_writer_policy_arn | IAM policy to attach to the instance profile role of every patched node, so SSM Agent can write patch output to the encrypted bucket |
 | patch_logs_bucket_arn | S3 Bucket storing patch execution logs |
 <!-- END_TF_DOCS -->

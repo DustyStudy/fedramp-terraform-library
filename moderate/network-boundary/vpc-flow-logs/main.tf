@@ -15,6 +15,11 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.name
   partition  = data.aws_partition.current.partition
+
+  # S3 allows 63 characters. With a 17-character VPC ID the long name is 70,
+  # so it is kept only where it already fits (the older 8-character IDs).
+  access_log_bucket_long = "vpc-flow-logs-access-logs-${local.account_id}-${local.region}-${var.vpc_id}"
+  access_log_bucket_name = length(local.access_log_bucket_long) <= 63 ? local.access_log_bucket_long : "vpc-fl-access-${local.account_id}-${local.region}-${var.vpc_id}"
 }
 
 # --- Access-log bucket (terminal sink; see README for why) ---
@@ -23,7 +28,7 @@ resource "aws_s3_bucket" "flow_log_access_log" {
   #checkov:skip=CKV_AWS_18:This bucket IS the access-log destination for the flow log bucket. A log-destination bucket logging to itself is a circular anti-pattern AWS explicitly advises against, so this is the terminal sink and intentionally has no further logging target.
   #checkov:skip=CKV_AWS_145:S3 server access logs must land in a bucket encrypted with SSE-S3, not SSE-KMS — that's an AWS platform restriction on the access-logging feature itself, not a choice made here.
   #checkov:skip=CKV_AWS_144:Cross-region replication is NOT configured by this module. If your contingency plan needs off-site log copies, add S3 replication, or tag the bucket Backup=true (versioning required) and set org-governance copy_destination_region
-  bucket = "vpc-flow-logs-access-logs-${local.account_id}-${local.region}-${var.vpc_id}"
+  bucket = local.access_log_bucket_name
 }
 
 resource "aws_s3_bucket_notification" "flow_log_access_log" {
@@ -149,6 +154,18 @@ data "aws_iam_policy_document" "flow_log_kms" {
     }
     actions   = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
     resources = ["*"]
+
+    # Confused-deputy guard: only log deliveries that belong to this account.
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:${local.partition}:logs:${local.region}:${local.account_id}:*"]
+    }
   }
 }
 

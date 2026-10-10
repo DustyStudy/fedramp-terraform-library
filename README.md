@@ -14,11 +14,11 @@ High**, or **FedRAMP 20x** authorization.
 - **Approach:** 23 hardened modules composed into Moderate and High
   tracks, plus a map from the 10 FedRAMP 20x KSI clusters to those modules.
   FIPS endpoints and partition-aware ARNs for GovCloud.
-- **Verification:** 65 `terraform test` runs assert the rendered IAM and
-  bucket policies at plan time, and 250 pytest tests cover the module
+- **Verification:** 74 `terraform test` runs assert the rendered IAM and
+  bucket policies at plan time, and 253 pytest tests cover the module
   Lambdas. Checkov, Trivy and Gitleaks run on every PR. See
   [what is verified, and what is not](docs/PROOF.md).
-- **Live use:** thirteen modules were deployed to a real 4-account
+- **Live use:** fifteen modules were deployed to a real 4-account
   organization and checked with real API calls, including alarm,
   finding-routing and auditor paths end to end, an image push, requests
   through the web ACL and TLS and IAM sign-in to the database. See the
