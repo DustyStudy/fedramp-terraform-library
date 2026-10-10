@@ -56,6 +56,7 @@ resource "aws_iam_role" "boundary_fixture" {
 }
 
 resource "aws_iam_role_policy" "boundary_fixture" {
+  #checkov:skip=CKV_AWS_355: Fixture. Three read-only calls on any resource; the probe checks which of them the boundary refuses.
   name = "probe-read-calls"
   role = aws_iam_role.boundary_fixture.name
 
