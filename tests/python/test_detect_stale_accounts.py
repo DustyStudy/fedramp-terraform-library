@@ -1,12 +1,12 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
 from botocore.exceptions import ClientError, EndpointConnectionError
 
 LAMBDA = "modules/stale-account-detector/lambda/detect_stale_accounts.py"
-NOW = datetime(2026, 10, 1, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 1, tzinfo=UTC)
 
 
 def days_ago(days):
@@ -76,8 +76,8 @@ def test_parse_time_handles_report_placeholders(fn):
     assert module.parse_time("no_information") is None
     assert module.parse_time("not_supported") is None
     assert module.parse_time(None) is None
-    assert module.parse_time("2026-09-01T00:00:00+00:00") == datetime(2026, 9, 1, tzinfo=timezone.utc)
-    assert module.parse_time(datetime(2026, 9, 1)).tzinfo is timezone.utc  # noqa: DTZ001 - a naive value is the case under test
+    assert module.parse_time("2026-09-01T00:00:00+00:00") == datetime(2026, 9, 1, tzinfo=UTC)
+    assert module.parse_time(datetime(2026, 9, 1)).tzinfo is UTC  # noqa: DTZ001 - a naive value is the case under test
 
 
 # --- IAM users --------------------------------------------------------------

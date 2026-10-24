@@ -1,0 +1,10 @@
+# Same rule set as the other DustyStudy Python repos; S is ruff's port of bandit.
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "S"]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+# Tests check with assert and use fake credentials.
+"tests/*" = ["S"]

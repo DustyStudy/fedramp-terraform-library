@@ -34,7 +34,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import boto3
 from botocore.config import Config
@@ -92,7 +92,7 @@ def _as_list(value):
 def parse_time(value):
     """A timezone-aware datetime, or None for a missing or placeholder value."""
     if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
     if value is None or value in _NO_TIME:
         return None
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -450,7 +450,7 @@ def _publish(findings, errors, not_checked, counts):
 
 
 def lambda_handler(event, context):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     # Leave two minutes to finish the report after the event lookups.
     remaining = context.get_remaining_time_in_millis() / 1000 if context else 900
     deadline = time.monotonic() + max(remaining - 120, 0)
