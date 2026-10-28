@@ -6,7 +6,7 @@ terraform {
       source = "hashicorp/aws"
       # The floor is 6.0 because this module reads aws_region's `region`
       # attribute. See modules/org-cloudtrail/versions.tf for the upper bound.
-      version = ">= 6.0, < 6.69"
+      version = ">= 6.0, < 6.70"
     }
     archive = {
       source  = "hashicorp/archive"
