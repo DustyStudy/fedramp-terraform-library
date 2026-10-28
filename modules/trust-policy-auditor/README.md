@@ -35,7 +35,7 @@ This module does.
 | | No `aud` condition | HIGH |
 | | `sub` wildcard in the branch or environment (`repo:acme/app:*`) | MEDIUM |
 | | Owner and repository IDs not pinned in the `repo:OWNER@ID/REPO@ID` format | LOW |
-| | GitHub trust pinned to a branch, tag or pull request with no `job_workflow_ref` condition | LOW |
+| | GitHub trust pinned to a branch, tag or pull request whose `sub` doesn't name the workflow file (`job_workflow_ref`) | LOW |
 | Cross-account trust | `Principal: "*"` with no `aws:PrincipalOrgID`, account or ARN condition | CRITICAL |
 | | An account outside the organization, with no `sts:ExternalId` condition | HIGH |
 | Lambda function policy | `Principal: "*"` with no source or organization condition | CRITICAL |
@@ -49,16 +49,23 @@ This module does.
 Under `StringEquals`, a `*` is a literal character and matches nothing
 else. Condition keys are compared case-insensitively, as IAM does.
 
-The `job_workflow_ref` finding is reported only when the trust has no
-other OIDC finding. A `sub` pinned to a branch matches every workflow
-file on that branch, so anyone who can push a workflow there can assume
-the role; the October 2026 GhostAction campaign did that with stolen
+The workflow-pin finding is reported only when the trust has no other
+OIDC finding. A `sub` pinned to a branch matches every workflow file on
+that branch, so anyone who can push a workflow there can assume the
+role; the October 2026 GhostAction campaign did that with stolen
 maintainer tokens
 ([Socket](https://socket.dev/blog/ghostaction-cloud-credentials)). A
 `sub` pinned to a deployment environment is not reported, because the
-environment's protection rules decide which runs reach it. A
-`job_workflow_ref` with a wildcard in the file path does not count as a
-pin, and one embedded in a customized `sub` does.
+environment's protection rules decide which runs reach it.
+
+To pin the workflow, add `job_workflow_ref` to the repository's OIDC
+subject template (`PUT /repos/{owner}/{repo}/actions/oidc/customization/sub`)
+and match the resulting `sub`. IAM evaluates only the `amr`, `aud`,
+`email`, `oaud` and `sub` keys for GitHub
+([IAM docs](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_iam-condition-keys.html#condition-keys-wif)),
+so a separate `token.actions.githubusercontent.com:job_workflow_ref`
+condition never matches and the role can't be assumed at all; the
+finding says so when it sees one.
 
 A condition only counts when it restricts the caller. `Principal: "*"`
 or a service principal is still reported when its only condition is

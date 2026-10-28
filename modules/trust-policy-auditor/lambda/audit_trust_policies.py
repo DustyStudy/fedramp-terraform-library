@@ -223,19 +223,6 @@ def _github_sub_problem(pattern):
     return None
 
 
-def _pins_workflow(conditions, key):
-    """True when the job_workflow_ref condition restricts and names workflow
-    files: a wildcard in the path (before @ref) admits any file added there."""
-    if not _restricts(conditions, {key}):
-        return False
-    return not any(
-        _wild(value.split("@", 1)[0])
-        for operator, values in conditions[key]
-        if "Like" in operator and "Not" not in operator
-        for value in values
-    )
-
-
 def _check_oidc(statement, federated, account_id, role_arn):
     # Lowercased to match _conditions: EKS provider IDs are upper case.
     host = federated.split("oidc-provider/", 1)[-1].lower()
@@ -273,11 +260,16 @@ def _check_oidc(statement, federated, account_id, role_arn):
     # Negated and Null operators say what the subject is not, never what it is.
     values = [v for operator, vs in subs if "Not" not in operator and operator != "Null" for v in vs]
     environment_only = bool(values) and all(v.split(":", 2)[-1].startswith("environment:") for v in values)
-    # GitHub can put the claim in a customized sub instead.
+    # IAM evaluates only amr, aud, email, oaud and sub for GitHub, so the
+    # workflow can only be pinned through a customized sub.
     in_sub = bool(values) and all(":job_workflow_ref:" in v for v in values)
-    pinned = environment_only or in_sub or _pins_workflow(conditions, f"{host}:job_workflow_ref")
-    if not findings and not pinned:
-        detail = "any workflow file on the trusted ref can assume it; add a job_workflow_ref condition naming the workflow"
+    if not findings and not (environment_only or in_sub):
+        if f"{host}:job_workflow_ref" in conditions:
+            detail = ("has a job_workflow_ref condition, which IAM does not evaluate for GitHub, so no token "
+                      "matches it and the role cannot be assumed; pin the workflow in a customized sub instead")
+        else:
+            detail = ("any workflow file on the trusted ref can assume it; add job_workflow_ref to the "
+                      "repository's OIDC subject template and match it in sub")
         findings.append(_finding("LOW", "oidc-trust", account_id, role_arn, detail))
     return findings
 
