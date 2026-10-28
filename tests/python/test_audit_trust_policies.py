@@ -49,14 +49,6 @@ def _severities(findings):
 # --- OIDC trust --------------------------------------------------------------
 
 
-def test_github_trust_pinned_to_a_branch_and_a_workflow_is_clean(fn, ctx):
-    role = _role(_github({
-        "StringEquals": {**AUD, **WORKFLOW, "token.actions.githubusercontent.com:sub": "repo:acme/app:ref:refs/heads/main"},
-    }))
-
-    assert fn.check_role_trust(role, ACCOUNT, ctx) == []
-
-
 def test_github_trust_pinned_to_a_branch_only_is_low(fn, ctx):
     role = _role(_github({
         "StringEquals": {**AUD, "token.actions.githubusercontent.com:sub": "repo:acme/app:ref:refs/heads/main"},
@@ -65,7 +57,7 @@ def test_github_trust_pinned_to_a_branch_only_is_low(fn, ctx):
     findings = fn.check_role_trust(role, ACCOUNT, ctx)
 
     assert _severities(findings) == ["LOW"]
-    assert "job_workflow_ref" in findings[0]["detail"]
+    assert "OIDC subject template" in findings[0]["detail"]
 
 
 def test_github_trust_pinned_to_an_environment_is_clean(fn, ctx):
@@ -76,23 +68,18 @@ def test_github_trust_pinned_to_an_environment_is_clean(fn, ctx):
     assert fn.check_role_trust(role, ACCOUNT, ctx) == []
 
 
-@pytest.mark.parametrize("pattern", ["*", "acme/app/.github/workflows/*@refs/heads/main"])
-def test_a_workflow_condition_with_a_wildcard_path_does_not_count(fn, ctx, pattern):
+@pytest.mark.parametrize("operator", ["StringEqualsIgnoreCase", "StringLike"])
+def test_a_job_workflow_ref_condition_is_not_a_pin_and_blocks_the_role(fn, ctx, operator):
+    # IAM evaluates only amr, aud, email, oaud and sub for GitHub tokens.
     role = _role(_github({
         "StringEquals": {**AUD, "token.actions.githubusercontent.com:sub": "repo:acme/app:ref:refs/heads/main"},
-        "StringLike": {"token.actions.githubusercontent.com:job_workflow_ref": pattern},
+        operator: WORKFLOW,
     }))
 
-    assert _severities(fn.check_role_trust(role, ACCOUNT, ctx)) == ["LOW"]
+    findings = fn.check_role_trust(role, ACCOUNT, ctx)
 
-
-def test_a_wildcard_in_the_workflow_ref_only_still_pins_the_file(fn, ctx):
-    role = _role(_github({
-        "StringEquals": {**AUD, "token.actions.githubusercontent.com:sub": "repo:acme/app:ref:refs/heads/main"},
-        "StringLike": {"token.actions.githubusercontent.com:job_workflow_ref": "acme/app/.github/workflows/deploy.yml@*"},
-    }))
-
-    assert fn.check_role_trust(role, ACCOUNT, ctx) == []
+    assert _severities(findings) == ["LOW"]
+    assert "cannot be assumed" in findings[0]["detail"]
 
 
 def test_excluding_an_environment_is_not_an_environment_pin(fn, ctx):
@@ -168,17 +155,19 @@ def test_github_sub_wildcards_are_graded(fn, ctx, sub, severity):
 
 
 def test_a_star_under_string_equals_is_a_literal_not_a_wildcard(fn, ctx):
-    role = _role(_github({"StringEquals": {**AUD, **WORKFLOW, "token.actions.githubusercontent.com:sub": "repo:acme/*"}}))
+    role = _role(_github({"StringEquals": {**AUD, "token.actions.githubusercontent.com:sub": "repo:acme/*"}}))
 
-    assert fn.check_role_trust(role, ACCOUNT, ctx) == []
+    # Only the workflow-pin LOW; no wildcard finding.
+    assert _severities(fn.check_role_trust(role, ACCOUNT, ctx)) == ["LOW"]
 
 
 def test_condition_keys_match_case_insensitively(fn, ctx):
     role = _role(_github({
         "StringEquals": {
             "Token.Actions.GithubUserContent.com:AUD": "sts.amazonaws.com",
-            "token.actions.githubusercontent.com:Sub": "repo:acme/app:ref:refs/heads/main",
-            "token.actions.githubusercontent.com:Job_Workflow_Ref": "acme/app/.github/workflows/deploy.yml@refs/heads/main",
+            "token.actions.githubusercontent.com:Sub": (
+                "repo:acme/app:ref:refs/heads/main:job_workflow_ref:acme/app/.github/workflows/deploy.yml@refs/heads/main"
+            ),
         }
     }))
 

@@ -36,6 +36,15 @@ FedRAMP expects.
   shortened when the long one would pass S3's 63 characters, as it does
   with a 17-character VPC ID. The provider range now allows 6.x.
 
+### Fixed
+- `trust-policy-auditor`: the workflow-pin LOW finding now advises adding
+  `job_workflow_ref` to the repository's OIDC subject template and matching
+  it in `sub`. IAM evaluates only `amr`, `aud`, `email`, `oaud` and `sub`
+  for GitHub, so the separate `job_workflow_ref` condition 2.1.0 suggested
+  never matches and makes the role impossible to assume. A trust that has
+  one is no longer treated as pinned, and the finding says it blocks the
+  role.
+
 ## [2.1.0] - 2026-10-10
 
 ### Added
