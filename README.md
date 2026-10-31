@@ -15,7 +15,7 @@ High**, or **FedRAMP 20x** authorization.
   tracks, plus a map from the 10 FedRAMP 20x KSI clusters to those modules.
   FIPS endpoints and partition-aware ARNs for GovCloud.
 - **Verification:** 74 `terraform test` runs assert the rendered IAM and
-  bucket policies at plan time, and 253 pytest tests cover the module
+  bucket policies at plan time, and 251 pytest tests cover the module
   Lambdas. Checkov, Trivy and Gitleaks run on every PR. See
   [what is verified, and what is not](docs/PROOF.md).
 - **Live use:** fifteen modules were deployed to a real 4-account
@@ -185,7 +185,9 @@ the module says so directly in its README.
 The core modules under `modules/` have `terraform test` suites in their
 `tests/` directory. They cover `org-cloudtrail`, `config-conformance-pack`,
 `guardduty-org`, `security-hub-org`, `iam-password-policy`,
-`account-baseline` and `org-scp-boundary`. Each test runs `plan` against the
+`account-baseline`, `org-scp-boundary`, `iam-access-control`,
+`ssm-patching-hardened` and the four auditors (`identity-center-access-auditor`,
+`trust-policy-auditor`, `rds-access-auditor`, `stale-account-detector`). Each test runs `plan` against the
 real AWS provider with dummy credentials, so it needs no AWS account. It
 asserts the security properties the control mapping claims, for example:
 
@@ -204,15 +206,17 @@ terraform test
 ## Security scanning
 
 Every push and PR to `main` runs automatically via GitHub Actions
-(`.github/workflows/ci.yml`), in four jobs:
+(`.github/workflows/ci.yml` and `security-scan.yml`):
 
-- **Gitleaks**: secret/credential scanning
+- **Module README tables**: `terraform-docs` fails the build if a module README is stale
 - **`terraform fmt` + tflint**: formatting and Terraform best practices
-- **`terraform test`**: plan-only tests for the core modules (see
-  [Tests](#tests))
-- **Checkov** (blocking) and **Trivy** (reporting to the Security tab):
-  two independent security/compliance scanners against the templates
-  themselves
+- **`terraform test`**: plan-only tests for the modules listed under
+  [Tests](#tests)
+- **Lambda tests**: pytest and ruff for the module Lambdas, plus a
+  PostgreSQL 16 run of the SQL role audit
+- **Gitleaks, Checkov, Trivy and zizmor** (`security-scan.yml`, a shared
+  workflow): secret scanning and independent security/compliance scanners
+  against the templates themselves
 
 Check the **Actions** tab on GitHub after your first push; new modules
 sometimes get flagged for things that are intentional design choices in a
