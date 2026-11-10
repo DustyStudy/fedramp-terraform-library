@@ -23,8 +23,25 @@ FedRAMP expects.
   output with the node's credentials.
 - `terraform test` suites for `ssm-patching-hardened`,
   `iam-access-control` and `vpc-flow-logs`.
+- `terraform test` suites for the last 10 modules without one:
+  `ecr-hardened`, `ecs-fargate-hardened`, `eks-hardened`,
+  `fips-vpc-endpoints`, `incident-notifications`, `logging-monitoring`,
+  `network-perimeter-vpc`, `org-governance`, `rds-postgres-hardened` and
+  `waf-hardened`. All 23 modules now have one.
+- `proof/eks-config`: a live proof stack for `eks-hardened` and
+  `config-conformance-pack` (not yet applied).
 
 ### Changed
+- `org-governance`: with no `authorized_security_admin_arns` (the
+  default), the Object Lock statement is now an unconditional deny. It used
+  to render an empty `aws:PrincipalArn` condition, which AWS may not
+  evaluate as "no exemptions".
+- `waf-hardened`: request sampling is off on every rule and the web ACL.
+  Sampled requests keep full headers, so the logging config's
+  `Authorization` and `Cookie` redaction did not cover them.
+- `eks-hardened`: `kubernetes_version` defaults to `1.35`. The old default,
+  `1.30`, is past the end of EKS support. Callers that relied on the
+  default get a control-plane upgrade on their next apply.
 - `ssm-patching-hardened`: the maintenance-window role trust carries
   `aws:SourceAccount` and `aws:SourceArn`. The patch task no longer passes
   that role to Run Command as a notification role, which made every task

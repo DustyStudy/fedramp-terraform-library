@@ -89,7 +89,7 @@ resource "aws_wafv2_web_acl" "this" {
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "CommonRuleSetMetric"
-      sampled_requests_enabled   = true
+      sampled_requests_enabled   = false
     }
   }
 
@@ -112,7 +112,7 @@ resource "aws_wafv2_web_acl" "this" {
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "KnownBadInputsMetric"
-      sampled_requests_enabled   = true
+      sampled_requests_enabled   = false
     }
   }
 
@@ -135,7 +135,7 @@ resource "aws_wafv2_web_acl" "this" {
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "IpReputationMetric"
-      sampled_requests_enabled   = true
+      sampled_requests_enabled   = false
     }
   }
 
@@ -158,14 +158,17 @@ resource "aws_wafv2_web_acl" "this" {
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "RateLimitMetric"
-      sampled_requests_enabled   = true
+      sampled_requests_enabled   = false
     }
   }
 
+  # Sampling is off everywhere: sampled requests keep full headers, so the
+  # Authorization and Cookie redaction in the logging config would not cover
+  # them. Turn it on per rule only while tuning, then off again.
   visibility_config {
     cloudwatch_metrics_enabled = true
     metric_name                = "${var.environment}-waf-overall-metrics"
-    sampled_requests_enabled   = true
+    sampled_requests_enabled   = false
   }
 }
 

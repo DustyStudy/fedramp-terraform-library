@@ -14,7 +14,7 @@ High**, or **FedRAMP 20x** authorization.
 - **Approach:** 23 hardened modules composed into Moderate and High
   tracks, plus a map from the 10 FedRAMP 20x KSI clusters to those modules.
   FIPS endpoints and partition-aware ARNs for GovCloud.
-- **Verification:** 74 `terraform test` runs assert the rendered IAM and
+- **Verification:** 119 `terraform test` runs assert the rendered IAM and
   bucket policies at plan time, and 251 pytest tests cover the module
   Lambdas. Checkov, Trivy and Gitleaks run on every PR. See
   [what is verified, and what is not](docs/PROOF.md).
@@ -182,12 +182,8 @@ the module says so directly in its README.
 
 ## Tests
 
-The core modules under `modules/` have `terraform test` suites in their
-`tests/` directory. They cover `org-cloudtrail`, `config-conformance-pack`,
-`guardduty-org`, `security-hub-org`, `iam-password-policy`,
-`account-baseline`, `org-scp-boundary`, `iam-access-control`,
-`ssm-patching-hardened` and the four auditors (`identity-center-access-auditor`,
-`trust-policy-auditor`, `rds-access-auditor`, `stale-account-detector`). Each test runs `plan` against the
+Every module under `modules/` has a `terraform test` suite in its
+`tests/` directory. Each test runs `plan` against the
 real AWS provider with dummy credentials, so it needs no AWS account. It
 asserts the security properties the control mapping claims, for example:
 
