@@ -1,9 +1,10 @@
 # Live proof
 
-Fifteen of the library's 23 modules have been deployed to a real AWS
+Sixteen of the library's 23 modules have been deployed to a real AWS
 Organization and checked with real API calls: thirteen on 2026-10-04 and
-2026-10-05, and two more on
-[2026-10-10](#later-run-patching-flow-logs-and-access-control). A
+2026-10-05, two more on
+[2026-10-10](#later-run-patching-flow-logs-and-access-control), and
+`eks-hardened` on [2026-11-10](#later-run-eks-and-config). A
 [later run](#later-run-data-plane) used four of them: it pushed an image,
 sent requests through the web ACL and connected to the database. This page records the
 setup, the results, what the run changed in the library, and what it did
@@ -242,6 +243,37 @@ used the flow-log key.
   denies `access-analyzer:DeleteAnalyzer` there, so the stack ran in the
   management account, where it could be destroyed.
 
+## Later run: EKS and Config
+
+On 2026-11-10, [`proof/eks-config`](../proof/eks-config/main.tf) was
+applied to the sandbox member account in `us-east-1` with the provider's
+`use_fips_endpoint = true`, as its Identity Center administrator. It calls
+`network-perimeter-vpc`, `eks-hardened` with its defaults (no node group)
+and `config-conformance-pack` with a one-rule pack. The plan was 39 to add.
+
+| Module | Check | Result |
+|---|---|---|
+| `eks-hardened` | Cluster is `ACTIVE` on Kubernetes 1.35, the module default; EKS lists 1.35 in standard support until 2027-03-26 | pass |
+| `eks-hardened` | API endpoint is private only: public access off, no public CIDRs, and the endpoint name resolves to a VPC address (`10.100.20.21`) that does not answer from the internet | pass |
+| `eks-hardened` | All five control-plane log types are on, and the log group has a stream for each component, so the control plane is writing | pass |
+| `eks-hardened` | Secrets are envelope-encrypted with the module CMK, which has rotation on | pass |
+| `eks-hardened` | The control-plane log group keeps logs 365 days and is encrypted with the same CMK | pass |
+| `config-conformance-pack` | Recorder created | **blocked**: the organization's SCP denies `config:PutConfigurationRecorder` to the deploying role |
+
+The cluster creation took 13 minutes. The stack was destroyed the same
+day: 35 resources, with the three CMKs left in their 30-day deletion
+window.
+
+### What this run did not cover
+
+- **`config-conformance-pack` is still not deployed.** Its buckets, key and
+  role were created, then the recorder was denied by the
+  [aws-org-guardrails](https://github.com/DustyStudy/aws-org-guardrails)
+  SCP that protects audit logging. Deploying it needs a principal on that
+  SCP's exempt list.
+- **No workloads ran on the cluster.** It has no nodes, and its
+  authentication mode is the provider default, `CONFIG_MAP`.
+
 ## What the run could not do
 
 - **S3 account-level public access block.** The organization's own SCP
@@ -271,8 +303,9 @@ used the flow-log key.
 
 ## Not covered
 
-- **Eight modules were not deployed:** `config-conformance-pack` (AWS
-  Config is off in this organization by choice), `eks-hardened`,
+- **Seven modules were not deployed:** `config-conformance-pack` (AWS
+  Config is off in this organization by choice, and the
+  [2026-11-10 attempt](#later-run-eks-and-config) was denied by its SCP),
   `iam-password-policy` (the same policy is applied by `account-baseline`),
   and the organization-level `guardduty-org`, `security-hub-org`,
   `org-cloudtrail`, `org-governance` and `org-scp-boundary`, which would
