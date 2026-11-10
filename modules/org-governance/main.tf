@@ -59,10 +59,16 @@ data "aws_iam_policy_document" "workload_perimeter_scp" {
       "s3:PutObjectRetention"
     ]
     resources = ["*"]
-    condition {
-      test     = "StringNotEquals"
-      variable = "aws:PrincipalArn"
-      values   = var.authorized_security_admin_arns
+
+    # An empty value list renders "aws:PrincipalArn": [], which AWS may not
+    # evaluate as "no exemptions"; with no admins, deny unconditionally.
+    dynamic "condition" {
+      for_each = length(var.authorized_security_admin_arns) > 0 ? [1] : []
+      content {
+        test     = "StringNotEquals"
+        variable = "aws:PrincipalArn"
+        values   = var.authorized_security_admin_arns
+      }
     }
   }
 }

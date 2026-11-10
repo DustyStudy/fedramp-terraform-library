@@ -17,7 +17,7 @@ request.
 
 | Check | Result |
 |---|---|
-| `terraform test` (13 modules, the High account baseline and the Moderate flow-log stack, CI run of 2026-10-10 at `57a1db4`) | 74 runs, 74 passed |
+| `terraform test` (23 of 23 modules, the High account baseline and the Moderate flow-log stack, local run of 2026-11-10 on Terraform 1.16.6) | 119 runs, 119 passed |
 | pytest (module Lambdas, CI run of 2026-10-10 at `57a1db4`) | 253 passed |
 | Provider allowlist guard (`tests/python/test_provider_sources.py`, added 2026-09-30) | 45 `required_providers` declarations checked, all allowlisted; 4 guard self-tests passed |
 | `terraform validate` | 23 of 23 modules and 14 of 14 roots under `moderate/`, `high/` and `examples/` valid |
@@ -49,6 +49,16 @@ variable validation to reject it.
 | `org-scp-boundary` | 6 | The SCP denies disabling security services; the region lock uses the approved regions; insecure transport is denied; the policy attaches to every target; the IMDSv2 rule is off by default and, when on, denies both launch without IMDSv2 and downgrade |
 | `security-hub-org` | 2 | Default standards and organization enrollment are on; standards auto-enable can be turned off |
 | `stale-account-detector` | 7 | The Lambda role and the member policy are read-only; it can't assume any role unless `member_role_name` is set, and then only that role; settings reach the Lambda; a window over 90 days or a role ARN is rejected; the Lambda is encrypted and has a DLQ; the topic uses the module CMK |
+| `ecr-hardened` | 4 | Tags are immutable, images are scanned on push and encrypted with a rotating CMK whose policy uses the current partition; the lifecycle policy has one prefix per rule and unique priorities |
+| `ecs-fargate-hardened` | 4 | Container Insights is on; ECS Exec sessions log to an encrypted group kept 365 days; only CloudWatch Logs in this account and region may use the CMK |
+| `eks-hardened` | 5 | The API endpoint is private only; all five control-plane log types are on; secrets are envelope-encrypted with a rotating CMK scoped to the cluster's log group; the cluster role is EKS-only and its policy ARN uses the current partition |
+| `fips-vpc-endpoints` | 3 | KMS, EC2 and STS use their `-fips` endpoint services; interface endpoints use private DNS; S3 uses a gateway endpoint; the security group allows only TLS from the VPC and no egress |
+| `incident-notifications` | 4 | The topic CMK rotates and only EventBridge in this account may use it; GuardDuty severity 7+ and new Security Hub CRITICAL/HIGH findings are routed; an out-of-range threshold is rejected |
+| `logging-monitoring` | 5 | All 14 CIS alarms watch the metric their own filter publishes and fire on a single event; the root and CMK filters match the right events; the topic CMK rotates and is limited to this account |
+| `network-perimeter-vpc` | 5 | Flow logs capture all traffic at one-minute intervals for 365 days; the default security group has no rules; no subnet assigns public IPs; the flow-log role trust is limited to this account's flow logs |
+| `org-governance` | 7 | Every SCP statement denies root use, internet gateways, IAM users and Object Lock changes by anyone but the named admins; policy types and attachments are right; AI services are opted out with no child override; the backup policy uses the given regions, retention and partition, adds a copy only when asked, and rejects retention under 120 days; with no admins the Object Lock deny has no condition, and several admins are all exempt |
+| `rds-postgres-hardened` | 5 | The instance is private, encrypted, Multi-AZ and deletion-protected, uses Secrets Manager and IAM auth; TLS is required and connections and DDL are logged; the security group allows only PostgreSQL from the VPC; the monitoring role trusts only this database |
+| `waf-hardened` | 3 | The three AWS managed rule groups run without count overrides; the per-IP rate rule blocks at `rate_limit_threshold`; request sampling is off; logs redact the Authorization and Cookie headers and go to an `aws-waf-logs-` group kept 365 days |
 
 The pytest suites (`tests/python/`) run the Lambda handlers for
 `identity-center-access-auditor`, `rds-access-auditor`,
@@ -89,12 +99,11 @@ checkov -d . --framework terraform
   which were not. For SCP and permissions-boundary behavior tested with
   real API calls, see the live proof in
   [aws-org-guardrails](https://github.com/DustyStudy/aws-org-guardrails/blob/main/docs/PROOF.md).
-- **10 of 23 modules have no `terraform test` suite yet:** `ecr-hardened`,
-  `ecs-fargate-hardened`, `eks-hardened`, `fips-vpc-endpoints`,
-  `incident-notifications`, `logging-monitoring`, `network-perimeter-vpc`,
-  `org-governance`, `rds-postgres-hardened` and `waf-hardened`. They are
-  covered by
-  `terraform validate`, Checkov, Trivy and TFLint only.
+- **Plan-time tests cannot see every value known only after apply.** Most
+  suites override the ARNs AWS assigns at create time to prove each
+  resource uses its module's CMK, topic or role. The
+  `incident-notifications` topic policy's `aws:SourceArn` scoping still
+  renders unknown at plan time, so no suite asserts on it.
 - **`fedramp-20x/` holds no Terraform.** It maps each KSI cluster to the
   modules above. Whether a module's evidence satisfies a KSI's validation
   method is a judgment for your assessor.

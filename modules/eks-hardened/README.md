@@ -10,7 +10,7 @@ five control-plane log types enabled, and a private-only API endpoint
 module "eks_hardened" {
   source              = "../../modules/eks-hardened"
   cluster_name        = "my-cluster"
-  kubernetes_version  = "1.30"
+  kubernetes_version  = "1.35"
   private_subnet_ids  = var.private_subnet_ids
 }
 ```
@@ -36,7 +36,7 @@ module "eks_hardened" {
   a KMS access error at cluster creation, that's the first thing to
   check; add an explicit key-policy statement for the cluster role if
   needed.
-- `kubernetes_version` defaults to `"1.30"` — EKS deprecates old versions
+- `kubernetes_version` defaults to `"1.35"` — EKS deprecates old versions
   on its own schedule, so confirm this is still a supported version before
   relying on the default.
 
@@ -47,7 +47,7 @@ module "eks_hardened" {
 | ---- | ----------- | ---- | ------- | :------: |
 | cluster_name | Name of the hardened EKS cluster | `string` | n/a | yes |
 | private_subnet_ids | Private Subnet IDs for the EKS Cluster | `list(string)` | n/a | yes |
-| kubernetes_version | Kubernetes control plane version | `string` | `"1.30"` | no |
+| kubernetes_version | Kubernetes control plane version | `string` | `"1.35"` | no |
 | log_retention_days | Retention period, in days, for the encrypted EKS control-plane log group | `number` | `365` | no |
 
 ## Outputs
