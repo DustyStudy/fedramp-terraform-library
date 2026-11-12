@@ -46,12 +46,24 @@ variable "member_role_name" {
 
 variable "trusted_account_ids" {
   type        = list(string)
-  description = "Accounts outside the organization to treat as trusted, such as a vendor you've reviewed. Trust in them isn't reported."
+  description = "Accounts outside the organization to treat as trusted, such as a vendor you've reviewed. Their roles aren't reported for a missing sts:ExternalId, and their Lambda and RAM access isn't reported; trust in them is still reported when it has no network condition, names the whole account, or is unused."
   default     = []
 
   validation {
     condition     = alltrue([for a in var.trusted_account_ids : can(regex("^[0-9]{12}$", a))])
     error_message = "Each trusted account ID must be 12 digits."
+  }
+}
+
+variable "unused_role_days" {
+  type        = number
+  description = "Days without use after which a role trusting an account outside the organization is reported."
+  default     = 90
+
+  validation {
+    # IAM keeps role last-used data for 400 days.
+    condition     = var.unused_role_days >= 1 && var.unused_role_days <= 400 && floor(var.unused_role_days) == var.unused_role_days
+    error_message = "unused_role_days must be a whole number from 1 to 400 (IAM tracks role use for 400 days)."
   }
 }
 

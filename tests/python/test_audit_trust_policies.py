@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -211,8 +212,17 @@ def test_trust_in_any_principal_limited_to_the_org_is_clean(fn, ctx):
     assert fn.check_role_trust(_role(statement), ACCOUNT, ctx) == []
 
 
+VENDOR_ROLE = f"arn:aws:iam::{OUTSIDER}:role/vendor"
+EXTERNAL_ID = {"sts:ExternalId": "vendor-123"}
+VENDOR_NETWORK = {"IpAddress": {"aws:SourceIp": ["203.0.113.0/24"]}}
+
+
+def _vendor_trust(principal=VENDOR_ROLE, /, **condition):
+    return {"Effect": "Allow", "Principal": {"AWS": principal}, "Action": "sts:AssumeRole", "Condition": condition}
+
+
 def test_outside_account_without_external_id_is_high(fn, ctx):
-    statement = {"Effect": "Allow", "Principal": {"AWS": f"arn:aws:iam::{OUTSIDER}:root"}, "Action": "sts:AssumeRole"}
+    statement = _vendor_trust(**VENDOR_NETWORK)
 
     findings = fn.check_role_trust(_role(statement), ACCOUNT, ctx)
 
@@ -220,26 +230,115 @@ def test_outside_account_without_external_id_is_high(fn, ctx):
     assert OUTSIDER in findings[0]["detail"]
 
 
-def test_outside_account_with_external_id_is_clean(fn, ctx):
-    statement = {
-        "Effect": "Allow",
-        "Principal": {"AWS": OUTSIDER},
-        "Action": "sts:AssumeRole",
-        "Condition": {"StringEquals": {"sts:ExternalId": "vendor-123"}},
-    }
+def test_vendor_role_with_external_id_and_network_condition_is_clean(fn, ctx):
+    statement = _vendor_trust(StringEquals=EXTERNAL_ID, **VENDOR_NETWORK)
 
     assert fn.check_role_trust(_role(statement), ACCOUNT, ctx) == []
 
 
-def test_org_and_trusted_accounts_are_inside(fn):
+def test_external_id_alone_is_not_enough(fn, ctx):
+    # Qubole, 2026: every attacker AssumeRole carried the right External ID.
+    findings = fn.check_role_trust(_role(_vendor_trust(StringEquals=EXTERNAL_ID)), ACCOUNT, ctx)
+
+    assert _severities(findings) == ["MEDIUM"]
+    assert "aws:SourceIp" in findings[0]["detail"]
+
+
+@pytest.mark.parametrize("condition", [
+    {"NotIpAddress": {"aws:SourceIp": ["203.0.113.0/24"]}},
+    {"IpAddress": {"aws:SourceIp": ["0.0.0.0/0"]}},
+    {"IpAddressIfExists": {"aws:SourceIp": ["203.0.113.0/24"]}},
+    {"StringLike": {"aws:SourceVpce": "*"}},
+    {"StringLike": {"aws:SourceVpce": ["vpce-*", "vpce-0abc"]}},
+    {"IpAddress": {"aws:SourceIp": ["0:0:0:0:0:0:0:0/0"]}},
+    {"IpAddress": {"aws:SourceIp": ["0.0.0.0/1", "128.0.0.0/1"]}},
+])
+def test_network_conditions_that_admit_anywhere_are_medium(fn, ctx, condition):
+    statement = _vendor_trust(StringEquals=EXTERNAL_ID)
+    statement["Condition"].update(condition)
+
+    assert _severities(fn.check_role_trust(_role(statement), ACCOUNT, ctx)) == ["MEDIUM"]
+
+
+def test_vpc_endpoint_condition_pins_the_network(fn, ctx):
+    statement = _vendor_trust(StringEquals={**EXTERNAL_ID, "aws:SourceVpce": "vpce-0abc"})
+
+    assert fn.check_role_trust(_role(statement), ACCOUNT, ctx) == []
+
+
+@pytest.mark.parametrize("principal", [OUTSIDER, f"arn:aws:iam::{OUTSIDER}:root"])
+def test_trusting_the_whole_outside_account_is_low(fn, ctx, principal):
+    statement = _vendor_trust(principal, StringEquals=EXTERNAL_ID, **VENDOR_NETWORK)
+
+    findings = fn.check_role_trust(_role(statement), ACCOUNT, ctx)
+
+    assert _severities(findings) == ["LOW"]
+    assert "whole account" in findings[0]["detail"]
+
+
+def test_trusted_accounts_skip_only_the_external_id_finding(fn):
     ctx = fn.Context([ACCOUNT, ORG_PEER], trusted=[OUTSIDER])
-    statement = {
-        "Effect": "Allow",
-        "Principal": {"AWS": [f"arn:aws:iam::{ORG_PEER}:role/x", OUTSIDER]},
-        "Action": "sts:AssumeRole",
-    }
+    statement = _vendor_trust([f"arn:aws:iam::{ORG_PEER}:role/x", VENDOR_ROLE])
 
-    assert fn.check_role_trust(_role(statement), ACCOUNT, ctx) == []
+    findings = fn.check_role_trust(_role(statement), ACCOUNT, ctx)
+
+    assert _severities(findings) == ["MEDIUM"]
+    assert VENDOR_ROLE in findings[0]["detail"]
+
+
+@pytest.mark.parametrize("condition, low", [
+    ({"aws:PrincipalAccount": OUTSIDER}, True),
+    ({"aws:PrincipalArn": VENDOR_ROLE}, False),
+])
+def test_any_principal_pinned_to_an_outside_account_is_checked(fn, ctx, condition, low):
+    statement = {"Effect": "Allow", "Principal": {"AWS": "*"}, "Action": "sts:AssumeRole",
+                 "Condition": {"StringEquals": {**EXTERNAL_ID, **condition}}}
+
+    findings = fn.check_role_trust(_role(statement), ACCOUNT, ctx, get_role=_fetched(), now=NOW)
+
+    expected = ["MEDIUM", "LOW", "MEDIUM"] if low else ["MEDIUM", "MEDIUM"]
+    assert _severities(findings) == expected
+    assert findings[-1]["check"] == "unused-outside-trust"
+
+
+def test_org_accounts_are_inside(fn, ctx):
+    statement = {"Effect": "Allow", "Principal": {"AWS": ORG_PEER}, "Action": "sts:AssumeRole"}
+
+    assert fn.check_role_trust(_role(statement), ACCOUNT, ctx, get_role=pytest.fail) == []
+
+
+# --- unused outside trust ----------------------------------------------------
+
+NOW = datetime(2026, 11, 12, tzinfo=UTC)
+CLEAN_VENDOR = _vendor_trust(StringEquals=EXTERNAL_ID, **VENDOR_NETWORK)
+
+
+def _fetched(days_since_use=None, days_since_created=400):
+    role = {"CreateDate": NOW - timedelta(days=days_since_created), "RoleLastUsed": {}}
+    if days_since_use is not None:
+        role["RoleLastUsed"] = {"LastUsedDate": NOW - timedelta(days=days_since_use), "Region": "us-east-1"}
+    return lambda: role
+
+
+@pytest.mark.parametrize("fetched, expected", [
+    (_fetched(days_since_use=120), "was last used 120 days ago"),
+    (_fetched(), "since it was created 400 days ago"),
+    (_fetched(days_since_created=1000), "no recorded use in the last 400 days"),
+])
+def test_unused_role_trusting_an_outside_account_is_medium(fn, ctx, fetched, expected):
+    findings = fn.check_role_trust(_role(CLEAN_VENDOR), ACCOUNT, ctx, get_role=fetched, now=NOW)
+
+    assert [(f["check"], f["severity"]) for f in findings] == [("unused-outside-trust", "MEDIUM")]
+    assert expected in findings[0]["detail"]
+
+
+@pytest.mark.parametrize("fetched", [
+    _fetched(days_since_use=89),
+    _fetched(days_since_created=30),
+    lambda: {},  # deleted mid-scan
+])
+def test_recently_used_or_new_roles_are_not_unused(fn, ctx, fetched):
+    assert fn.check_role_trust(_role(CLEAN_VENDOR), ACCOUNT, ctx, get_role=fetched, now=NOW) == []
 
 
 def test_unknown_org_turns_the_outside_check_off(fn):
@@ -384,6 +483,30 @@ def test_audit_account_runs_every_check(fn, ctx):
         ("ram-share", "HIGH"),
         ("ram-share", "MEDIUM"),
     ]
+
+
+def test_audit_account_looks_up_last_use_only_for_outside_trust(fn, ctx):
+    inside = {**_role({"Effect": "Allow", "Principal": {"AWS": ORG_PEER}, "Action": "sts:AssumeRole"}), "RoleName": "inside"}
+    vendor = {**_role(CLEAN_VENDOR), "RoleName": "vendor"}
+    client = _account_clients(roles=[inside, vendor])
+    iam = client("iam", None)
+    iam.get_role.return_value = {"Role": {"CreateDate": datetime(2020, 1, 1, tzinfo=UTC), "RoleLastUsed": {}}}
+
+    findings = fn.audit_account(ACCOUNT, client, [], ctx)
+
+    iam.get_role.assert_called_once_with(RoleName="vendor")
+    assert [f["check"] for f in findings] == ["unused-outside-trust"]
+
+
+def test_a_role_deleted_mid_scan_is_skipped_but_other_errors_fail(fn, ctx):
+    client = _account_clients(roles=[{**_role(CLEAN_VENDOR), "RoleName": "vendor"}])
+    iam = client("iam", None)
+    iam.get_role.side_effect = ClientError({"Error": {"Code": "NoSuchEntity"}}, "GetRole")
+    assert fn.audit_account(ACCOUNT, client, [], ctx) == []
+
+    iam.get_role.side_effect = ClientError({"Error": {"Code": "AccessDenied"}}, "GetRole")
+    with pytest.raises(ClientError):
+        fn.audit_account(ACCOUNT, client, [], ctx)
 
 
 def test_get_policy_errors_other_than_not_found_fail_the_run(fn, ctx):

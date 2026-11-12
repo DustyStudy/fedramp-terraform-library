@@ -13,6 +13,17 @@ FedRAMP expects.
 ## [Unreleased]
 
 ### Added
+- `trust-policy-auditor`: three findings for roles that trust an account
+  outside the organization, after an attacker used Qubole's AWS account
+  to assume customer roles that had the right External ID (Wiz, 2026).
+  MEDIUM when the trust has no `aws:SourceIp` or `aws:SourceVpce`
+  condition that narrows the network, LOW when it names the whole account
+  instead of one role, and MEDIUM (`unused-outside-trust`) when the role
+  hasn't been used in `unused_role_days` (new input, default 90). These
+  apply to `trusted_account_ids` too, so existing deployments that list a
+  vendor will see new findings. The Lambda and member roles need
+  `iam:GetRole`; a member role built from `member_role_policy_json` gets
+  it on the next apply.
 - Live proof of `ssm-patching-hardened`, `iam-access-control`,
   `moderate/network-boundary/vpc-flow-logs` and the `org-cloudtrail` key
   statement (`proof/patching`, `proof/cloudtrail-key`,
