@@ -15,7 +15,13 @@ Four checks:
 2. Cross-account trust (IAM roles). A role any AWS principal can assume
    ("*" with no organization, account or ARN condition), or one trusting
    an account outside the organization without an sts:ExternalId
-   condition.
+   condition. An External ID doesn't stop someone holding the vendor's
+   own credentials, so every trust in an account outside the
+   organization, trusted or not, is also reported when it has no
+   aws:SourceIp or aws:SourceVpce condition, names the whole account
+   rather than one principal, or the role hasn't been used in
+   UNUSED_ROLE_DAYS (Wiz, 2026: Qubole's AWS account was used to assume
+   customer roles, mostly unused, with the right External ID).
 3. Lambda function policies. Invocation granted to everyone, a public
    function URL with no auth, a service principal with no SourceArn or
    SourceAccount (confused deputy), or an account outside the
@@ -40,13 +46,18 @@ Env vars:
                          (default: the Lambda's own region). IAM is global.
   TRUSTED_ACCOUNT_IDS  - comma-separated accounts outside the organization
                          to treat as trusted (for example a vendor you've
-                         reviewed)
+                         reviewed): no missing-External-ID finding and no
+                         Lambda or RAM finding for them
+  UNUSED_ROLE_DAYS     - days without use before a role trusting an outside
+                         account is reported (default 90)
 """
 
+import ipaddress
 import json
 import logging
 import os
 import re
+from datetime import UTC, datetime, timedelta
 
 import boto3
 from botocore.exceptions import ClientError
@@ -62,6 +73,9 @@ SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN")
 MEMBER_ROLE_NAME = os.environ.get("MEMBER_ROLE_NAME", "").strip()
 REGIONS = [r.strip() for r in os.environ.get("REGIONS", "").split(",") if r.strip()]
 TRUSTED_ACCOUNT_IDS = {a.strip() for a in os.environ.get("TRUSTED_ACCOUNT_IDS", "").split(",") if a.strip()}
+# IAM keeps role last-used data for 400 days, so a longer threshold can't be judged.
+IAM_LAST_USED_WINDOW_DAYS = 400
+UNUSED_ROLE_DAYS = min(int(os.environ.get("UNUSED_ROLE_DAYS") or 90), IAM_LAST_USED_WINDOW_DAYS)
 
 SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 MAX_MESSAGE_BYTES = 250_000  # SNS rejects a message over 256 KB
@@ -84,6 +98,8 @@ PRINCIPAL_SCOPING_KEYS = {
 SERVICE_SCOPING_KEYS = {"aws:sourcearn", "aws:sourceaccount", "aws:sourceorgid", "lambda:eventsourcetoken"}
 # In every request an AWS principal makes, so ...IfExists on them still restricts.
 ALWAYS_PRESENT_KEYS = {"aws:principalaccount", "aws:principalarn"}
+# Pin an outside account's AssumeRole calls to the network it calls from.
+NETWORK_KEYS = {"aws:sourceip", "aws:sourcevpce"}
 
 
 class Context:
@@ -99,6 +115,10 @@ class Context:
         if self.org_accounts is None:
             return False
         return account_id not in self.org_accounts and account_id not in self.trusted
+
+    def outside_org(self, account_id):
+        """Outside the organization, trusted or not."""
+        return self.org_accounts is not None and account_id not in self.org_accounts
 
 
 def _finding(severity, check, account_id, resource, detail):
@@ -274,27 +294,118 @@ def _check_oidc(statement, federated, account_id, role_arn):
     return findings
 
 
-def check_role_trust(role, account_id, ctx):
-    """Findings for one IAM role (as returned by iam:ListRoles)."""
+def _network_pinned(conditions):
+    """A SourceIp or SourceVpce condition that narrows where the call comes
+    from. Stricter than _restricts: any wildcard (vpce-*) or a set of ranges
+    covering every address doesn't narrow anything."""
+    for key in NETWORK_KEYS & conditions.keys():
+        for operator, values in conditions[key]:
+            if "Not" in operator or operator == "Null" or "IfExists" in operator or operator.startswith("ForAllValues"):
+                continue
+            if not values or any("${" in v or _wild(v) for v in values):
+                continue
+            if key == "aws:sourceip" and _covers_everything(values):
+                continue
+            return True
+    return False
+
+
+def _covers_everything(cidrs):
+    """True when the ranges together cover all of IPv4 or all of IPv6
+    (0.0.0.0/0, ::/0, or halves that add up to them)."""
+    try:
+        networks = [ipaddress.ip_network(c, strict=False) for c in cidrs]
+    except ValueError:
+        return True  # IAM rejects a malformed range; don't count it as a pin
+    return any(
+        n.prefixlen == 0
+        for version in (4, 6)
+        for n in ipaddress.collapse_addresses(x for x in networks if x.version == version)
+    )
+
+
+def _unused_detail(role, now):
+    """Why a role that IAM reports as unused is stale, or None. role needs
+    RoleLastUsed and CreateDate, which only iam:GetRole returns."""
+    last = (role.get("RoleLastUsed") or {}).get("LastUsedDate")
+    since = last or role.get("CreateDate")
+    if since is None or now - since < timedelta(days=UNUSED_ROLE_DAYS):
+        return None
+    if last:
+        return f"was last used {(now - last).days} days ago"
+    age = (now - since).days
+    if age > IAM_LAST_USED_WINDOW_DAYS:
+        return f"has no recorded use in the last {IAM_LAST_USED_WINDOW_DAYS} days, as far back as IAM tracks"
+    return f"has no recorded use since it was created {age} days ago"
+
+
+def _condition_principals(conditions):
+    """Accounts and ARNs a positive aws:PrincipalAccount or aws:PrincipalArn
+    condition names."""
+    return [
+        v
+        for key in ("aws:principalaccount", "aws:principalarn")
+        for operator, values in conditions.get(key, [])
+        if "Not" not in operator and operator != "Null"
+        for v in values
+    ]
+
+
+def _check_outside_trust(value, conditions, account_id, role_arn, ctx):
+    """Findings for one trusted AWS principal, or None when it isn't in an
+    account outside the organization."""
+    other = _account_of(value)
+    if not other or other == account_id or not ctx.outside_org(other):
+        return None
+    findings = []
+    if ctx.is_external(other) and "sts:externalid" not in conditions:
+        detail = f"trusts {value}, outside the organization, with no sts:ExternalId condition"
+        findings.append(_finding("HIGH", "cross-account-trust", account_id, role_arn, detail))
+    if not _network_pinned(conditions):
+        detail = (f"trusts {value}, outside the organization, from any network: anyone holding that "
+                  "account's credentials can assume it; add an aws:SourceIp or aws:SourceVpce "
+                  "condition for the vendor's documented ranges")
+        findings.append(_finding("MEDIUM", "cross-account-trust", account_id, role_arn, detail))
+    if value == other or value.endswith(":root"):
+        detail = (f"trusts every principal in {other}, outside the organization; "
+                  "name the vendor's role instead of the whole account")
+        findings.append(_finding("LOW", "cross-account-trust", account_id, role_arn, detail))
+    return findings
+
+
+def check_role_trust(role, account_id, ctx, get_role=None, now=None):
+    """Findings for one IAM role (as returned by iam:ListRoles). get_role()
+    returns the role as iam:GetRole does; it is called only for a role that
+    trusts an account outside the organization, to check when it was used."""
     if role.get("Path", "/").startswith("/aws-service-role/"):
         return []
     role_arn = role["Arn"]
     findings = []
+    trusts_outside = False
     for statement in _statements(role.get("AssumeRolePolicyDocument")):
         conditions = _conditions(statement)
         for kind, value in _principals(statement):
             if kind == "Federated" and "saml-provider/" not in value:
                 findings += _check_oidc(statement, value, account_id, role_arn)
-            elif kind == "AWS" and value == "*":
-                if not _restricts(conditions, PRINCIPAL_SCOPING_KEYS):
-                    detail = "any AWS principal in any account can assume it (Principal '*' with no org, account or ARN condition)"
-                    detail += _unrestricting_note(conditions, PRINCIPAL_SCOPING_KEYS)
-                    findings.append(_finding("CRITICAL", "cross-account-trust", account_id, role_arn, detail))
+            elif kind == "AWS" and value == "*" and not _restricts(conditions, PRINCIPAL_SCOPING_KEYS):
+                detail = "any AWS principal in any account can assume it (Principal '*' with no org, account or ARN condition)"
+                detail += _unrestricting_note(conditions, PRINCIPAL_SCOPING_KEYS)
+                findings.append(_finding("CRITICAL", "cross-account-trust", account_id, role_arn, detail))
             elif kind == "AWS":
-                other = _account_of(value)
-                if other and other != account_id and ctx.is_external(other) and "sts:externalid" not in conditions:
-                    detail = f"trusts {value}, outside the organization, with no sts:ExternalId condition"
-                    findings.append(_finding("HIGH", "cross-account-trust", account_id, role_arn, detail))
+                # Principal "*" pinned by aws:PrincipalAccount or aws:PrincipalArn
+                # trusts whoever those conditions name.
+                named = _condition_principals(conditions) if value == "*" else [value]
+                for trusted in named:
+                    outside = _check_outside_trust(trusted, conditions, account_id, role_arn, ctx)
+                    if outside is not None:
+                        trusts_outside = True
+                        findings += outside
+
+    if trusts_outside and get_role:
+        stale = _unused_detail(get_role(), now or datetime.now(UTC))
+        if stale:
+            detail = f"trusts an account outside the organization and {stale}; remove the role or that trust"
+            findings.append(_finding("MEDIUM", "unused-outside-trust", account_id, role_arn, detail))
     return findings
 
 
@@ -355,12 +466,22 @@ def _paginate(client, operation, result_key, **kwargs):
         yield from page.get(result_key, [])
 
 
+def _get_role(iam, role):
+    try:
+        return iam.get_role(RoleName=role["RoleName"])["Role"]
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "NoSuchEntity":
+            return {}  # deleted mid-scan: nothing left to report as unused
+        raise
+
+
 def audit_account(account_id, client, regions, ctx):
     """Run every check in one account. client(service, region) returns a
     boto3 client with that account's credentials."""
     findings = []
-    for role in _paginate(client("iam", None), "list_roles", "Roles"):
-        findings += check_role_trust(role, account_id, ctx)
+    iam = client("iam", None)
+    for role in _paginate(iam, "list_roles", "Roles"):
+        findings += check_role_trust(role, account_id, ctx, get_role=lambda r=role: _get_role(iam, r))
 
     for region in regions:
         lambda_client = client("lambda", region)

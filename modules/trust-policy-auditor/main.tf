@@ -11,6 +11,7 @@ locals {
   # resource-level scoping to "only what exists", so they take "*".
   read_actions = [
     "iam:ListRoles",
+    "iam:GetRole",
     "lambda:ListFunctions",
     "lambda:GetPolicy",
     "ram:GetResourceShares",
@@ -212,6 +213,7 @@ resource "aws_lambda_function" "audit" {
       MEMBER_ROLE_NAME      = var.member_role_name
       REGIONS               = join(",", var.regions)
       TRUSTED_ACCOUNT_IDS   = join(",", var.trusted_account_ids)
+      UNUSED_ROLE_DAYS      = tostring(var.unused_role_days)
       AWS_USE_FIPS_ENDPOINT = tostring(var.use_fips_endpoint)
     }
   }

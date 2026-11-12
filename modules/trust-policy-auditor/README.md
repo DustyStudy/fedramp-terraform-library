@@ -16,6 +16,14 @@ patterns come up again and again:
   repository of your organization) can then get your credentials.
 - A role or function that trusts `"*"` or an account nobody recognizes,
   left over from a proof of concept or a vendor trial.
+- A vendor role that is configured "correctly", with an External ID, but
+  that anyone holding the vendor's own AWS credentials can assume from
+  anywhere. In October 2026 an attacker used Qubole's AWS account to
+  assume roles in many customer accounts, most of them unused, then read
+  Secrets Manager, SSM parameters and Lambda environment variables and
+  copied S3 buckets
+  ([Wiz](https://www.wiz.io/blog/qubole-cross-account-access-abused-in-the-wild)).
+  Every request carried the right External ID.
 - A resource share or Lambda permission that quietly reaches outside the
   organization.
 
@@ -38,6 +46,9 @@ This module does.
 | | GitHub trust pinned to a branch, tag or pull request whose `sub` doesn't name the workflow file (`job_workflow_ref`) | LOW |
 | Cross-account trust | `Principal: "*"` with no `aws:PrincipalOrgID`, account or ARN condition | CRITICAL |
 | | An account outside the organization, with no `sts:ExternalId` condition | HIGH |
+| | An account outside the organization, with no `aws:SourceIp` or `aws:SourceVpce` condition that narrows where it calls from | MEDIUM |
+| | An account outside the organization named as a whole (`123456789012` or `arn:...:root`) rather than one role | LOW |
+| Unused outside trust | A role trusting an account outside the organization, not used in `unused_role_days` (default 90) | MEDIUM |
 | Lambda function policy | `Principal: "*"` with no source or organization condition | CRITICAL |
 | | Public function URL (`AuthType NONE`) | HIGH |
 | | An account outside the organization can invoke it | HIGH |
@@ -66,6 +77,25 @@ and match the resulting `sub`. IAM evaluates only the `amr`, `aud`,
 so a separate `token.actions.githubusercontent.com:job_workflow_ref`
 condition never matches and the role can't be assumed at all; the
 finding says so when it sees one.
+
+The network, whole-account and unused checks apply to every account
+outside the organization, including those in `trusted_account_ids`: an
+External ID is not a secret (it is logged in CloudTrail and stored by the
+vendor), so it does not help once the vendor itself is breached.
+`trusted_account_ids` silences only the missing-External-ID finding and the
+Lambda and RAM findings. Ranges that together cover every address
+(`0.0.0.0/0`, `::/0`, or halves adding up to them), any wildcard
+(`vpce-*`), a negated operator and `...IfExists` don't count as narrowing.
+A `Principal: "*"` pinned by `aws:PrincipalAccount` or `aws:PrincipalArn`
+is checked as the account or role it names. If
+you limit the vendor with an SCP instead, such as `DenyVendorOffNetwork`
+in [aws-org-guardrails](https://github.com/DustyStudy/aws-org-guardrails),
+this module can't see it and still reports the trust.
+
+Last use comes from `iam:GetRole`, called only for roles that trust an
+account outside the organization. IAM keeps it for 400 days, so
+`unused_role_days` can be at most 400 and a role with no recorded use is
+reported by its age, up to that window.
 
 A condition only counts when it restricts the caller. `Principal: "*"`
 or a service principal is still reported when its only condition is
@@ -129,7 +159,7 @@ resource "aws_iam_role_policy" "trust_policy_audit_read" {
 ```
 
 An existing read-only audit role works too, if it allows
-`iam:ListRoles`, `lambda:ListFunctions`, `lambda:GetPolicy`,
+`iam:ListRoles`, `iam:GetRole`, `lambda:ListFunctions`, `lambda:GetPolicy`,
 `ram:GetResourceShares` and `ram:GetResourceShareAssociations` and trusts
 the Lambda role.
 
@@ -159,7 +189,8 @@ Detective only: a human still decides what to change.
 | regions | Regions to audit Lambda function policies and RAM shares in. Empty means the region the module is deployed in. IAM roles are global and always audited. | `list(string)` | `[]` | no |
 | reserved_concurrent_executions | Concurrency reserved for the Lambda. Set -1 to reserve none: accounts at the 10-execution quota floor (new and sandbox accounts) reject any reservation. | `number` | `2` | no |
 | schedule_expression | EventBridge schedule expression controlling how often the audit runs. | `string` | `"rate(1 day)"` | no |
-| trusted_account_ids | Accounts outside the organization to treat as trusted, such as a vendor you've reviewed. Trust in them isn't reported. | `list(string)` | `[]` | no |
+| trusted_account_ids | Accounts outside the organization to treat as trusted, such as a vendor you've reviewed. Their roles aren't reported for a missing sts:ExternalId, and their Lambda and RAM access isn't reported; trust in them is still reported when it has no network condition, names the whole account, or is unused. | `list(string)` | `[]` | no |
+| unused_role_days | Days without use after which a role trusting an account outside the organization is reported. | `number` | `90` | no |
 | use_fips_endpoint | Make the Lambda's AWS SDK calls through FIPS 140 validated endpoints (sets AWS_USE_FIPS_ENDPOINT). Default true, matching the provider setting in this library's root configurations. | `bool` | `true` | no |
 
 ## Outputs
@@ -181,9 +212,10 @@ Detective only: a human still decides what to change.
   other account as outside.
 - Service-linked roles and SAML federation are skipped: AWS manages the
   first, and SAML trust is governed by your identity provider.
-- False positives are expected. A vendor role with an `sts:ExternalId` is
-  fine and isn't reported; a vendor role without one is, even if you
-  trust the vendor. Add reviewed vendors to `trusted_account_ids`.
+- False positives are expected. A vendor role without an `sts:ExternalId`
+  is reported even if you trust the vendor; add reviewed vendors to
+  `trusted_account_ids`. A vendor that publishes no source ranges can't
+  meet the network check; the finding stays until you accept the risk.
 - This complements [`org-scp-boundary`](../org-scp-boundary/) and
   [`identity-center-access-auditor`](../identity-center-access-auditor/),
   which cover what principals may do and how people get access. This
