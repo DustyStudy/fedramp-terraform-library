@@ -233,6 +233,29 @@ resource "aws_s3_bucket_versioning" "trail" {
   }
 }
 
+# Write-once log files (AU-9), opt-in. S3 allows Object Lock on an existing
+# versioned bucket, so turning this on does not replace the bucket.
+resource "aws_s3_bucket_object_lock_configuration" "trail" {
+  count  = var.object_lock_retention_days == null ? 0 : 1
+  bucket = aws_s3_bucket.trail.id
+
+  rule {
+    default_retention {
+      mode = var.object_lock_mode
+      days = var.object_lock_retention_days
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.object_lock_retention_days <= var.s3_log_retention_days
+      error_message = "object_lock_retention_days must not exceed s3_log_retention_days, or logs would be locked past their expiry."
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.trail]
+}
+
 resource "aws_s3_bucket_logging" "trail" {
   bucket        = aws_s3_bucket.trail.id
   target_bucket = aws_s3_bucket.trail_access_log.id
@@ -409,16 +432,19 @@ resource "aws_cloudtrail" "org" {
     read_write_type           = "All"
     include_management_events = true
 
-    data_resource {
-      type = "AWS::S3::Object"
-      # This is CloudTrail's documented partial-ARN form meaning "all S3
-      # buckets in the account" — not a bug, and not a placeholder. The
-      # partition prefix is still interpolated for GovCloud correctness
-      # since every real ARN (including partial ones) is partition-scoped;
-      # AWS's docs don't explicitly confirm this exact partial form
-      # changes in GovCloud, but there's no evidence it's a partition-
-      # invariant magic string either, so this errs toward consistency.
-      values = ["arn:${local.partition}:s3"]
+    dynamic "data_resource" {
+      for_each = var.log_s3_data_events ? [1] : []
+      content {
+        type = "AWS::S3::Object"
+        # This is CloudTrail's documented partial-ARN form meaning "all S3
+        # buckets in the account" — not a bug, and not a placeholder. The
+        # partition prefix is still interpolated for GovCloud correctness
+        # since every real ARN (including partial ones) is partition-scoped;
+        # AWS's docs don't explicitly confirm this exact partial form
+        # changes in GovCloud, but there's no evidence it's a partition-
+        # invariant magic string either, so this errs toward consistency.
+        values = ["arn:${local.partition}:s3"]
+      }
     }
   }
 

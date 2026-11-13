@@ -48,9 +48,10 @@ run "managed_rule_groups_block" {
       ])) == toset([
       "AWSManagedRulesCommonRuleSet",
       "AWSManagedRulesKnownBadInputsRuleSet",
+      "AWSManagedRulesSQLiRuleSet",
       "AWSManagedRulesAmazonIpReputationList",
     ])
-    error_message = "The web ACL must use the common, known-bad-inputs and IP reputation rule groups (SC-7, SI-3)."
+    error_message = "The web ACL must use the common, known-bad-inputs, SQL injection and IP reputation rule groups (SC-7, SI-3, SI-10)."
   }
 
   assert {

@@ -56,3 +56,25 @@ run "patch_task_passes_no_role_to_run_command" {
     error_message = "run_command_parameters must not set service_role_arn."
   }
 }
+
+run "access_logging_follows_access_log_bucket" {
+  command = plan
+
+  assert {
+    condition     = length(aws_s3_bucket_logging.patch_logs) == 0
+    error_message = "Without access_log_bucket there is nowhere to send access logs."
+  }
+}
+
+run "access_logging_on_when_a_bucket_is_given" {
+  command = plan
+
+  variables {
+    access_log_bucket = "central-s3-access-logs"
+  }
+
+  assert {
+    condition     = aws_s3_bucket_logging.patch_logs[0].target_bucket == "central-s3-access-logs"
+    error_message = "The patch-log bucket must send access logs to access_log_bucket."
+  }
+}

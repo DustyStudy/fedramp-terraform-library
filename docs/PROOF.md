@@ -17,8 +17,8 @@ request.
 
 | Check | Result |
 |---|---|
-| `terraform test` (23 of 23 modules, the High account baseline and the Moderate flow-log stack, local run of 2026-11-10 on Terraform 1.16.6) | 119 runs, 119 passed |
-| pytest (module Lambdas, CI run of 2026-10-10 at `57a1db4`) | 253 passed |
+| `terraform test` (23 of 23 modules, the High account baseline and the Moderate flow-log stack, local run of 2026-11-13 on Terraform 1.16.6) | 138 runs, 138 passed |
+| pytest (module Lambdas, local run of 2026-11-13) | 288 passed |
 | Provider allowlist guard (`tests/python/test_provider_sources.py`, added 2026-09-30) | 45 `required_providers` declarations checked, all allowlisted; 4 guard self-tests passed |
 | `terraform validate` | 23 of 23 modules and 14 of 14 roots under `moderate/`, `high/` and `examples/` valid |
 | Checkov (`--framework terraform`, CI run of 2026-10-10 at `57a1db4`) | 992 passed, 0 failed, 235 skipped |

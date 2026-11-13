@@ -116,6 +116,32 @@ resource "aws_wafv2_web_acl" "this" {
     }
   }
 
+  # 2b. AWS Managed SQL Injection Rule Set (SI-10), on by default.
+  dynamic "rule" {
+    for_each = var.enable_sqli_rule_set ? [1] : []
+    content {
+      name     = "AWSManagedRulesSQLiRuleSet"
+      priority = 25
+
+      override_action {
+        none {}
+      }
+
+      statement {
+        managed_rule_group_statement {
+          name        = "AWSManagedRulesSQLiRuleSet"
+          vendor_name = "AWS"
+        }
+      }
+
+      visibility_config {
+        cloudwatch_metrics_enabled = true
+        metric_name                = "SQLiRuleSetMetric"
+        sampled_requests_enabled   = false
+      }
+    }
+  }
+
   # 3. AWS Managed IP Reputation List
   rule {
     name     = "AWSManagedRulesAmazonIpReputationList"

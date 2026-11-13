@@ -34,3 +34,41 @@ variable "s3_log_retention_days" {
   default     = 2555
   description = "S3 lifecycle retention in days for the long-term log archive (default ~7 years). Adjust to your organization's records retention schedule."
 }
+
+variable "object_lock_retention_days" {
+  type        = number
+  default     = null
+  description = <<-EOT
+    Turn on S3 Object Lock for the trail bucket with this default retention,
+    so no one can delete or overwrite a log file before it ends (AU-9). Null
+    (the default) leaves Object Lock off. Must not exceed
+    s3_log_retention_days. Object Lock can't be turned off once enabled.
+  EOT
+
+  validation {
+    condition     = var.object_lock_retention_days == null || try(var.object_lock_retention_days >= 1, false)
+    error_message = "object_lock_retention_days must be at least 1, or null to leave Object Lock off."
+  }
+}
+
+variable "object_lock_mode" {
+  type        = string
+  default     = "GOVERNANCE"
+  description = "GOVERNANCE lets principals with s3:BypassGovernanceRetention remove a lock; COMPLIANCE lets no one, including root, until retention ends."
+
+  validation {
+    condition     = contains(["GOVERNANCE", "COMPLIANCE"], var.object_lock_mode)
+    error_message = "object_lock_mode must be GOVERNANCE or COMPLIANCE."
+  }
+}
+
+variable "log_s3_data_events" {
+  type        = bool
+  default     = true
+  description = <<-EOT
+    Record S3 object-level (data) events for every bucket in the
+    organization (AU-2, AU-12). This can cost a lot in busy accounts; set
+    false to log management events only and add targeted data events in a
+    separate trail.
+  EOT
+}

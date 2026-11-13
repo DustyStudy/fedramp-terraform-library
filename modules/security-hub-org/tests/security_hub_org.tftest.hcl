@@ -35,3 +35,30 @@ run "standards_auto_enable_can_be_turned_off" {
     error_message = "auto_enable_standards = false must map to NONE."
   }
 }
+
+run "subscribes_to_nist_800_53_in_the_current_partition" {
+  command = plan
+
+  assert {
+    condition     = aws_securityhub_standards_subscription.nist_800_53[0].standards_arn == "arn:${data.aws_partition.current.partition}:securityhub:us-east-1::standards/nist-800-53/v/5.0.0"
+    error_message = "FedRAMP builds on NIST SP 800-53 Rev5; the standard must be subscribed."
+  }
+
+  assert {
+    condition     = length(aws_securityhub_finding_aggregator.this) == 0
+    error_message = "The finding aggregator must be opt-in: only one region may hold it."
+  }
+}
+
+run "aggregator_links_all_regions" {
+  command = plan
+
+  variables {
+    enable_finding_aggregator = true
+  }
+
+  assert {
+    condition     = aws_securityhub_finding_aggregator.this[0].linking_mode == "ALL_REGIONS"
+    error_message = "The aggregator must collect findings from every region."
+  }
+}

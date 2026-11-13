@@ -38,9 +38,37 @@ run "detector_enables_all_classic_protections" {
   }
 
   assert {
-    condition     = toset(keys(aws_guardduty_detector_feature.this)) == toset(["S3_DATA_EVENTS", "EKS_AUDIT_LOGS", "EBS_MALWARE_PROTECTION"])
-    error_message = "S3, EKS audit log and EBS malware protection must all be managed."
+    condition     = toset(keys(aws_guardduty_detector_feature.this)) == toset(["S3_DATA_EVENTS", "EKS_AUDIT_LOGS", "EBS_MALWARE_PROTECTION", "RDS_LOGIN_EVENTS", "LAMBDA_NETWORK_LOGS"])
+    error_message = "S3, EKS audit log, EBS malware, RDS login and Lambda network protection must all be managed."
   }
+
+  assert {
+    condition     = keys(aws_guardduty_detector_feature.this) == keys(aws_guardduty_organization_configuration_feature.this)
+    error_message = "New member accounts must get the same protections as this account."
+  }
+}
+
+run "additional_features_can_be_turned_off" {
+  command = plan
+
+  variables {
+    additional_features = []
+  }
+
+  assert {
+    condition     = toset(keys(aws_guardduty_detector_feature.this)) == toset(["S3_DATA_EVENTS", "EKS_AUDIT_LOGS", "EBS_MALWARE_PROTECTION"])
+    error_message = "additional_features = [] must leave only the classic protections."
+  }
+}
+
+run "rejects_unsupported_features" {
+  command = plan
+
+  variables {
+    additional_features = ["RUNTIME_MONITORING"]
+  }
+
+  expect_failures = [var.additional_features]
 }
 
 run "new_accounts_are_enrolled" {

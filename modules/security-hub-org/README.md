@@ -35,6 +35,8 @@ tweak, so it's intentionally out of scope for this module.
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
 | auto_enable_standards | Automatically enable default security standards for new accounts joining the organization. | `bool` | `true` | no |
+| enable_finding_aggregator | Make this region the Security Hub aggregation region, collecting findings from all regions. Set true in exactly one region of the delegated admin account. | `bool` | `false` | no |
+| enable_nist_800_53 | Subscribe this account to the NIST SP 800-53 Rev5 standard, the control catalog FedRAMP is built on. | `bool` | `true` | no |
 
 ## Outputs
 
