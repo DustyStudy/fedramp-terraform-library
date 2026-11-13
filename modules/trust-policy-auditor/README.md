@@ -159,7 +159,8 @@ resource "aws_iam_role_policy" "trust_policy_audit_read" {
 ```
 
 An existing read-only audit role works too, if it allows
-`iam:ListRoles`, `iam:GetRole`, `lambda:ListFunctions`, `lambda:GetPolicy`,
+`iam:ListRoles`, `iam:GetRole`, `lambda:ListFunctions`, `lambda:ListAliases`,
+`lambda:ListVersionsByFunction`, `lambda:GetPolicy`,
 `ram:GetResourceShares` and `ram:GetResourceShareAssociations` and trusts
 the Lambda role.
 

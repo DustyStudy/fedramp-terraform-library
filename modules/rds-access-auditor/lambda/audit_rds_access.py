@@ -103,7 +103,9 @@ def open_to_internet(security_groups, port):
     for group in security_groups:
         for rule in group.get("IpPermissions", []):
             all_traffic = rule.get("IpProtocol") == "-1"
-            in_range = rule.get("FromPort", -1) <= port <= rule.get("ToPort", -1)
+            # Database clients connect over TCP; a UDP or ICMP rule doesn't expose them.
+            tcp = str(rule.get("IpProtocol")).lower() in ("tcp", "6")
+            in_range = tcp and rule.get("FromPort", -1) <= port <= rule.get("ToPort", -1)
             if not (all_traffic or in_range):
                 continue
             cidrs = {r.get("CidrIp") for r in rule.get("IpRanges", [])}
@@ -143,14 +145,20 @@ def check_credentials(database, arn, account_id):
     return findings
 
 
-def check_transport(engine, parameters, group_name, arn, account_id):
-    """parameters: {name: value} for the database's parameter group."""
+def check_transport(engine, parameters, group_name, arn, account_id, apply_status="in-sync"):
+    """parameters: {name: value} for the database's parameter group;
+    apply_status: the group's apply status on the instance or cluster."""
     tls = _tls_parameter(engine)
     if not tls:
         return []
     name, on_values = tls
     value = parameters.get(name)
     if value is not None and value.lower() in on_values:
+        # A static parameter, a dynamic one changed with ApplyMethod
+        # pending-reboot, or a newly attached group all wait for a reboot.
+        if apply_status == "pending-reboot":
+            detail = f"parameter group {group_name} sets {name} = 1, but it is pending a reboot, so clients may still connect without TLS"
+            return [_finding("MEDIUM", "transport", account_id, arn, detail)]
         return []
     shown = "not set (engine default)" if value is None else f"'{value}'"
     detail = f"parameter group {group_name} leaves {name} {shown}, so clients may connect without TLS"
@@ -279,7 +287,9 @@ def audit_region(account_id, rds, ec2):
         findings += check_credentials(cluster, arn, account_id)
         group = cluster.get("DBClusterParameterGroup")
         if group:
-            findings += check_transport(cluster["Engine"], parameters("cluster", group), group, arn, account_id)
+            statuses = {m.get("DBClusterParameterGroupStatus") for m in cluster.get("DBClusterMembers", [])}
+            status = "pending-reboot" if "pending-reboot" in statuses else "in-sync"
+            findings += check_transport(cluster["Engine"], parameters("cluster", group), group, arn, account_id, status)
 
     for instance in _paginate(rds, "describe_db_instances", "DBInstances"):
         if not _is_rds(instance.get("Engine")):
@@ -296,7 +306,9 @@ def audit_region(account_id, rds, ec2):
         findings += check_credentials(instance, arn, account_id)
         for group in instance.get("DBParameterGroups", [])[:1]:
             name = group["DBParameterGroupName"]
-            findings += check_transport(instance["Engine"], parameters("instance", name), name, arn, account_id)
+            findings += check_transport(
+                instance["Engine"], parameters("instance", name), name, arn, account_id, group.get("ParameterApplyStatus", "in-sync")
+            )
     return findings, masters
 
 

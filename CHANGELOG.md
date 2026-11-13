@@ -72,6 +72,20 @@ FedRAMP expects.
   with a 17-character VPC ID. The provider range now allows 6.x.
 
 ### Fixed
+- `trust-policy-auditor`: an OIDC trust for a provider other than GitHub
+  (EKS, GitLab and others) whose `sub` condition doesn't restrict the
+  caller (`"*"`, or only negated or `Null` conditions) is now HIGH; it was
+  reported clean. A `sub` with a policy variable is MEDIUM, to review by
+  hand.
+- `trust-policy-auditor`: resource policies on Lambda aliases and
+  published versions are now audited, not just the unqualified function.
+  The audit role needs `lambda:ListAliases` and
+  `lambda:ListVersionsByFunction` (added to `member_role_policy_json`;
+  add them by hand to an audit role you manage yourself).
+- `rds-access-auditor`: a TLS parameter that is set but `pending-reboot`
+  on the instance or any cluster member is now MEDIUM `transport`, since
+  clients may still connect without TLS. Security group rules for UDP or
+  ICMP on the database port no longer count as internet exposure.
 - `trust-policy-auditor`: the workflow-pin LOW finding now advises adding
   `job_workflow_ref` to the repository's OIDC subject template and matching
   it in `sub`. IAM evaluates only `amr`, `aud`, `email`, `oaud` and `sub`

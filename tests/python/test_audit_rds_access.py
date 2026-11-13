@@ -70,6 +70,13 @@ def test_other_rules_that_admit_the_internet_are_critical(fn, rule):
     assert _severities(findings) == ["CRITICAL"]
 
 
+@pytest.mark.parametrize("protocol", ["udp", "17", "icmp"])
+def test_non_tcp_rules_on_the_port_do_not_expose_the_database(fn, protocol):
+    findings = fn.check_public_access(_instance(PubliclyAccessible=True), [_group(_rule(5432, 5432, protocol=protocol))], ACCOUNT)
+
+    assert _severities(findings) == ["HIGH"]
+
+
 @pytest.mark.parametrize(
     "rule",
     [_rule(5432, 5432, cidr="10.0.0.0/8"), _rule(22, 22)],
@@ -137,6 +144,17 @@ def test_unenforced_tls_is_medium(fn, engine, parameters, shown):
 
     assert _severities(findings) == ["MEDIUM"]
     assert shown in findings[0]["detail"]
+
+
+@pytest.mark.parametrize(
+    ("engine", "parameters"),
+    [("sqlserver-se", {"rds.force_ssl": "1"}), ("postgres", {"rds.force_ssl": "1"}), ("mysql", {"require_secure_transport": "ON"})],
+)
+def test_tls_pending_reboot_is_medium(fn, engine, parameters):
+    findings = fn.check_transport(engine, parameters, "pg", INSTANCE_ARN, ACCOUNT, "pending-reboot")
+
+    assert _severities(findings) == ["MEDIUM"]
+    assert "pending a reboot" in findings[0]["detail"]
 
 
 # --- rds-db:connect scope -------------------------------------------------------------
@@ -429,3 +447,21 @@ def test_failed_publish_fails_the_run(fn, monkeypatch):
 
     with pytest.raises(ClientError):
         fn._notify("subject", "message")
+
+
+def test_cluster_tls_pending_reboot_on_a_member_is_medium(fn):
+    cluster = {
+        "DBClusterArn": CLUSTER_ARN,
+        "DbClusterResourceId": "cluster-XYZ",
+        "Engine": "aurora-postgresql",
+        "MasterUserSecret": {"SecretArn": "s"},
+        "IAMDatabaseAuthenticationEnabled": True,
+        "DBClusterParameterGroup": "aurora-pg16",
+        "DBClusterMembers": [{"DBClusterParameterGroupStatus": "in-sync"}, {"DBClusterParameterGroupStatus": "pending-reboot"}],
+    }
+    client = _account_clients(clusters=[cluster], cluster_parameters=[{"ParameterName": "rds.force_ssl", "ParameterValue": "1"}])
+
+    findings, _ = fn.audit_region(ACCOUNT, client("rds", None), client("ec2", None))
+
+    assert [(f["check"], f["severity"]) for f in findings] == [("transport", "MEDIUM")]
+    assert "pending a reboot" in findings[0]["detail"]
