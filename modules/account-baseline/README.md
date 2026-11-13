@@ -68,6 +68,7 @@ module "account_baseline" {
 | ---- | ----------- | ---- | ------- | :------: |
 | backup_vault_kms_key_arn | Optional existing CMK ARN for the backup vault. Empty creates a dedicated CMK with rotation enabled. | `string` | `""` | no |
 | backup_vault_name | Backup vault name; must match org-governance's backup_vault_name. | `string` | `"FedRAMPComplianceVault"` | no |
+| create_backup_service_role | Create service-role/AWSBackupDefaultServiceRole, the role modules/org-governance's backup policy runs jobs as. AWS creates it only the first time someone opens the Backup console, so new accounts lack it and every scheduled job fails. The role is global: when you deploy this module in more than one region, set this true in exactly one of them. Set false if the role already exists in the account. | `bool` | `true` | no |
 | create_backup_vault | Create the AWS Backup vault that modules/org-governance's backup policy targets. Deploy once per region listed in that policy's backup_regions. | `bool` | `true` | no |
 | create_backup_vault_kms_key | Create the dedicated backup vault CMK. Leave null to decide from backup_vault_kms_key_arn; set false when that key is created in the same plan, where its ARN is not known yet. | `bool` | `null` | no |
 | kms_key_arn | Optional custom KMS Key ARN to use for default EBS encryption. | `string` | `""` | no |
@@ -85,6 +86,7 @@ module "account_baseline" {
 
 | Name | Description |
 | ---- | ----------- |
+| backup_service_role_arn | ARN of AWSBackupDefaultServiceRole (null when create_backup_service_role = false) |
 | backup_vault_arn | ARN of the AWS Backup vault (null when create_backup_vault = false) |
 | ebs_encryption_enabled | Whether EBS default encryption is enabled |
 | iam_password_policy_expire_passwords | Indicates whether passwords expire according to the IAM password policy |

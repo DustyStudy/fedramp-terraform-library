@@ -40,6 +40,15 @@ data "aws_iam_policy_document" "fedramp_boundary_scp" {
       "kms:DisableKey"
     ]
     resources = ["*"]
+
+    dynamic "condition" {
+      for_each = length(var.exempt_principal_arns) > 0 ? [1] : []
+      content {
+        test     = "ArnNotLike"
+        variable = "aws:PrincipalArn"
+        values   = var.exempt_principal_arns
+      }
+    }
   }
 
   # 2. Deny Leaving Organization or Modifying Account Baseline
@@ -53,20 +62,56 @@ data "aws_iam_policy_document" "fedramp_boundary_scp" {
       "ec2:DisableEbsEncryptionByDefault"
     ]
     resources = ["*"]
+
+    dynamic "condition" {
+      for_each = length(var.exempt_principal_arns) > 0 ? [1] : []
+      content {
+        test     = "ArnNotLike"
+        variable = "aws:PrincipalArn"
+        values   = var.exempt_principal_arns
+      }
+    }
   }
 
   # 3. Deny Non-Approved Regions (SC-7)
+  # Global services and actions answer from us-east-1 (or the partition's
+  # home region) whatever region the caller uses, so they must be exempt or
+  # they break whenever approved_regions leaves that region out.
   statement {
     sid    = "DenyUnapprovedRegions"
     effect = "Deny"
     not_actions = [
-      "iam:*",
-      "organizations:*",
-      "route53:*",
-      "cloudfront:*",
-      "support:*",
+      "account:*",
       "aws-portal:*",
-      "budgets:*"
+      "billing:*",
+      "budgets:*",
+      "ce:*",
+      "cloudfront:*",
+      "consolidatedbilling:*",
+      "cur:*",
+      "ec2:DescribeRegions",
+      "ecr-public:*",
+      "freetier:*",
+      "globalaccelerator:*",
+      "health:*",
+      "iam:*",
+      "invoicing:*",
+      "organizations:*",
+      "payments:*",
+      "pricing:*",
+      "route53:*",
+      "route53domains:*",
+      "s3:GetAccountPublicAccessBlock",
+      "s3:GetBucketLocation",
+      "s3:ListAllMyBuckets",
+      "s3:ListMultiRegionAccessPoints",
+      "savingsplans:*",
+      "shield:*",
+      "sts:*",
+      "support:*",
+      "tax:*",
+      "trustedadvisor:*",
+      "waf:*"
     ]
     resources = ["*"]
     condition {

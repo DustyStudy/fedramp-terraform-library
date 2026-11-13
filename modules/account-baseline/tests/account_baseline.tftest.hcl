@@ -111,3 +111,35 @@ run "backup_vault_without_any_key_is_rejected" {
 
   expect_failures = [aws_backup_vault.this]
 }
+
+run "creates_the_backup_role_the_org_policy_names" {
+  command = plan
+
+  assert {
+    condition     = aws_iam_role.backup[0].name == "AWSBackupDefaultServiceRole" && aws_iam_role.backup[0].path == "/service-role/"
+    error_message = "org-governance's backup policy runs jobs as service-role/AWSBackupDefaultServiceRole; it must exist."
+  }
+
+  assert {
+    condition     = jsondecode(aws_iam_role.backup[0].assume_role_policy).Statement[0].Principal.Service == "backup.amazonaws.com"
+    error_message = "Only AWS Backup may assume the backup role."
+  }
+
+  assert {
+    condition     = toset([for a in aws_iam_role_policy_attachment.backup : a.policy_arn]) == toset([for p in ["AWSBackupServiceRolePolicyForBackup", "AWSBackupServiceRolePolicyForRestores"] : "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/${p}"])
+    error_message = "The backup role needs the AWS managed backup and restore policies."
+  }
+}
+
+run "backup_role_can_be_skipped" {
+  command = plan
+
+  variables {
+    create_backup_service_role = false
+  }
+
+  assert {
+    condition     = length(aws_iam_role.backup) == 0 && length(aws_iam_role_policy_attachment.backup) == 0
+    error_message = "create_backup_service_role = false must not create the role, for a second region or an account that has it."
+  }
+}

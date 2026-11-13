@@ -52,6 +52,7 @@ module "org_scp_boundary" {
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
 | approved_regions | List of approved FedRAMP regions. Defaults assume a standard AWS commercial deployment (us-east-1, us-west-2) — if deploying in AWS GovCloud, override with GovCloud region names (e.g. us-gov-west-1, us-gov-east-1) instead, since the two partitions don't share regions. | `list(string)` | ```[ "us-east-1", "us-west-2" ]``` | no |
+| exempt_principal_arns | IAM role ARNs (wildcards allowed, e.g. an Identity Center permission set role "arn:<partition>:iam::*:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_SecurityAdmin_*") that the security-service and account-baseline denies do not apply to. Without one, nobody in a member account, including your deployment pipeline, can create the S3 account public access block, enable GuardDuty features or delete a KMS key once the SCP is attached. | `list(string)` | `[]` | no |
 | policy_name | Name of the SCP | `string` | `"fedramp-authorization-boundary-scp"` | no |
 | require_imdsv2 | Add statements that deny launching an EC2 instance without IMDSv2 (HttpTokens = required) and deny switching an instance back to IMDSv1. Off by default: turning it on breaks any launch template, AMI pipeline or tool that still sets HttpTokens to optional. | `bool` | `false` | no |
 | target_ou_or_account_ids | List of Organizational Units or Account IDs to attach this SCP | `list(string)` | `[]` | no |

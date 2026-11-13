@@ -81,3 +81,16 @@ variable "create_backup_vault_kms_key" {
   type        = bool
   default     = null
 }
+
+variable "create_backup_service_role" {
+  description = <<-EOT
+    Create service-role/AWSBackupDefaultServiceRole, the role
+    modules/org-governance's backup policy runs jobs as. AWS creates it only
+    the first time someone opens the Backup console, so new accounts lack it
+    and every scheduled job fails. The role is global: when you deploy this
+    module in more than one region, set this true in exactly one of them.
+    Set false if the role already exists in the account.
+  EOT
+  type        = bool
+  default     = true
+}

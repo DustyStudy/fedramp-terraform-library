@@ -31,3 +31,16 @@ variable "require_imdsv2" {
   type        = bool
   default     = false
 }
+
+variable "exempt_principal_arns" {
+  description = <<-EOT
+    IAM role ARNs (wildcards allowed, e.g. an Identity Center permission set
+    role "arn:<partition>:iam::*:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_SecurityAdmin_*")
+    that the security-service and account-baseline denies do not apply to.
+    Without one, nobody in a member account, including your deployment
+    pipeline, can create the S3 account public access block, enable
+    GuardDuty features or delete a KMS key once the SCP is attached.
+  EOT
+  type        = list(string)
+  default     = []
+}

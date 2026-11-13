@@ -54,7 +54,7 @@ run "perimeter_scp_denies" {
   }
 
   assert {
-    condition     = toset(one([for s in jsondecode(data.aws_iam_policy_document.workload_perimeter_scp.json).Statement : s if s.Sid == "DenyBypassOrDeleteObjectLock"]).Action) == toset(["s3:BypassGovernanceRetention", "s3:PutObjectLegalHold", "s3:PutObjectRetention"])
+    condition     = toset(one([for s in jsondecode(data.aws_iam_policy_document.workload_perimeter_scp.json).Statement : s if s.Sid == "DenyBypassOrDeleteObjectLock"]).Action) == toset(["s3:BypassGovernanceRetention", "s3:PutBucketObjectLockConfiguration", "s3:PutObjectLegalHold", "s3:PutObjectRetention"])
     error_message = "The SCP must deny bypassing governance retention and changing holds and retention (AU-9)."
   }
 
