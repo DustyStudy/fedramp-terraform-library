@@ -5,7 +5,7 @@
 # organization auto-enrollment IS a native Terraform resource
 # (aws_guardduty_organization_configuration) — no custom scripting needed.
 #
-# The three protections are set with feature resources. Destroying a
+# The protections are set with feature resources. Destroying a
 # feature resource only removes it from state; it does not turn the
 # protection off.
 #
@@ -14,7 +14,7 @@
 #   FedRAMP 20x: KSI-CNA-EIS (automated security assessment/enforcement), KSI-INR-RPI (pattern review feeding incident response)
 
 locals {
-  features = toset(["S3_DATA_EVENTS", "EKS_AUDIT_LOGS", "EBS_MALWARE_PROTECTION"])
+  features = setunion(["S3_DATA_EVENTS", "EKS_AUDIT_LOGS", "EBS_MALWARE_PROTECTION"], var.additional_features)
 }
 
 resource "aws_guardduty_detector" "this" {

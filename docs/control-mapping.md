@@ -43,7 +43,7 @@ for either.
 | Module | Rev5 Controls | 20x KSI | Notes |
 |---|---|---|---|
 | `account-baseline` | AC-2, IA-5, MP-2, CM-7, SC-28 | KSI-IAM-APM, KSI-SVC-SIN | Account password policy, EBS default encryption, S3 account public access block, optional default-VPC/SG lockdown |
-| `ecr-hardened` | RA-5, SC-28, SC-12 | KSI-SVC-SIN, KSI-SVC-VRI | KMS-encrypted repository, tag immutability, scan-on-push. Whoever pushes/pulls images needs KMS grants added separately — see module README |
+| `ecr-hardened` | RA-5, SC-28, SC-12 | KSI-SVC-SIN, KSI-SVC-VRI | KMS-encrypted repository, tag immutability, scan-on-push. Pushing and pulling need no KMS permissions (ECR manages its own grants); whoever creates or deletes the repository needs `kms:CreateGrant`, `kms:RetireGrant` and `kms:DescribeKey` — see module README |
 | `ecs-fargate-hardened` | AU-12, SC-13 | KSI-MLA-LET | Container Insights, KMS-encrypted logs + ECS Exec session logging |
 | `eks-hardened` | AU-2, SC-7, SC-13 | KSI-MLA-LET, KSI-CNA-RNT, KSI-SVC-SIN | KMS secrets envelope encryption, all 5 control-plane log types, private-only API endpoint |
 | `fips-vpc-endpoints` | AC-3, SC-7, SC-8, SC-13 | KSI-CNA-RNT, KSI-SVC-VCM | Creates `kms`/`ec2`/`sts` FIPS endpoints by default; AWS offers many more `-fips` services — add as needed (see module README) |

@@ -48,6 +48,7 @@ module "waf_hardened" {
 
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
+| enable_sqli_rule_set | Add the AWS managed SQL injection rule group (AWSManagedRulesSQLiRuleSet, 200 WCU), which blocks requests that look like SQL injection (SI-10). Test it against your traffic before production; set false if your app has no SQL backend or you filter SQLi elsewhere. | `bool` | `true` | no |
 | environment | n/a | `string` | `"fedramp"` | no |
 | log_retention_days | Retention period for WAF logs in days | `number` | `365` | no |
 | rate_limit_threshold | Maximum requests allowed from a single IP per 5-minute window | `number` | `2000` | no |

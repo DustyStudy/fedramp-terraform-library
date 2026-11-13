@@ -36,15 +36,24 @@ resource "aws_kms_key" "ssm" {
 }
 
 # S3 Bucket for Patch Execution Logs with SSE-KMS
-#trivy:ignore:AWS-0089 Access logging goes to the central log sink; see the CKV_AWS_18 skip.
+#trivy:ignore:AWS-0089 Access logging is on when access_log_bucket is set; see the CKV_AWS_18 skip.
 resource "aws_s3_bucket" "patch_logs" {
-  #checkov:skip=CKV_AWS_18:Access logging target can be configured at centralized log sink
+  #checkov:skip=CKV_AWS_18:Access logging is enabled by aws_s3_bucket_logging.patch_logs when access_log_bucket is set
   #checkov:skip=CKV_AWS_144:Cross-region replication is NOT configured by this module. If your contingency plan needs off-site log copies, add S3 replication, or tag the bucket Backup=true (versioning required) and set org-governance copy_destination_region
   #checkov:skip=CKV_AWS_145:KMS CMK encryption enforced below
   #checkov:skip=CKV_AWS_21:Versioning enabled below
   #checkov:skip=CKV2_AWS_62:Event notifications are not required for internal SSM patch command logs
   bucket        = "${var.environment}-fedramp-ssm-patch-logs-${local.account_id}"
   force_destroy = false
+}
+
+# Server access logs for the patch-log bucket (AU-2), sent to an existing
+# log bucket that grants logging.s3.amazonaws.com write access.
+resource "aws_s3_bucket_logging" "patch_logs" {
+  count         = var.access_log_bucket == null ? 0 : 1
+  bucket        = aws_s3_bucket.patch_logs.id
+  target_bucket = var.access_log_bucket
+  target_prefix = "ssm-patch-logs/"
 }
 
 resource "aws_s3_bucket_versioning" "patch_logs" {

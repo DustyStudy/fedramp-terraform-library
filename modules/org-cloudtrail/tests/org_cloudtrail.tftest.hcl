@@ -149,3 +149,50 @@ run "expired_logs_are_deleted_not_kept_as_old_versions" {
     error_message = "Both buckets are versioned, so they must expire noncurrent versions too or logs are kept forever."
   }
 }
+
+run "object_lock_is_off_by_default_and_data_events_on" {
+  command = plan
+
+  assert {
+    condition     = length(aws_s3_bucket_object_lock_configuration.trail) == 0
+    error_message = "Object Lock can't be undone, so it must be opt-in."
+  }
+
+  assert {
+    condition     = length(aws_cloudtrail.org.event_selector[0].data_resource) == 1
+    error_message = "S3 data events must stay on by default (AU-2, AU-12)."
+  }
+}
+
+run "object_lock_and_management_only_logging" {
+  command = plan
+
+  variables {
+    object_lock_retention_days = 365
+    object_lock_mode           = "COMPLIANCE"
+    log_s3_data_events         = false
+  }
+
+  assert {
+    condition = (
+      aws_s3_bucket_object_lock_configuration.trail[0].rule[0].default_retention[0].mode == "COMPLIANCE" &&
+      aws_s3_bucket_object_lock_configuration.trail[0].rule[0].default_retention[0].days == 365
+    )
+    error_message = "Object Lock must use the requested mode and retention."
+  }
+
+  assert {
+    condition     = length(aws_cloudtrail.org.event_selector[0].data_resource) == 0
+    error_message = "log_s3_data_events = false must drop the S3 data-event selector."
+  }
+}
+
+run "rejects_object_lock_longer_than_retention" {
+  command = plan
+
+  variables {
+    object_lock_retention_days = 3000
+  }
+
+  expect_failures = [aws_s3_bucket_object_lock_configuration.trail]
+}

@@ -30,3 +30,25 @@ variable "auto_enable_organization_members" {
     error_message = "auto_enable_organization_members must be ALL, NEW, or NONE."
   }
 }
+
+variable "additional_features" {
+  type        = set(string)
+  default     = ["RDS_LOGIN_EVENTS", "LAMBDA_NETWORK_LOGS"]
+  description = <<-EOT
+    GuardDuty protections to turn on besides S3, EKS audit logs and EBS
+    malware scanning: RDS_LOGIN_EVENTS (anomalous Aurora/RDS logins) and
+    LAMBDA_NETWORK_LOGS (Lambda network activity). Each adds GuardDuty
+    charges. To leave them off, set [] before the first apply: removing a
+    feature later only drops it from Terraform state, it does not turn the
+    protection off (do that in GuardDuty). A few commercial regions lack
+    some protections (RDS Protection isn't in ap-east-2, for example); see
+    the GuardDuty regions page and drop those features there. Runtime
+    Monitoring is not offered here because it also needs its security agent
+    managed.
+  EOT
+
+  validation {
+    condition     = alltrue([for f in var.additional_features : contains(["RDS_LOGIN_EVENTS", "LAMBDA_NETWORK_LOGS"], f)])
+    error_message = "additional_features may contain only RDS_LOGIN_EVENTS and LAMBDA_NETWORK_LOGS."
+  }
+}

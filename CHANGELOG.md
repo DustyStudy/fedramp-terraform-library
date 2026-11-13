@@ -13,6 +13,30 @@ FedRAMP expects.
 ## [Unreleased]
 
 ### Added
+- `security-hub-org`: subscribes the delegated admin account to the NIST
+  SP 800-53 Rev5 standard (`enable_nist_800_53`, default on). Member
+  accounts still get the default standards; pushing NIST to them needs
+  Security Hub central configuration. New opt-in
+  `enable_finding_aggregator` collects findings from all regions; set it
+  in exactly one region.
+- `org-cloudtrail`: opt-in S3 Object Lock on the trail bucket
+  (`object_lock_retention_days`, `object_lock_mode`, default off) for
+  write-once logs (AU-9). It works on the existing bucket, but can't be
+  turned off once on. New `log_s3_data_events` (default on, as before)
+  lets you drop the org-wide S3 data-event selector, which can be costly.
+- `waf-hardened`: adds `AWSManagedRulesSQLiRuleSet` (SI-10), 200 WCU.
+  **Upgrade note:** it is on by default (`enable_sqli_rule_set`) and
+  blocks requests that look like SQL injection; test it against your
+  traffic first, or set it false.
+- `guardduty-org`: turns on `RDS_LOGIN_EVENTS` and `LAMBDA_NETWORK_LOGS`
+  in this account and for new members (`additional_features`). **Upgrade
+  note:** each adds GuardDuty charges. To keep the old set, set
+  `additional_features = []` before upgrading; removing them after apply
+  only drops them from state and leaves the protections on.
+- `ssm-patching-hardened`: new `access_log_bucket` turns on server access
+  logging for the patch-log bucket. The code comments claimed this was
+  already configured; it wasn't. The destination must be an SSE-S3 bucket
+  in the same account and region (S3's requirement).
 - `network-perimeter-vpc`: opt-in Route 53 Resolver DNS Firewall
   (`enable_dns_firewall`, default off) that answers NXDOMAIN for
   `dns_firewall_blocked_domains`, after attackers used GSocket to keep
@@ -72,6 +96,13 @@ FedRAMP expects.
   with a 17-character VPC ID. The provider range now allows 6.x.
 
 ### Fixed
+- `network-perimeter-vpc`: the flow-log role's `logs:DescribeLogGroups`
+  is now granted on `"*"`. The action has no resource-level permissions,
+  so scoping it to the log group made the grant do nothing.
+- `docs/control-mapping.md`: the ECR row said image push/pull needs KMS
+  grants; it doesn't (ECR manages its own). Only whoever creates or
+  deletes the repository needs KMS grant permissions.
+- `README.md`, `docs/PROOF.md`: test counts brought up to date.
 - `trust-policy-auditor`: an OIDC trust for a provider other than GitHub
   (EKS, GitLab and others) whose `sub` condition doesn't restrict the
   caller (`"*"`, or only negated or `Null` conditions) is now HIGH; it was
