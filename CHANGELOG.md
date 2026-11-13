@@ -12,6 +12,35 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-13
+
+### Upgrade notes
+Read these before you move a deployment from 2.x. Each is detailed below.
+- **Can fail the first apply:** `account-baseline` now creates
+  `service-role/AWSBackupDefaultServiceRole`. Set
+  `create_backup_service_role = false` where the role already exists, and
+  in every region but one when you deploy the module per region.
+- **Can block traffic:** `waf-hardened` adds the SQL injection rule group,
+  on by default. Test it against your traffic, or set
+  `enable_sqli_rule_set = false`.
+- **Adds charges:** `guardduty-org` turns on RDS Protection and Lambda
+  Protection. Set `additional_features = []` *before* upgrading to keep the
+  old set; removing them afterwards leaves them on.
+- **Changes the cluster:** `eks-hardened` defaults `kubernetes_version` to
+  `1.35`; a cluster that relied on the old `1.30` default gets a
+  control-plane upgrade. Pin the version to upgrade on your own schedule.
+- **Changes who can act:** `org-governance` now lets only
+  `authorized_security_admin_arns` create Object Lock buckets.
+  `org-scp-boundary` takes `exempt_principal_arns`; without it, member
+  accounts still can't create the S3 account public access block or
+  enable GuardDuty features once the SCP is attached.
+- **New findings and permissions:** `trust-policy-auditor` reports new
+  outside-trust, non-GitHub OIDC and Lambda alias/version findings, and
+  its audit role needs `iam:GetRole`, `lambda:ListAliases` and
+  `lambda:ListVersionsByFunction`. A member role built from
+  `member_role_policy_json` gets them on the next apply.
+  `rds-access-auditor` reports TLS settings that are waiting on a reboot.
+
 ### Added
 - `security-hub-org`: subscribes the delegated admin account to the NIST
   SP 800-53 Rev5 standard (`enable_nist_800_53`, default on). Member
