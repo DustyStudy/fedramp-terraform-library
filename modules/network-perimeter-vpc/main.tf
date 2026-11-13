@@ -172,3 +172,36 @@ resource "aws_subnet" "database" {
     Name = "${var.environment}-db-isolated-tier-${count.index + 1}"
   }
 }
+
+# Opt-in DNS Firewall: block resolver lookups of known C2 relay domains (SC-7, SI-4).
+# The default list is GSocket's relay network and download hosts; attackers have
+# used GSocket to keep access to Linux web servers after the entry flaw was patched.
+resource "aws_route53_resolver_firewall_domain_list" "blocked" {
+  count   = var.enable_dns_firewall ? 1 : 0
+  name    = "${var.environment}-blocked-c2-domains"
+  domains = var.dns_firewall_blocked_domains
+}
+
+resource "aws_route53_resolver_firewall_rule_group" "this" {
+  count = var.enable_dns_firewall ? 1 : 0
+  name  = "${var.environment}-dns-firewall"
+}
+
+resource "aws_route53_resolver_firewall_rule" "block" {
+  count                   = var.enable_dns_firewall ? 1 : 0
+  name                    = "block-c2-domains"
+  action                  = "BLOCK"
+  block_response          = "NXDOMAIN"
+  firewall_domain_list_id = aws_route53_resolver_firewall_domain_list.blocked[0].id
+  firewall_rule_group_id  = aws_route53_resolver_firewall_rule_group.this[0].id
+  priority                = 100
+}
+
+resource "aws_route53_resolver_firewall_rule_group_association" "this" {
+  count                  = var.enable_dns_firewall ? 1 : 0
+  name                   = "${var.environment}-dns-firewall"
+  firewall_rule_group_id = aws_route53_resolver_firewall_rule_group.this[0].id
+  vpc_id                 = aws_vpc.this.id
+  priority               = 101
+  mutation_protection    = var.dns_firewall_mutation_protection ? "ENABLED" : "DISABLED"
+}
