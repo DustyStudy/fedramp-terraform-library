@@ -186,6 +186,53 @@ def test_other_oidc_provider_without_sub_is_high(fn, ctx):
     assert _severities(fn.check_role_trust(_role(statement), ACCOUNT, ctx)) == ["HIGH"]
 
 
+EKS_HOST = "oidc.eks.us-east-1.amazonaws.com/id/ABC"
+
+
+def _eks(sub_condition):
+    return {
+        "Effect": "Allow",
+        "Principal": {"Federated": f"arn:aws:iam::{ACCOUNT}:oidc-provider/{EKS_HOST}"},
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {"StringEquals": {f"{EKS_HOST}:aud": "sts.amazonaws.com"}, **sub_condition},
+    }
+
+
+@pytest.mark.parametrize(
+    "sub_condition",
+    [
+        {"StringLike": {f"{EKS_HOST}:sub": "*"}},
+        {"StringNotEquals": {f"{EKS_HOST}:sub": "system:serviceaccount:kube-system:bad"}},
+        {"Null": {f"{EKS_HOST}:sub": "false"}},
+    ],
+    ids=["wildcard", "negated-only", "null-only"],
+)
+def test_other_oidc_provider_with_unrestricting_sub_is_high(fn, ctx, sub_condition):
+    findings = fn.check_role_trust(_role(_eks(sub_condition)), ACCOUNT, ctx)
+
+    assert _severities(findings) == ["HIGH"]
+    assert "does not restrict" in findings[0]["detail"]
+
+
+def test_other_oidc_provider_with_pinned_sub_is_clean(fn, ctx):
+    pinned = {"StringEquals": {f"{EKS_HOST}:aud": "sts.amazonaws.com", f"{EKS_HOST}:sub": "system:serviceaccount:app:web"}}
+    statement = {**_eks({}), "Condition": pinned}
+
+    assert fn.check_role_trust(_role(statement), ACCOUNT, ctx) == []
+    # Every web identity token has a sub, so IfExists still pins it.
+    if_exists = _eks({"StringEqualsIfExists": {f"{EKS_HOST}:sub": "system:serviceaccount:app:web"}})
+    assert fn.check_role_trust(_role(if_exists), ACCOUNT, ctx) == []
+
+
+def test_other_oidc_sub_with_a_policy_variable_is_left_for_review(fn, ctx):
+    statement = _eks({"StringLike": {f"{EKS_HOST}:sub": "system:serviceaccount:payments:${aws:PrincipalTag/sa}"}})
+
+    findings = fn.check_role_trust(_role(statement), ACCOUNT, ctx)
+
+    assert _severities(findings) == ["MEDIUM"]
+    assert "review it by hand" in findings[0]["detail"]
+
+
 def test_saml_trust_is_out_of_scope(fn, ctx):
     statement = {"Effect": "Allow", "Principal": {"Federated": f"arn:aws:iam::{ACCOUNT}:saml-provider/idp"}}
 
@@ -447,9 +494,13 @@ def _paginated(pages_by_operation):
     return client
 
 
-def _account_clients(roles=(), functions=(), policies=None, shares=(), associations=()):
+def _account_clients(roles=(), functions=(), policies=None, shares=(), associations=(), aliases=(), versions=()):
     iam = _paginated({"list_roles": [{"Roles": list(roles)}]})
-    lam = _paginated({"list_functions": [{"Functions": list(functions)}]})
+    lam = _paginated({
+        "list_functions": [{"Functions": list(functions)}],
+        "list_aliases": [{"Aliases": list(aliases)}],
+        "list_versions_by_function": [{"Versions": [{"Version": "$LATEST", "FunctionArn": FUNCTION}, *versions]}],
+    })
     policies = policies or {}
 
     def get_policy(FunctionName):
@@ -507,6 +558,37 @@ def test_a_role_deleted_mid_scan_is_skipped_but_other_errors_fail(fn, ctx):
     iam.get_role.side_effect = ClientError({"Error": {"Code": "AccessDenied"}}, "GetRole")
     with pytest.raises(ClientError):
         fn.audit_account(ACCOUNT, client, [], ctx)
+
+
+def test_alias_and_version_policies_are_audited(fn, ctx):
+    open_policy = _policy({"Effect": "Allow", "Principal": "*", "Action": "lambda:InvokeFunction"})
+    client = _account_clients(
+        functions=[{"FunctionArn": FUNCTION}],
+        aliases=[{"AliasArn": FUNCTION + ":live"}],
+        versions=[{"Version": "3", "FunctionArn": FUNCTION + ":3"}],
+        policies={FUNCTION + ":live": open_policy, FUNCTION + ":3": open_policy},
+    )
+
+    findings = fn.audit_account(ACCOUNT, client, ["us-east-1"], ctx)
+
+    assert sorted(f["resource"] for f in findings) == [FUNCTION + ":3", FUNCTION + ":live"]
+
+
+def test_a_function_deleted_mid_scan_is_skipped(fn, ctx):
+    client = _account_clients(functions=[{"FunctionArn": FUNCTION}])
+    lam = client("lambda", "us-east-1")
+    not_found = ClientError({"Error": {"Code": "ResourceNotFoundException"}}, "ListAliases")
+    pages = {"list_functions": [{"Functions": [{"FunctionArn": FUNCTION}]}]}
+
+    def paginator(op):
+        if op == "list_aliases":
+            return MagicMock(paginate=MagicMock(side_effect=not_found))
+        return MagicMock(paginate=MagicMock(return_value=pages.get(op, [])))
+
+    lam.get_paginator.side_effect = paginator
+
+    assert fn.audit_account(ACCOUNT, client, ["us-east-1"], ctx) == []
+    lam.get_policy.assert_not_called()
 
 
 def test_get_policy_errors_other_than_not_found_fail_the_run(fn, ctx):

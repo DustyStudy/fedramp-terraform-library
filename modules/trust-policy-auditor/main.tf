@@ -13,6 +13,8 @@ locals {
     "iam:ListRoles",
     "iam:GetRole",
     "lambda:ListFunctions",
+    "lambda:ListAliases",
+    "lambda:ListVersionsByFunction",
     "lambda:GetPolicy",
     "ram:GetResourceShares",
     "ram:GetResourceShareAssociations",

@@ -167,7 +167,7 @@ def _matches_everyone(pattern):
     return _wild(account) or (not account and not "".join(parts[5:]).strip("*?"))
 
 
-def _restricts(conditions, keys):
+def _restricts(conditions, keys, always_present=()):
     """True when one of these condition keys narrows who can call. The
     operator has to require a matching value: a negated one admits everyone
     else and Null only asks whether the key exists. ...IfExists passes when
@@ -175,7 +175,7 @@ def _restricts(conditions, keys):
     count only when the key is certain to be in the request. A value with a
     policy variable can't be judged here, so it doesn't count."""
     for key in keys & conditions.keys():
-        present = key in ALWAYS_PRESENT_KEYS or any(
+        present = key in ALWAYS_PRESENT_KEYS or key in always_present or any(
             operator == "Null" and [v.lower() for v in values] == ["false"] for operator, values in conditions[key]
         )
         for operator, values in conditions[key]:
@@ -265,6 +265,16 @@ def _check_oidc(statement, federated, account_id, role_arn):
         return findings
 
     if host != GITHUB_OIDC_HOST:
+        # A sub of "*", or only negated or Null conditions, admits every identity.
+        # Every web identity token has a sub, so ...IfExists still restricts.
+        sub_key = f"{host}:sub"
+        if not _restricts(conditions, {sub_key}, always_present={sub_key}):
+            if any("${" in v for _, values in subs for v in values):
+                detail = f"trusts {host} with a subject (sub) condition that uses a policy variable; review it by hand"
+                findings.append(_finding("MEDIUM", "oidc-trust", account_id, role_arn, detail))
+            else:
+                detail = f"trusts {host} with a subject (sub) condition that does not restrict who can assume it"
+                findings.append(_finding("HIGH", "oidc-trust", account_id, role_arn, detail))
         return findings
     for operator, values in subs:
         if "Like" not in operator:
@@ -486,13 +496,28 @@ def audit_account(account_id, client, regions, ctx):
     for region in regions:
         lambda_client = client("lambda", region)
         for function in _paginate(lambda_client, "list_functions", "Functions"):
+            arn = function["FunctionArn"]
+            # Each alias and published version has its own resource policy.
+            targets = [arn]
             try:
-                policy = lambda_client.get_policy(FunctionName=function["FunctionArn"])["Policy"]
+                targets += [a["AliasArn"] for a in _paginate(lambda_client, "list_aliases", "Aliases", FunctionName=arn)]
+                targets += [
+                    v["FunctionArn"]
+                    for v in _paginate(lambda_client, "list_versions_by_function", "Versions", FunctionName=arn)
+                    if v["Version"] != "$LATEST"
+                ]
             except ClientError as exc:
                 if exc.response["Error"]["Code"] == "ResourceNotFoundException":
-                    continue
+                    continue  # deleted mid-scan
                 raise
-            findings += check_function_policy(function["FunctionArn"], policy, account_id, ctx)
+            for target in targets:
+                try:
+                    policy = lambda_client.get_policy(FunctionName=target)["Policy"]
+                except ClientError as exc:
+                    if exc.response["Error"]["Code"] == "ResourceNotFoundException":
+                        continue
+                    raise
+                findings += check_function_policy(target, policy, account_id, ctx)
 
         ram = client("ram", region)
         for share in _paginate(ram, "get_resource_shares", "resourceShares", resourceOwner="SELF"):
