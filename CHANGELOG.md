@@ -79,6 +79,33 @@ FedRAMP expects.
   never matches and makes the role impossible to assume. A trust that has
   one is no longer treated as pinned, and the finding says it blocks the
   role.
+- `org-scp-boundary`: new `exempt_principal_arns` (`ArnNotLike` on
+  `aws:PrincipalArn`) for the security-service and account-baseline denies.
+  Without it nobody in a member account could create the S3 account public
+  access block (`account-baseline`), enable GuardDuty features in the
+  delegated admin account, or delete a KMS key. Exempt principals are
+  still held to the approved regions. Also wired into `moderate/` and
+  `high/org-scp-boundary`.
+- `org-scp-boundary`: the region lock now exempts more global services
+  (`sts`, `ce`, `health`, `shield`, `globalaccelerator`, billing, and a
+  few global S3 and EC2 read actions; not `wafv2`, which has regional
+  resources). They answer from us-east-1, so
+  they broke whenever `approved_regions` left that region out.
+- `account-baseline`: creates `service-role/AWSBackupDefaultServiceRole`,
+  the role `org-governance`'s backup policy runs jobs as. AWS creates it
+  only when someone first opens the Backup console, so jobs failed in new
+  accounts. **Upgrade note:** set `create_backup_service_role = false` if
+  the role already exists in the account, and in every region but one
+  when you deploy the module per region.
+- `org-governance`: the Object Lock deny now covers
+  `s3:PutBucketObjectLockConfiguration`, so a bucket's default retention
+  can't be shortened. Only `authorized_security_admin_arns` can now create
+  Object Lock buckets.
+- `org-cloudtrail`, `config-conformance-pack`,
+  `moderate/network-boundary/vpc-flow-logs`: log buckets are versioned, so
+  expiration only added a delete marker and logs were kept forever. Each
+  lifecycle rule now also expires noncurrent versions 30 days after they
+  stop being current, which leaves a window to recover a log deleted early.
 
 ## [2.1.0] - 2026-10-10
 

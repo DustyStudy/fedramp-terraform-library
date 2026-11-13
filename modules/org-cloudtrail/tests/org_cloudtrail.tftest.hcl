@@ -137,3 +137,15 @@ run "rejects_malformed_organization_id" {
 
   expect_failures = [var.organization_id]
 }
+
+run "expired_logs_are_deleted_not_kept_as_old_versions" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for lc in [aws_s3_bucket_lifecycle_configuration.trail, aws_s3_bucket_lifecycle_configuration.trail_access_log] :
+      anytrue([for r in lc.rule : length(r.noncurrent_version_expiration) > 0 && r.noncurrent_version_expiration[0].noncurrent_days == 30])
+    ])
+    error_message = "Both buckets are versioned, so they must expire noncurrent versions too or logs are kept forever."
+  }
+}

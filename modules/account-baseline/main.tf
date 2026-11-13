@@ -118,3 +118,24 @@ resource "aws_backup_vault" "this" {
     }
   }
 }
+
+# The role the org backup policy names; see var.create_backup_service_role.
+resource "aws_iam_role" "backup" {
+  count = var.create_backup_service_role ? 1 : 0
+  name  = "AWSBackupDefaultServiceRole"
+  path  = "/service-role/"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "backup.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "backup" {
+  for_each   = var.create_backup_service_role ? toset(["AWSBackupServiceRolePolicyForBackup", "AWSBackupServiceRolePolicyForRestores"]) : toset([])
+  role       = aws_iam_role.backup[0].name
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/${each.key}"
+}

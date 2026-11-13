@@ -49,12 +49,15 @@ data "aws_iam_policy_document" "workload_perimeter_scp" {
     resources = ["*"]
   }
 
-  # Protect S3 Object Lock / WORM Retention (AU-9)
+  # Protect S3 Object Lock / WORM Retention (AU-9). Bucket-level config is
+  # included so a bucket's default retention can't be shortened; this also
+  # means only the authorized admins can create Object Lock buckets.
   statement {
     sid    = "DenyBypassOrDeleteObjectLock"
     effect = "Deny"
     actions = [
       "s3:BypassGovernanceRetention",
+      "s3:PutBucketObjectLockConfiguration",
       "s3:PutObjectLegalHold",
       "s3:PutObjectRetention"
     ]

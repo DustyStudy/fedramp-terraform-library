@@ -17,3 +17,8 @@ output "backup_vault_arn" {
   description = "ARN of the AWS Backup vault (null when create_backup_vault = false)"
   value       = var.create_backup_vault ? aws_backup_vault.this[0].arn : null
 }
+
+output "backup_service_role_arn" {
+  description = "ARN of AWSBackupDefaultServiceRole (null when create_backup_service_role = false)"
+  value       = var.create_backup_service_role ? aws_iam_role.backup[0].arn : null
+}

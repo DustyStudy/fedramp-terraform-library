@@ -161,6 +161,12 @@ resource "aws_s3_bucket_lifecycle_configuration" "config_access_log" {
     expiration {
       days = 365
     }
+    # Buckets are versioned: expiration only adds a delete marker, so the
+    # old version must be expired too or the log is kept forever. 30 days
+    # leaves a window to recover a log deleted early.
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
   }
 }
 
@@ -283,6 +289,12 @@ resource "aws_s3_bucket_lifecycle_configuration" "config" {
     }
     expiration {
       days = 365
+    }
+    # Buckets are versioned: expiration only adds a delete marker, so the
+    # old version must be expired too or the log is kept forever. 30 days
+    # leaves a window to recover a log deleted early.
+    noncurrent_version_expiration {
+      noncurrent_days = 30
     }
   }
 }
