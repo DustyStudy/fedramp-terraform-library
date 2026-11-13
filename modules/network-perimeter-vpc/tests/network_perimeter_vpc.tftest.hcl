@@ -141,3 +141,76 @@ run "flow_log_is_wired_up" {
     error_message = "Flow logs must use the module's CMK, and the closed default security group must be the module VPC's."
   }
 }
+
+run "dns_firewall_is_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(aws_route53_resolver_firewall_rule_group_association.this) == 0 && output.dns_firewall_rule_group_id == null
+    error_message = "The DNS Firewall must be opt-in."
+  }
+}
+
+run "dns_firewall_blocks_gsocket_relays" {
+  command = plan
+
+  variables {
+    enable_dns_firewall = true
+  }
+
+  override_resource {
+    target          = aws_route53_resolver_firewall_rule_group.this
+    override_during = plan
+    values = {
+      id = "rslvr-frg-0aaaaaaaaaaaaaaa1"
+    }
+  }
+
+  override_resource {
+    target          = aws_route53_resolver_firewall_domain_list.blocked
+    override_during = plan
+    values = {
+      id = "rslvr-fdl-0aaaaaaaaaaaaaaa1"
+    }
+  }
+
+  assert {
+    condition     = alltrue([for d in ["gs.thc.org", "*.gs.thc.org", "gsocket.io", "*.gsocket.io"] : contains(aws_route53_resolver_firewall_domain_list.blocked[0].domains, d)])
+    error_message = "The default list must block GSocket's relay apex and subdomains and its download hosts."
+  }
+
+  assert {
+    condition     = aws_route53_resolver_firewall_rule.block[0].action == "BLOCK" && aws_route53_resolver_firewall_rule.block[0].block_response == "NXDOMAIN" && aws_route53_resolver_firewall_rule.block[0].firewall_domain_list_id == "rslvr-fdl-0aaaaaaaaaaaaaaa1" && aws_route53_resolver_firewall_rule.block[0].firewall_rule_group_id == "rslvr-frg-0aaaaaaaaaaaaaaa1"
+    error_message = "The rule must block the module's domain list inside the module's rule group (SC-7)."
+  }
+
+  assert {
+    condition     = aws_route53_resolver_firewall_rule_group_association.this[0].vpc_id == "vpc-0aaaaaaaaaaaaaaa1" && aws_route53_resolver_firewall_rule_group_association.this[0].firewall_rule_group_id == "rslvr-frg-0aaaaaaaaaaaaaaa1" && aws_route53_resolver_firewall_rule_group_association.this[0].mutation_protection == "ENABLED"
+    error_message = "The rule group must be attached to the module's VPC with mutation protection on."
+  }
+}
+
+run "dns_firewall_rejects_empty_list" {
+  command = plan
+
+  variables {
+    enable_dns_firewall          = true
+    dns_firewall_blocked_domains = []
+  }
+
+  expect_failures = [var.dns_firewall_blocked_domains]
+}
+
+run "dns_firewall_protection_can_be_lifted_for_teardown" {
+  command = plan
+
+  variables {
+    enable_dns_firewall              = true
+    dns_firewall_mutation_protection = false
+  }
+
+  assert {
+    condition     = aws_route53_resolver_firewall_rule_group_association.this[0].mutation_protection == "DISABLED"
+    error_message = "Turning off mutation protection must reach the association so it can be removed."
+  }
+}

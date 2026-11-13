@@ -13,6 +13,13 @@ FedRAMP expects.
 ## [Unreleased]
 
 ### Added
+- `network-perimeter-vpc`: opt-in Route 53 Resolver DNS Firewall
+  (`enable_dns_firewall`, default off) that answers NXDOMAIN for
+  `dns_firewall_blocked_domains`, after attackers used GSocket to keep
+  access to Linux web servers once the entry flaw was patched (The Hacker
+  News, 2026). The default list is GSocket's relay network and download
+  hosts. It does not stop a GSocket implant pointed at an IP address or a
+  self-hosted relay.
 - `trust-policy-auditor`: three findings for roles that trust an account
   outside the organization, after an attacker used Qubole's AWS account
   to assume customer roles that had the right External ID (Wiz, 2026).
