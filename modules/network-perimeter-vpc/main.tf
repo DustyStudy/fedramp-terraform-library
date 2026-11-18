@@ -11,6 +11,7 @@ data "aws_partition" "current" {}
 # Only read when availability_zones is not given. Local and Wavelength Zones
 # are left out: they cannot host every resource type a tier may need.
 data "aws_availability_zones" "available" {
+  #checkov:skip=CKV_AWS_394:A zone-name allowlist would defeat the region-agnostic fallback. Subnets take the first N names in sorted order, so a zone AWS adds later never moves them; set availability_zones to pin zones.
   count = var.availability_zones == null ? 1 : 0
   state = "available"
 
