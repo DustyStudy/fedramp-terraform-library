@@ -25,7 +25,7 @@ jobs:
       TFDOCS_SHA256: 9005daf969de0b50134493a2c00078b49f5f5b39d021cda7c89bf4d4f3d776d3
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -54,7 +54,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -66,7 +66,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
-          terraform_version: 1.14.6
+          terraform_version: 1.17.2
 
       - name: Verify Formatting (terraform fmt)
         run: terraform fmt -check -recursive
@@ -74,23 +74,42 @@ jobs:
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6.3.2
         with:
-          tflint_version: v0.64.0
+          tflint_version: v0.66.0
 
+      # --config with an absolute path so every directory visited by
+      # --recursive uses the root .tflint.hcl (and its AWS ruleset).
       - name: Initialize & Run TFLint
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # plugin download; avoids API rate limits
         run: |
-          tflint --init
-          tflint --recursive --minimum-failure-severity=warning
+          tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"
+          tflint --recursive --config "$GITHUB_WORKSPACE/.tflint.hcl" --minimum-failure-severity=warning
 
   module-tests:
-    name: Terraform Module Tests
+    name: Terraform Module Tests (${{ matrix.name }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest Terraform and providers every versions.tf admits.
+          # tests/python/test_provider_sources.py keeps these in step with
+          # the constraints.
+          - name: floor
+            terraform: "1.11.0"
+            aws: "6.0.0"
+            archive: "2.4.0"
+          # Newest Terraform. Modules get the newest provider in range and
+          # the root stacks get the one in their committed lock file.
+          - name: latest
+            terraform: "1.17.2"
     env:
       TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugin-cache
       TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE: "true"
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -102,8 +121,31 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
-          terraform_version: 1.14.6
+          terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
+
+      # An override file narrows each directory to exactly the floor
+      # release. -upgrade lets the root stacks ignore their lock files,
+      # which record the newest release.
+      - name: Pin providers to the floor versions
+        if: matrix.name == 'floor'
+        env:
+          AWS_FLOOR: ${{ matrix.aws }}
+          ARCHIVE_FLOOR: ${{ matrix.archive }}
+        run: |
+          for dir in $(grep -rl --include='*.tf' required_providers modules moderate high examples | xargs -n1 dirname | sort -u); do
+            {
+              echo 'terraform {'
+              echo '  required_providers {'
+              echo "    aws = { source = \"hashicorp/aws\", version = \"${AWS_FLOOR}\" }"
+              if grep -qs hashicorp/archive "$dir"/*.tf; then
+                echo "    archive = { source = \"hashicorp/archive\", version = \"${ARCHIVE_FLOOR}\" }"
+              fi
+              echo '  }'
+              echo '}'
+            } > "$dir/floor_override.tf"
+          done
+          echo "TF_CLI_ARGS_init=-upgrade" >> "$GITHUB_ENV"
 
       # Plan-only tests: dummy credentials in each test file keep the AWS
       # provider offline, so no cloud access is needed.
@@ -125,13 +167,23 @@ jobs:
           done
           exit $status
 
+      # init rewrites a root's lock file when it lacks a provider or a
+      # hash; that has to be fixed in the PR, not papered over on the runner.
+      - name: Committed lock files are complete
+        if: matrix.name == 'latest'
+        run: |
+          git diff --exit-code -- ':(glob)**/.terraform.lock.hcl' || {
+            echo "::error::A root stack's .terraform.lock.hcl is stale. In that directory run: terraform providers lock -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_arm64 -platform=windows_amd64"
+            exit 1
+          }
+
   lambda-tests:
     name: Lambda unit tests (pytest, ruff)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -157,25 +209,13 @@ jobs:
     name: SQL role audit (PostgreSQL 16)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    services:
-      postgres:
-        image: postgres:16@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
-        env:
-          POSTGRES_PASSWORD: ci-only # throwaway service container
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 2s
-          --health-timeout 5s
-          --health-retries 15
     env:
       PGHOST: localhost
       PGUSER: postgres
       PGPASSWORD: ci-only
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -183,6 +223,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # The image is pinned in a compose file, not a `services:` block,
+      # because Dependabot can update a digest there and cannot here.
+      - name: Start PostgreSQL
+        run: docker compose -f .github/sql-role-audit/compose.yaml up --detach --wait
 
       # Seeds one role per finding, runs the audit, and checks each
       # expected role is reported and the clean one isn't.
