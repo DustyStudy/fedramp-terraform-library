@@ -42,10 +42,11 @@ import fnmatch
 import json
 import logging
 import os
+import time
 import urllib.parse
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -312,16 +313,35 @@ def audit_region(account_id, rds, ec2):
     return findings, masters
 
 
-def audit_account(account_id, client, regions):
+def audit_account(account_id, client, regions, errors=None):
     """Run every check in one account. client(service, region) returns a
-    boto3 client with that account's credentials."""
+    boto3 client with that account's credentials. A region, or IAM, that
+    fails is added to errors as ("<account> <region or iam>", code); what
+    the rest found is kept."""
     findings, masters = [], []
-    for region in regions:
+
+    def attempt(scope, check):
+        try:
+            check()
+        except (ClientError, BotoCoreError) as exc:
+            logger.exception("Could not finish auditing %s in %s", account_id, scope)
+            if errors is not None:
+                errors.append((f"{account_id} {scope}", _error_code(exc)))
+
+    def scan(region):
         region_findings, region_masters = audit_region(account_id, client("rds", region), client("ec2", region))
-        findings += region_findings
-        masters += region_masters
-    findings += check_iam(_authorization_details(client("iam", None)), masters, account_id)
+        findings.extend(region_findings)
+        masters.extend(region_masters)
+
+    for region in regions:
+        attempt(region, lambda region=region: scan(region))
+    # A failed region's master users are unknown, so only its connect-as-master findings are missed.
+    attempt("iam", lambda: findings.extend(check_iam(_authorization_details(client("iam", None)), masters, account_id)))
     return findings
+
+
+def _error_code(exc):
+    return exc.response["Error"]["Code"] if isinstance(exc, ClientError) else type(exc).__name__
 
 
 def _organization_accounts():
@@ -359,8 +379,8 @@ def _report(findings, errors, org_listed):
         lines.append("Organization accounts could not be listed, so only this account was scanned.")
     # Above the findings, so a report cut to the SNS size limit keeps them.
     if errors:
-        lines.append(f"\n=== Accounts not scanned ({len(errors)}) ===")
-        lines.extend(f"{account}: {error}" for account, error in errors)
+        lines.append(f"\n=== Not scanned ({len(errors)}) ===")
+        lines.extend(f"{scope}: {error}" for scope, error in errors)
     for severity in SEVERITIES:
         matching = [f for f in findings if f["severity"] == severity]
         if not matching:
@@ -394,16 +414,27 @@ def lambda_handler(event, context):
     if org_accounts:
         targets += sorted(a for a in org_accounts if a != own_account)
 
+    # Leave two minutes to sort and publish what was found.
+    remaining = context.get_remaining_time_in_millis() / 1000 if context else 900
+    deadline = time.monotonic() + max(remaining - 120, 0)
+
     findings, errors = [], []
+    scanned = 0
     for account_id in targets:
+        # shortcut: checked between accounts only, so one account slower than
+        # the two-minute margin still times out; check per region if that happens.
+        if time.monotonic() >= deadline:
+            errors.append((account_id, "ran out of time"))
+            continue
         try:
             client = _client_factory() if account_id == own_account else _member_client(partition, account_id)
-            findings += audit_account(account_id, client, regions)
-        except ClientError as exc:
+            findings += audit_account(account_id, client, regions, errors)
+            scanned += 1
+        except (ClientError, BotoCoreError) as exc:
             # One unreachable account shouldn't hide the others' findings,
             # but it must show up in the report, not look clean.
             logger.exception("Could not audit account %s", account_id)
-            errors.append((account_id, exc.response["Error"]["Code"]))
+            errors.append((account_id, _error_code(exc)))
 
     findings.sort(key=lambda f: (SEVERITIES.index(f["severity"]), f["account"], f["resource"]))
     counts = {s: sum(f["severity"] == s for f in findings) for s in SEVERITIES}
@@ -415,4 +446,4 @@ def lambda_handler(event, context):
         subject = f"RDS access audit: {counts['CRITICAL']} critical, {counts['HIGH']} high"
         _notify(subject, _report(findings, errors, org_accounts is not None))
 
-    return {"counts": counts, "accounts_scanned": len(targets) - len(errors), "errors": errors, "findings": findings}
+    return {"counts": counts, "accounts_scanned": scanned, "errors": errors, "findings": findings}

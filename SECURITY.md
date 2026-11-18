@@ -35,9 +35,52 @@ once confirmed.
 
 ## Supported scope
 
-Only the `main` branch is supported. There are no tagged releases yet;
-pin to a commit SHA in your own `source` reference if you need
-reproducibility, and re-review before moving to a newer commit.
+The latest major release line is supported: currently **3.x**. Security
+fixes ship as a new tagged release on that line (a patch release such as
+`v3.0.1` where the fix is not a breaking change) and are recorded in
+`CHANGELOG.md`. Earlier majors (1.x, 2.x) get no fixes; upgrade using the
+changelog's upgrade notes. `main` is the development branch and can be
+ahead of the latest release, so pin a release tag or a full commit SHA in
+your `source` reference, not `main`.
+
+## Verifying a release
+
+Releases in this repository are immutable: once published, GitHub does not
+let the tag be moved or the assets be changed, and it signs a release
+attestation recording which commit the tag points to. Check it with the
+GitHub CLI:
+
+```sh
+gh release verify v3.0.0 --repo DustyStudy/fedramp-terraform-library
+```
+
+The command prints the commit the tag resolves to. A Git module source
+(`?ref=v3.0.0`) is not checked by Terraform against anything, so for the
+strongest pin use that full commit SHA as the `ref`.
+
+Releases **after v3.0.0** are published by
+`.github/workflows/release.yml` and also carry a source tarball, a
+`SHA256SUMS` file, an SPDX SBOM (`sbom.spdx.json`) and a build provenance
+attestation. v3.0.0 and earlier have no assets. To verify a download
+(replace `X.Y.Z`):
+
+```sh
+gh release download vX.Y.Z --repo DustyStudy/fedramp-terraform-library
+sha256sum -c SHA256SUMS
+gh attestation verify fedramp-terraform-library-X.Y.Z.tar.gz \
+  --repo DustyStudy/fedramp-terraform-library \
+  --signer-workflow DustyStudy/fedramp-terraform-library/.github/workflows/release.yml
+```
+
+`sha256sum -c` only shows the files match the checksum file that came with
+them. `gh attestation verify` is the check that ties the tarball to this
+repository's release workflow and the tagged commit. The SBOM lists what
+the scanner finds in the tree (GitHub Actions and the Python development
+requirements). The modules set provider version ranges, not locked
+versions, so commit your own `.terraform.lock.hcl` to pin providers.
+
+Tags are not GPG- or SSH-signed. The release attestation above is the
+evidence that a tag has not moved.
 
 ## Not in scope
 

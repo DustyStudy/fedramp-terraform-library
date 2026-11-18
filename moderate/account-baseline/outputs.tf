@@ -7,3 +7,8 @@ output "ebs_encryption_enabled" {
   description = "Whether EBS default encryption is enabled"
   value       = module.account_baseline.ebs_encryption_enabled
 }
+
+output "ebs_kms_key_arn" {
+  description = "ARN of the customer-managed KMS key used for default EBS encryption"
+  value       = module.account_baseline.ebs_kms_key_arn
+}

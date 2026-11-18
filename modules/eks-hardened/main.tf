@@ -93,6 +93,7 @@ resource "aws_cloudwatch_log_group" "cluster" {
 
 # Hardened EKS Cluster Resource
 resource "aws_eks_cluster" "this" {
+  #checkov:skip=CKV_AWS_339:Checkov's hardcoded version list stops at 1.35; 1.36 and 1.37 are in EKS standard support. Remove once Checkov's list includes them.
   name     = var.cluster_name
   role_arn = aws_iam_role.cluster.arn
   version  = var.kubernetes_version
@@ -115,8 +116,59 @@ resource "aws_eks_cluster" "this" {
     resources = ["secrets"]
   }
 
+  # Access entries (AC-2/AC-3): cluster access lives in the EKS API, not in
+  # the aws-auth ConfigMap that only the creating principal can reach.
+  access_config {
+    authentication_mode                         = var.authentication_mode
+    bootstrap_cluster_creator_admin_permissions = var.bootstrap_cluster_creator_admin_permissions
+  }
+
+  # Without this EKS defaults to EXTENDED and bills extended support once
+  # the version leaves standard support.
+  upgrade_policy {
+    support_type = var.support_type
+  }
+
   depends_on = [
     aws_iam_role_policy_attachment.cluster_policy,
     aws_cloudwatch_log_group.cluster,
   ]
+
+  lifecycle {
+    # Create-only and ForceNew in the provider: a mismatch with the state of
+    # an existing cluster must never plan a cluster replacement.
+    ignore_changes = [access_config[0].bootstrap_cluster_creator_admin_permissions]
+
+    precondition {
+      condition     = var.bootstrap_cluster_creator_admin_permissions || length(var.cluster_admin_principal_arns) > 0
+      error_message = "Nobody could administer the cluster: keep bootstrap_cluster_creator_admin_permissions = true or set cluster_admin_principal_arns."
+    }
+  }
+}
+
+# Cluster admins that survive the creating (CI) role being rotated or deleted.
+resource "aws_eks_access_entry" "admin" {
+  for_each = var.cluster_admin_principal_arns
+
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = each.value
+
+  lifecycle {
+    precondition {
+      condition     = var.authentication_mode != "CONFIG_MAP"
+      error_message = "cluster_admin_principal_arns needs authentication_mode API or API_AND_CONFIG_MAP; CONFIG_MAP clusters do not support access entries."
+    }
+  }
+}
+
+resource "aws_eks_access_policy_association" "admin" {
+  for_each = aws_eks_access_entry.admin
+
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = each.value.principal_arn
+  policy_arn    = "arn:${local.partition}:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
 }

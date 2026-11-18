@@ -373,7 +373,7 @@ def test_identity_center_assignments_expand_groups(fn):
         }
     )
     module.sso_admin.describe_permission_set.return_value = {"PermissionSet": {"Name": "Admin"}}
-    users, assignments = module.identity_center_assignments({"InstanceArn": "ins", "IdentityStoreId": "d-1"})
+    users, assignments = module.identity_center_assignments({"InstanceArn": "ins", "IdentityStoreId": "d-1"}, float("inf"))
     assert users == {
         "u1": {"name": "alice", "created": days_ago(100), "enabled": True},
         "u2": {"name": "bob", "created": None, "enabled": False},
@@ -589,7 +589,7 @@ def sso_module(fn, monkeypatch, assignments, last_sign_in, last_access):
     module = fn()
     module.sso_admin = MagicMock()
     module.sso_admin.list_instances.return_value = {"Instances": [{"InstanceArn": "ins", "IdentityStoreId": "d-1"}]}
-    monkeypatch.setattr(module, "identity_center_assignments", lambda instance: (USERS, assignments))
+    monkeypatch.setattr(module, "identity_center_assignments", lambda instance, deadline: (USERS, assignments))
     monkeypatch.setattr(module, "sso_activity", lambda start, deadline: (last_sign_in, last_access))
     return module
 
@@ -607,3 +607,29 @@ def test_recent_account_access_counts_as_sso_user_activity(fn, monkeypatch):
     key = ("u-idle", MEMBER, "Admin")
     module = sso_module(fn, monkeypatch, {key}, {}, {key: days_ago(1)})
     assert module.scan_identity_center(OWN, NOW, float("inf"), {MEMBER}) == []
+
+
+def test_identity_center_assignments_stop_at_the_deadline(fn):
+    module = fn()
+    module.identitystore = pages({"list_users": [{"Users": []}]})
+    module.sso_admin = pages(
+        {
+            "list_permission_sets": [{"PermissionSets": ["ps-arn"]}],
+            "list_accounts_for_provisioned_permission_set": [{"AccountIds": ["111111111111"]}],
+            "list_account_assignments": [{"AccountAssignments": []}],
+        }
+    )
+    module.sso_admin.describe_permission_set.return_value = {"PermissionSet": {"Name": "Admin"}}
+    module.sso_admin.list_instances.return_value = {"Instances": [{"InstanceArn": "ins", "IdentityStoreId": "d-1"}]}
+    with pytest.raises(module.LookupTimeout, match="Identity Center assignments"):
+        module.scan_identity_center(OWN, NOW, 0.0, {OWN})
+
+
+def test_iam_findings_are_published_when_identity_center_runs_out_of_time(handler):
+    module = handler([org_account(OWN)], scans={OWN: [finding("HIGH", "iam-access-key", OWN)]})
+    module.scan_identity_center = MagicMock(side_effect=module.LookupTimeout("ran out of time reading Identity Center assignments"))
+    result = module.lambda_handler({}, None)
+    assert result["counts"]["HIGH"] == 1
+    message = module.sns.publish.call_args.kwargs["Message"]
+    assert "[iam-access-key]" in message
+    assert "Not checked - sso-user and sso-access: ran out of time reading Identity Center assignments" in message
