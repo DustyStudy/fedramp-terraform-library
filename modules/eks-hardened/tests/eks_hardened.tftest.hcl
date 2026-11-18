@@ -115,3 +115,88 @@ run "consumers_use_module_key" {
     error_message = "Secrets envelope encryption and the control-plane log group must use the module's CMK (SC-28)."
   }
 }
+
+run "access_config_defaults" {
+  command = plan
+
+  assert {
+    condition     = one(aws_eks_cluster.this.access_config).authentication_mode == "API" && one(aws_eks_cluster.this.access_config).bootstrap_cluster_creator_admin_permissions
+    error_message = "The cluster must default to API authentication with the creator bootstrapped as admin."
+  }
+
+  assert {
+    condition     = length(aws_eks_access_entry.admin) == 0 && length(aws_eks_access_policy_association.admin) == 0
+    error_message = "No access entries may be created unless admin principals are given."
+  }
+}
+
+run "admin_access_entries" {
+  command = plan
+
+  variables {
+    cluster_admin_principal_arns = [
+      "arn:aws-us-gov:iam::123456789012:role/platform-admin",
+      "arn:aws-us-gov:iam::123456789012:role/break-glass",
+    ]
+  }
+
+  assert {
+    condition     = toset(keys(aws_eks_access_entry.admin)) == var.cluster_admin_principal_arns && alltrue([for k, e in aws_eks_access_entry.admin : e.principal_arn == k && e.cluster_name == "app"])
+    error_message = "Each admin principal must get its own access entry on this cluster."
+  }
+
+  assert {
+    condition = length(aws_eks_access_policy_association.admin) == 2 && alltrue([
+      for k, a in aws_eks_access_policy_association.admin :
+      a.principal_arn == k && a.policy_arn == "arn:aws-us-gov:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy" && one(a.access_scope).type == "cluster"
+    ])
+    error_message = "Each admin principal must be associated cluster-wide with the partition-correct AmazonEKSClusterAdminPolicy ARN."
+  }
+}
+
+run "access_entries_rejected_in_config_map_mode" {
+  command = plan
+
+  variables {
+    authentication_mode          = "CONFIG_MAP"
+    cluster_admin_principal_arns = ["arn:aws-us-gov:iam::123456789012:role/platform-admin"]
+  }
+
+  expect_failures = [aws_eks_access_entry.admin]
+}
+
+run "no_admin_at_all_is_rejected" {
+  command = plan
+
+  variables {
+    bootstrap_cluster_creator_admin_permissions = false
+  }
+
+  expect_failures = [aws_eks_cluster.this]
+}
+
+run "standard_support_by_default" {
+  command = plan
+
+  assert {
+    condition     = one(aws_eks_cluster.this.upgrade_policy).support_type == "STANDARD"
+    error_message = "The cluster must default to STANDARD support so it never drifts into extended support billing."
+  }
+
+  assert {
+    condition     = aws_eks_cluster.this.version == "1.36"
+    error_message = "The default Kubernetes version must be the one documented in the README."
+  }
+}
+
+run "invalid_inputs_are_rejected" {
+  command = plan
+
+  variables {
+    kubernetes_version  = "v1.36.2"
+    authentication_mode = "IAM"
+    support_type        = "FREE"
+  }
+
+  expect_failures = [var.kubernetes_version, var.authentication_mode, var.support_type]
+}
