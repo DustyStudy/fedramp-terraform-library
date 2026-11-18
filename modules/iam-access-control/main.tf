@@ -108,15 +108,23 @@ data "aws_iam_policy_document" "require_mfa" {
   statement {
     sid    = "BlockMostAccessUnlessSignedInWithMFA"
     effect = "Deny"
-    not_actions = [
-      "iam:CreateVirtualMFADevice",
-      "iam:EnableMFADevice",
-      "iam:GetUser",
-      "iam:ListMFADevices",
-      "iam:ListVirtualMFADevices",
-      "iam:ResyncMFADevice",
-      "sts:GetSessionToken"
-    ]
+    # The exemptions in AWS's reference policy "Allows MFA-authenticated IAM
+    # users to manage their own credentials". AWS leaves the two password
+    # actions out on purpose and advises against adding them, so they are
+    # opt-in here.
+    not_actions = concat(
+      [
+        "iam:CreateVirtualMFADevice",
+        "iam:EnableMFADevice",
+        "iam:GetUser",
+        "iam:GetMFADevice",
+        "iam:ListMFADevices",
+        "iam:ListVirtualMFADevices",
+        "iam:ResyncMFADevice",
+        "sts:GetSessionToken"
+      ],
+      var.allow_password_change_without_mfa ? ["iam:ChangePassword", "iam:GetAccountPasswordPolicy"] : []
+    )
     resources = ["*"]
     condition {
       test     = "BoolIfExists"
@@ -168,11 +176,11 @@ resource "aws_cloudwatch_event_target" "root_usage" {
 # Deny statements below carve out the dangerous actions.
 #trivy:ignore:AVD-AWS-0345
 data "aws_iam_policy_document" "developer_permission_boundary" {
-  #checkov:skip=CKV_AWS_107:Credentials exposure is prevented via explicit Deny blocks below
-  #checkov:skip=CKV_AWS_108:Data exfiltration is mitigated by boundary scoping
-  #checkov:skip=CKV_AWS_109:Permission management is restricted to developer paths
-  #checkov:skip=CKV_AWS_110:Privilege escalation prevented through boundary enforcement
-  #checkov:skip=CKV_AWS_111:Write access constrained to project resources
+  #checkov:skip=CKV_AWS_107:No credential-issuing action is allowed; the only iam: action is PassRole on the developer role path
+  #checkov:skip=CKV_AWS_108:Reads are capped to this account's resources, and the actions that would expose them to other principals (resource policies, ACLs, public access blocks) are denied below. A boundary cannot stop a principal copying data it is allowed to read
+  #checkov:skip=CKV_AWS_109:Resource-policy changes are denied below and iam:PassRole is limited to the developer role path
+  #checkov:skip=CKV_AWS_110:iam:PassRole is limited to the developer role path and to Lambda; no other iam: action is allowed
+  #checkov:skip=CKV_AWS_111:Write access is capped to this account's resources
   #checkov:skip=CKV_AWS_356:Boundary structure requires foundational Allow with overriding Deny blocks
 
   statement {
@@ -199,15 +207,105 @@ data "aws_iam_policy_document" "developer_permission_boundary" {
     }
   }
 
+  # Lambda is the only allowed service that takes a role. IAM has no condition
+  # key for the passed role's boundary, so the path is the control: whoever
+  # creates roles under it decides what a developer's function can do.
+  statement {
+    sid       = "AllowPassDeveloperRolesToLambda"
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
+    resources = ["arn:${local.partition}:iam::${local.account_id}:role${var.developer_role_path}*"]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["lambda.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid    = "AllowLambdaLogs"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+      "logs:DescribeLogStreams",
+      "logs:GetLogEvents",
+      "logs:FilterLogEvents",
+      "logs:StartQuery"
+    ]
+    resources = ["arn:${local.partition}:logs:*:${local.account_id}:log-group:/aws/lambda/*"]
+  }
+
+  # GetQueryResults and StopQuery have no resource type, so IAM only matches "*".
+  statement {
+    sid       = "AllowLogsDiscovery"
+    effect    = "Allow"
+    actions   = ["logs:DescribeLogGroups", "logs:GetQueryResults", "logs:StopQuery"]
+    resources = ["*"]
+  }
+
+  # Data-key use only through the services allowed above; the key policy still
+  # has to grant it.
+  statement {
+    sid       = "AllowKmsViaAllowedServices"
+    effect    = "Allow"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey*"]
+    resources = ["arn:${local.partition}:kms:*:${local.account_id}:key/*"]
+    condition {
+      test     = "StringLike"
+      variable = "kms:ViaService"
+      values   = [for service in ["dynamodb", "lambda", "s3", "sns", "sqs"] : "${service}.*.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid       = "AllowKmsDescribeKey"
+    effect    = "Allow"
+    actions   = ["kms:DescribeKey"]
+    resources = ["arn:${local.partition}:kms:*:${local.account_id}:key/*"]
+  }
+
+  # The service wildcards above include the actions that hand a resource to
+  # another account or to the public.
+  # shortcut: SQS and SNS set a policy through the same call as every other
+  # attribute and have no condition key to tell them apart, so all attribute
+  # changes are denied; a queue or topic can still be created with a policy.
+  statement {
+    sid    = "DenyResourcePolicyAndPublicAccessChanges"
+    effect = "Deny"
+    actions = [
+      "dynamodb:DeleteResourcePolicy",
+      "dynamodb:PutResourcePolicy",
+      "lambda:AddLayerVersionPermission",
+      "lambda:AddPermission",
+      "s3:DeleteBucketPolicy",
+      "s3:PutAccountPublicAccessBlock",
+      "s3:PutBucketAcl",
+      "s3:PutBucketPolicy",
+      "s3:PutBucketPublicAccessBlock",
+      "sns:AddPermission",
+      "sns:SetTopicAttributes",
+      "sqs:AddPermission",
+      "sqs:SetQueueAttributes"
+    ]
+    resources = ["*"]
+  }
+
+  # No statement above allows these, so today they are a second lock: they
+  # start to matter if role or user management is ever added to the ceiling.
   statement {
     sid    = "DenyPrivilegeEscalation"
     effect = "Deny"
     actions = [
       "iam:CreateRole",
+      "iam:CreateUser",
       "iam:PutRolePolicy",
+      "iam:PutUserPolicy",
       "iam:AttachRolePolicy",
-      "iam:DeleteRolePermissionsBoundary",
-      "iam:DeleteUserPermissionsBoundary"
+      "iam:AttachUserPolicy",
+      "iam:PutRolePermissionsBoundary",
+      "iam:PutUserPermissionsBoundary"
     ]
     resources = ["*"]
     condition {
@@ -215,6 +313,15 @@ data "aws_iam_policy_document" "developer_permission_boundary" {
       variable = "iam:PermissionsBoundary"
       values   = ["arn:${local.partition}:iam::${local.account_id}:policy/developer-permission-boundary"]
     }
+  }
+
+  # Unconditional: with the condition above, removing this boundary from a
+  # role that carries it would not have been denied.
+  statement {
+    sid       = "DenyBoundaryRemoval"
+    effect    = "Deny"
+    actions   = ["iam:DeleteRolePermissionsBoundary", "iam:DeleteUserPermissionsBoundary"]
+    resources = ["*"]
   }
 }
 
