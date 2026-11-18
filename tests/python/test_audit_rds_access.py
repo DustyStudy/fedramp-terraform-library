@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ReadTimeoutError
 
 LAMBDA = "modules/rds-access-auditor/lambda/audit_rds_access.py"
 ACCOUNT = "111111111111"
@@ -406,7 +406,7 @@ def test_member_accounts_are_scanned_and_failures_reported(fn, monkeypatch):
     assert result["errors"] == [("333333333333", "AccessDenied")]
     assert result["counts"]["MEDIUM"] == 2
     message = fn.sns.publish.call_args.kwargs["Message"]
-    assert "Accounts not scanned (1)" in message and "333333333333: AccessDenied" in message
+    assert "Not scanned (1)" in message and "333333333333: AccessDenied" in message
 
 
 def test_unlisted_organization_is_called_out(fn, monkeypatch):
@@ -465,3 +465,71 @@ def test_cluster_tls_pending_reboot_on_a_member_is_medium(fn):
 
     assert [(f["check"], f["severity"]) for f in findings] == [("transport", "MEDIUM")]
     assert "pending a reboot" in findings[0]["detail"]
+
+
+# --- incomplete audits --------------------------------------------------------------
+
+
+def _unmanaged():
+    return _account_clients(
+        instances=[_instance(MasterUserSecret=None)],
+        parameters=[{"ParameterName": "rds.force_ssl", "ParameterValue": "1"}],
+        iam_pages=[{"RoleDetailList": [{"Arn": "arn:aws:iam::111111111111:role/app", "RolePolicyList": [
+            {"PolicyName": "db", "PolicyDocument": _statement("rds-db:connect", "arn:aws:rds-db:*:*:dbuser:*/*")},
+        ]}]}],
+    )
+
+
+def test_a_region_error_is_recorded_and_keeps_the_other_findings(fn):
+    client = _unmanaged()
+    broken = MagicMock()
+    broken.get_paginator.side_effect = ClientError({"Error": {"Code": "AccessDenied"}}, "DescribeDBClusters")
+    errors = []
+
+    def by_region(service, region):
+        return broken if (service, region) == ("rds", "us-west-2") else client(service, region)
+
+    findings = fn.audit_account(ACCOUNT, by_region, ["us-west-2", "us-east-1"], errors)
+
+    assert sorted(f["check"] for f in findings) == ["db-connect", "master-credentials"]
+    assert errors == [(f"{ACCOUNT} us-west-2", "AccessDenied")]
+
+
+def test_an_iam_error_keeps_the_region_findings(fn):
+    client = _unmanaged()
+    client("iam", None).get_paginator.side_effect = ReadTimeoutError(endpoint_url="https://iam-fips.amazonaws.com")
+    errors = []
+
+    findings = fn.audit_account(ACCOUNT, client, ["us-east-1"], errors)
+
+    assert [f["check"] for f in findings] == ["master-credentials"]
+    assert errors == [(f"{ACCOUNT} iam", "ReadTimeoutError")]
+
+
+def test_a_network_error_in_one_account_does_not_stop_the_run(fn, monkeypatch):
+    _handler_env(fn, monkeypatch, member_role="audit-read", org_accounts=[ACCOUNT, "222222222222"])
+    monkeypatch.setattr(fn, "_client_factory", lambda credentials=None: _unmanaged())
+    fn.sts.assume_role.side_effect = ReadTimeoutError(endpoint_url="https://sts-fips.us-gov-west-1.amazonaws.com")
+
+    result = fn.lambda_handler({}, None)
+
+    assert result["errors"] == [("222222222222", "ReadTimeoutError")]
+    assert result["accounts_scanned"] == 1
+    assert result["counts"]["MEDIUM"] == 1
+    assert "222222222222: ReadTimeoutError" in fn.sns.publish.call_args.kwargs["Message"]
+
+
+def test_accounts_left_when_time_runs_out_are_reported(fn, monkeypatch):
+    _handler_env(fn, monkeypatch, member_role="audit-read", org_accounts=[ACCOUNT, "222222222222"])
+    monkeypatch.setattr(fn, "_client_factory", lambda credentials=None: _unmanaged())
+    # Deadline is 900 - 120 seconds after the first reading; the second account starts past it.
+    monkeypatch.setattr(fn, "time", MagicMock(monotonic=MagicMock(side_effect=[0, 0, 800])))
+    context = MagicMock()
+    context.get_remaining_time_in_millis.return_value = 900_000
+
+    result = fn.lambda_handler({}, context)
+
+    assert result["accounts_scanned"] == 1
+    assert result["counts"]["MEDIUM"] == 1
+    fn.sts.assume_role.assert_not_called()
+    assert "222222222222: ran out of time" in fn.sns.publish.call_args.kwargs["Message"]

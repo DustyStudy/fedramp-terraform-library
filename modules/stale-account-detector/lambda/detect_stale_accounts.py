@@ -271,7 +271,7 @@ def exempt_user_names(iam_client, rows):
 
 
 class LookupTimeout(Exception):
-    """The event history could not be read in the time the function has."""
+    """Identity Center could not be read in the time the function has."""
 
 
 def _lookup_events(event_name, start, deadline):
@@ -316,7 +316,7 @@ def sso_activity(start, deadline):
 # --- collectors: IAM Identity Center ---------------------------------------------
 
 
-def identity_center_assignments(instance):
+def identity_center_assignments(instance, deadline):
     store, instance_arn = instance["IdentityStoreId"], instance["InstanceArn"]
 
     users = {}
@@ -348,6 +348,10 @@ def identity_center_assignments(instance):
             name = sso_admin.describe_permission_set(**common)["PermissionSet"]["Name"]
             for accounts in sso_admin.get_paginator("list_accounts_for_provisioned_permission_set").paginate(**common):
                 for account_id in accounts["AccountIds"]:
+                    # Checked per account: an overrun here would kill the
+                    # function before the IAM findings are published.
+                    if time.monotonic() > deadline:
+                        raise LookupTimeout("ran out of time reading Identity Center assignments")
                     for assigned in sso_admin.get_paginator("list_account_assignments").paginate(AccountId=account_id, **common):
                         for assignment in assigned["AccountAssignments"]:
                             principal = assignment["PrincipalId"]
@@ -407,7 +411,7 @@ def scan_identity_center(own_account_id, now, deadline, account_ids):
     instances = sso_admin.list_instances()["Instances"]
     if not instances:
         return None
-    users, assignments = identity_center_assignments(instances[0])
+    users, assignments = identity_center_assignments(instances[0], deadline)
     last_sign_in, last_access = sso_activity(now - timedelta(days=INACTIVITY_DAYS), deadline)
     # A portal session can outlive a short window, so taking credentials or
     # opening a console counts as the user being active too.
