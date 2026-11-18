@@ -1,5 +1,19 @@
 data "aws_partition" "current" {}
 
+locals {
+  govcloud         = data.aws_partition.current.partition == "aws-us-gov"
+  approved_regions = var.approved_regions != null ? var.approved_regions : (local.govcloud ? ["us-gov-west-1", "us-gov-east-1"] : ["us-east-1", "us-west-2"])
+}
+
+# A warning, not an error: callers that attach the SCP with no exemptions
+# on purpose (nothing deployed in the targets yet) still plan and apply.
+check "exempt_principals_set_when_attached" {
+  assert {
+    condition     = length(var.target_ou_or_account_ids) == 0 || length(var.exempt_principal_arns) > 0
+    error_message = "exempt_principal_arns is empty while the SCP is attached to targets. No principal in those accounts, your deployment pipeline included, can set the S3 account public access block, change GuardDuty or Config, or delete a KMS key. Add your deployment and security-admin role ARNs."
+  }
+}
+
 data "aws_iam_policy_document" "fedramp_boundary_scp" {
   #checkov:skip=CKV_AWS_107:Credentials exposure prevented via explicit Deny blocks
   #checkov:skip=CKV_AWS_108:Data exfiltration mitigated by boundary scoping & region locks
@@ -117,7 +131,7 @@ data "aws_iam_policy_document" "fedramp_boundary_scp" {
     condition {
       test     = "StringNotEquals"
       variable = "aws:RequestedRegion"
-      values   = var.approved_regions
+      values   = local.approved_regions
     }
   }
 
@@ -173,6 +187,13 @@ resource "aws_organizations_policy" "fedramp_boundary" {
   description = "FedRAMP Comprehensive Authorization Boundary SCP"
   type        = "SERVICE_CONTROL_POLICY"
   content     = data.aws_iam_policy_document.fedramp_boundary_scp.json
+
+  lifecycle {
+    precondition {
+      condition     = length(local.approved_regions) > 0 && alltrue([for r in local.approved_regions : startswith(r, "us-gov-") == local.govcloud])
+      error_message = "approved_regions must be non-empty and belong to the provider's partition (${data.aws_partition.current.partition}): only us-gov-* regions in aws-us-gov, and no us-gov-* regions elsewhere. Otherwise the region lock denies every regional action in the targeted accounts."
+    }
+  }
 }
 
 resource "aws_organizations_policy_attachment" "target_attachment" {

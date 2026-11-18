@@ -52,3 +52,20 @@ variable "additional_features" {
     error_message = "additional_features may contain only RDS_LOGIN_EVENTS and LAMBDA_NETWORK_LOGS."
   }
 }
+
+variable "auto_enable_organization_features" {
+  type        = string
+  default     = null
+  description = <<-EOT
+    Which member accounts get each protection (S3, EKS audit logs, EBS
+    malware scanning and additional_features): ALL, NEW or NONE. null (the
+    default) follows auto_enable_organization_members. Before this variable
+    existed the module always used NEW, so with members set to ALL existing
+    accounts got a detector but no protections; set "NEW" to keep that.
+  EOT
+
+  validation {
+    condition     = var.auto_enable_organization_features == null ? true : contains(["ALL", "NEW", "NONE"], var.auto_enable_organization_features)
+    error_message = "auto_enable_organization_features must be ALL, NEW, NONE or null."
+  }
+}

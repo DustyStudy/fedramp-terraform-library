@@ -121,3 +121,40 @@ run "rejects_unknown_publishing_frequency" {
 
   expect_failures = [var.finding_publishing_frequency]
 }
+
+run "features_follow_the_member_setting" {
+  command = plan
+
+  variables {
+    auto_enable_organization_members = "ALL"
+  }
+
+  assert {
+    condition     = alltrue([for f in aws_guardduty_organization_configuration_feature.this : f.auto_enable == "ALL"])
+    error_message = "With members set to ALL, existing accounts must get every protection, not only a detector."
+  }
+}
+
+run "feature_setting_can_be_overridden" {
+  command = plan
+
+  variables {
+    auto_enable_organization_members  = "ALL"
+    auto_enable_organization_features = "NEW"
+  }
+
+  assert {
+    condition     = alltrue([for f in aws_guardduty_organization_configuration_feature.this : f.auto_enable == "NEW"])
+    error_message = "auto_enable_organization_features must override the member setting."
+  }
+}
+
+run "rejects_unknown_feature_setting" {
+  command = plan
+
+  variables {
+    auto_enable_organization_features = "SOME"
+  }
+
+  expect_failures = [var.auto_enable_organization_features]
+}

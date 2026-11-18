@@ -9,6 +9,13 @@ provider "aws" {
   skip_metadata_api_check     = true
 }
 
+override_data {
+  target = data.aws_caller_identity.current
+  values = {
+    account_id = "123456789012"
+  }
+}
+
 run "enables_default_standards_and_org_enrollment" {
   command = plan
 
@@ -61,4 +68,22 @@ run "aggregator_links_all_regions" {
     condition     = aws_securityhub_finding_aggregator.this[0].linking_mode == "ALL_REGIONS"
     error_message = "The aggregator must collect findings from every region."
   }
+}
+
+run "accepts_the_delegated_admin_account" {
+  command = plan
+
+  variables {
+    delegated_admin_account_id = "123456789012"
+  }
+}
+
+run "rejects_running_outside_the_delegated_admin_account" {
+  command = plan
+
+  variables {
+    delegated_admin_account_id = "999999999999"
+  }
+
+  expect_failures = [aws_securityhub_organization_configuration.this]
 }
