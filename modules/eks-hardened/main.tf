@@ -93,6 +93,7 @@ resource "aws_cloudwatch_log_group" "cluster" {
 
 # Hardened EKS Cluster Resource
 resource "aws_eks_cluster" "this" {
+  #checkov:skip=CKV_AWS_339:Checkov's hardcoded version list stops at 1.35; 1.36 and 1.37 are in EKS standard support. Remove once Checkov's list includes them.
   name     = var.cluster_name
   role_arn = aws_iam_role.cluster.arn
   version  = var.kubernetes_version
