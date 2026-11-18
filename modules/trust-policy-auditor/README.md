@@ -45,7 +45,7 @@ This module does.
 | | Owner and repository IDs not pinned in the `repo:OWNER@ID/REPO@ID` format | LOW |
 | | GitHub trust pinned to a branch, tag or pull request whose `sub` doesn't name the workflow file (`job_workflow_ref`) | LOW |
 | Cross-account trust | `Principal: "*"` with no `aws:PrincipalOrgID`, account or ARN condition | CRITICAL |
-| | An account outside the organization, with no `sts:ExternalId` condition | HIGH |
+| | An account outside the organization, with no `sts:ExternalId` condition, or one that admits any value (`StringLike "*"`, negated, `Null`, `...IfExists`) | HIGH |
 | | An account outside the organization, with no `aws:SourceIp` or `aws:SourceVpce` condition that narrows where it calls from | MEDIUM |
 | | An account outside the organization named as a whole (`123456789012` or `arn:...:root`) rather than one role | LOW |
 | Unused outside trust | A role trusting an account outside the organization, not used in `unused_role_days` (default 90) | MEDIUM |
@@ -107,10 +107,17 @@ and any key is when the statement also sets `Null` to `false` for it. A
 value with a policy variable is reported for review by hand.
 
 Findings go to one SNS summary, grouped by severity. A clean, complete
-run sends nothing. An account the Lambda couldn't reach is listed under
-"Accounts not scanned" rather than left out, so a failure never looks
-clean. A report over the SNS size limit is cut at the least severe end
+run sends nothing. An account the Lambda couldn't reach, a region that
+failed part way, and any account left when the 15-minute run was about to
+time out are listed under "Not scanned" rather than left out, so a
+failure never looks clean; findings from everything else are still
+reported. A report over the SNS size limit is cut at the least severe end
 and says so, and a failed publish fails the invocation.
+
+A failed invocation is not retried (a retry would repeat the whole scan).
+It lands in the dead-letter queue, and two CloudWatch alarms, on the
+Lambda's `Errors` metric and on the queue's depth, notify the same SNS
+topic. The queue alarm stays in alarm until the queue is emptied.
 
 ## Using Terraform
 
@@ -188,7 +195,7 @@ Detective only: a human still decides what to change.
 | name_prefix | Prefix used for naming all resources created by this module. | `string` | `"trust-policy-auditor"` | no |
 | notification_email | Optional email address to subscribe to the SNS topic. Leave empty to skip. | `string` | `""` | no |
 | regions | Regions to audit Lambda function policies and RAM shares in. Empty means the region the module is deployed in. IAM roles are global and always audited. | `list(string)` | `[]` | no |
-| reserved_concurrent_executions | Concurrency reserved for the Lambda. Set -1 to reserve none: accounts at the 10-execution quota floor (new and sandbox accounts) reject any reservation. | `number` | `2` | no |
+| reserved_concurrent_executions | Concurrency reserved for the Lambda. Set -1 to reserve none: accounts at the 10-execution quota floor (new and sandbox accounts) reject any reservation. 0 is rejected because it throttles every run. | `number` | `2` | no |
 | schedule_expression | EventBridge schedule expression controlling how often the audit runs. | `string` | `"rate(1 day)"` | no |
 | trusted_account_ids | Accounts outside the organization to treat as trusted, such as a vendor you've reviewed. Their roles aren't reported for a missing sts:ExternalId, and their Lambda and RAM access isn't reported; trust in them is still reported when it has no network condition, names the whole account, or is unused. | `list(string)` | `[]` | no |
 | unused_role_days | Days without use after which a role trusting an account outside the organization is reported. | `number` | `90` | no |
