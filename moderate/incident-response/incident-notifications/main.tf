@@ -3,7 +3,8 @@
 module "incident_notifications" {
   source = "../../../modules/incident-notifications"
 
-  guardduty_severity_threshold = var.guardduty_severity_threshold
+  guardduty_severity_threshold       = var.guardduty_severity_threshold
+  exclude_guardduty_from_securityhub = var.exclude_guardduty_from_securityhub
 }
 
 # Resources lived in this root before 1.3.0.

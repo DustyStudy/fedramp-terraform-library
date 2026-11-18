@@ -65,6 +65,29 @@ data "aws_iam_policy_document" "cmk" {
       resources = ["*"]
     }
   }
+
+  # EBS, RDS and other services that keep using the key after the caller's
+  # request ends do it through a grant the caller creates for them. Without
+  # this a key user cannot launch an encrypted volume or DB instance.
+  dynamic "statement" {
+    for_each = local.has_key_users ? [1] : []
+    content {
+      sid    = "AllowAttachmentOfPersistentResources"
+      effect = "Allow"
+      principals {
+        type        = "AWS"
+        identifiers = var.key_user_role_arns
+      }
+      actions   = ["kms:CreateGrant", "kms:ListGrants", "kms:RevokeGrant"]
+      resources = ["*"]
+
+      condition {
+        test     = "Bool"
+        variable = "kms:GrantIsForAWSResource"
+        values   = ["true"]
+      }
+    }
+  }
 }
 
 resource "aws_kms_key" "this" {
