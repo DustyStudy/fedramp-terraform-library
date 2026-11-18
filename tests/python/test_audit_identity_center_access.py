@@ -6,6 +6,13 @@ from botocore.exceptions import ClientError
 
 LAMBDA = "modules/identity-center-access-auditor/lambda/audit_identity_center_access.py"
 INSTANCE = {"InstanceArn": "arn:aws:sso:::instance/ssoins-1", "IdentityStoreId": "d-1"}
+# Default versions of AWS-managed policies, cut down to the statement that matters.
+MANAGED_DOCUMENTS = {
+    "IAMFullAccess": {"Statement": [{"Effect": "Allow", "Action": ["iam:*", "organizations:Describe*"], "Resource": "*"}]},
+    "PowerUserAccess": {"Statement": [{"Effect": "Allow", "NotAction": ["iam:*", "organizations:*"], "Resource": "*"}]},
+    "AWSOrganizationsFullAccess": {"Statement": {"Effect": "Allow", "Action": "organizations:*", "Resource": "*"}},
+    "ReadOnlyAccess": {"Statement": [{"Effect": "Allow", "Action": ["iam:Get*", "iam:List*", "s3:Get*"], "Resource": "*"}]},
+}
 
 
 def _pages(client):
@@ -59,6 +66,11 @@ def make_fn(load_lambda):
         organizations.list_accounts.return_value = {"Accounts": [{"Id": "111", "Name": "prod"}]}
         module.sso_admin, module.identitystore, module.organizations = _pages(sso), identitystore, _pages(organizations)
         module.sns = MagicMock()
+        module.iam = MagicMock()
+        module.iam.get_policy.return_value = {"Policy": {"DefaultVersionId": "v7"}}
+        module.iam.get_policy_version.side_effect = lambda PolicyArn, VersionId: {
+            "PolicyVersion": {"Document": MANAGED_DOCUMENTS[PolicyArn.rsplit("/", 1)[1]]}
+        }
         return module
 
     return _make
@@ -88,6 +100,10 @@ def test_administrator_access_is_flagged_with_account_names(make_fn):
         ({"Effect": "Allow", "Action": "*", "Resource": "*"}, "full wildcard action"),
         ({"Effect": "Allow", "Action": ["iam:*"], "Resource": "*"}, "service-wide wildcard action (iam:*)"),
         ({"Effect": "Allow", "NotAction": "iam:*", "Resource": "*"}, "Allow with NotAction"),
+        # NotResource reaches everything but the named resource, so it counts as "*".
+        ({"Effect": "Allow", "Action": "iam:*", "NotResource": "arn:aws:iam::111:role/x"}, "service-wide wildcard action (iam:*)"),
+        ({"Effect": "Allow", "NotAction": "s3:*", "NotResource": "arn:aws:s3:::logs"}, "Allow with NotAction"),
+        ({"Effect": "Allow", "Action": "iam:PassRole", "NotResource": "arn:aws:iam::111:role/x"}, "iam:passrole"),
     ],
 )
 def test_risky_inline_statements_are_flagged(make_fn, statement, reason):
@@ -104,6 +120,8 @@ def test_risky_inline_statements_are_flagged(make_fn, statement, reason):
         {"Effect": "Allow", "Action": "logs:*", "Resource": "*"},
         {"Effect": "Allow", "Action": "iam:*", "Resource": "arn:aws:iam::111:role/app"},
         {"Effect": "Deny", "Action": "*", "Resource": "*"},
+        {"Effect": "Deny", "Action": "iam:*", "NotResource": "arn:aws:iam::111:role/x"},
+        {"Effect": "Allow", "Action": "logs:*", "NotResource": "arn:aws:logs:us-east-1:111:log-group:audit"},
     ],
 )
 def test_scoped_or_non_sensitive_statements_pass(make_fn, statement):
@@ -257,3 +275,83 @@ def test_failed_publish_fails_the_run(make_fn):
 
     with pytest.raises(ClientError):
         fn.lambda_handler({}, None)
+
+
+@pytest.mark.parametrize(
+    ("policy", "reason"),
+    [
+        ("IAMFullAccess", "AWS-managed policy IAMFullAccess: service-wide wildcard action (iam:*)"),
+        ("PowerUserAccess", "AWS-managed policy PowerUserAccess: Allow with NotAction"),
+        ("AWSOrganizationsFullAccess", "AWS-managed policy AWSOrganizationsFullAccess: service-wide wildcard action"),
+    ],
+)
+def test_risky_aws_managed_policies_other_than_administrator_access_are_flagged(make_fn, policy, reason):
+    fn = make_fn([_permission_set("Wide", managed=[policy])])
+
+    assert _body(fn.lambda_handler({}, None))["over_privileged_permission_set_count"] == 1
+    assert reason in _message(fn)
+    fn.iam.get_policy_version.assert_called_once_with(PolicyArn=f"arn:aws:iam::aws:policy/{policy}", VersionId="v7")
+
+
+def test_read_only_aws_managed_policy_passes(make_fn):
+    fn = make_fn([_permission_set("Viewer", managed=["ReadOnlyAccess"])])
+
+    assert _body(fn.lambda_handler({}, None))["over_privileged_permission_set_count"] == 0
+
+
+def test_aws_managed_policy_is_fetched_once_however_many_permission_sets_use_it(make_fn):
+    fn = make_fn([_permission_set("A", managed=["IAMFullAccess"]), _permission_set("B", managed=["IAMFullAccess"])])
+
+    assert _body(fn.lambda_handler({}, None))["over_privileged_permission_set_count"] == 2
+    assert fn.iam.get_policy.call_count == 1
+
+
+def test_unreadable_aws_managed_policy_fails_instead_of_reporting_clean(make_fn):
+    fn = make_fn([_permission_set("Wide", managed=["IAMFullAccess"])])
+    fn.iam.get_policy.side_effect = ClientError({"Error": {"Code": "AccessDenied"}}, "GetPolicy")
+
+    with pytest.raises(ClientError):
+        fn.lambda_handler({}, None)
+
+
+def test_user_name_is_looked_up_once_across_accounts(make_fn):
+    assignments = [{"PrincipalType": "USER", "PrincipalId": "u-1"}]
+    fn = make_fn([_permission_set("ReadOnly", accounts=("111", "222", "333"), assignments=assignments)])
+
+    assert _body(fn.lambda_handler({}, None))["direct_user_assignment_count"] == 3
+    assert fn.identitystore.describe_user.call_count == 1
+
+
+def test_running_out_of_time_publishes_an_incomplete_report(make_fn):
+    fn = make_fn([_permission_set("Admin", managed=["AdministratorAccess"]), _permission_set("Dev")])
+    context = MagicMock()
+    context.get_remaining_time_in_millis.return_value = 0
+
+    body = _body(fn.lambda_handler({}, context))
+
+    assert body["permission_sets_not_finished"] == 2
+    fn.sso_admin.list_account_assignments.assert_not_called()
+    assert "INCOMPLETE: ran out of time with 2 permission set(s)" in _message(fn)
+    assert fn.sns.publish.call_args.kwargs["Subject"].startswith("INCOMPLETE ")
+
+
+def test_deadline_during_the_assignment_walk_keeps_the_findings_already_made(make_fn):
+    fn = make_fn([_permission_set("Admin", managed=["AdministratorAccess"]), _permission_set("Dev")])
+    # The clock: handler start, first permission set (in time), then past the deadline.
+    fn.time = MagicMock()
+    fn.time.monotonic.side_effect = [0.0, 0.0, *[10_000.0] * 5]
+
+    body = _body(fn.lambda_handler({}, None))
+
+    assert body["over_privileged_permission_set_count"] == 1
+    assert body["permission_sets_not_finished"] == 2  # Admin half walked, Dev not reached
+    assert "AdministratorAccess attached" in _message(fn)
+    assert "INCOMPLETE" in _message(fn)
+
+
+def test_a_complete_run_is_not_marked_incomplete(make_fn):
+    fn = make_fn([_permission_set("Admin", managed=["AdministratorAccess"])])
+
+    assert _body(fn.lambda_handler({}, None))["permission_sets_not_finished"] == 0
+    assert "INCOMPLETE" not in _message(fn)
+    assert "INCOMPLETE" not in fn.sns.publish.call_args.kwargs["Subject"]

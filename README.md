@@ -18,7 +18,7 @@ High**, or **FedRAMP 20x** authorization.
   bucket policies at plan time, and 288 pytest tests cover the module
   Lambdas. Checkov, Trivy and Gitleaks run on every PR. See
   [what is verified, and what is not](docs/PROOF.md).
-- **Live use:** fifteen modules were deployed to a real 4-account
+- **Live use:** sixteen modules were deployed to a real 4-account
   organization and checked with real API calls, including alarm,
   finding-routing and auditor paths end to end, an image push, requests
   through the web ACL and TLS and IAM sign-in to the database. See the
@@ -85,7 +85,10 @@ modules/              Shared baseline modules used across all three tracks
 moderate/             Rev5 Moderate baseline, by control family
 high/                 Rev5 High: reuses moderate/ with tfvars overrides
 fedramp-20x/          KSI-to-module cross-reference, no Terraform (CNA, IAM, MLA, SVC, INR, CMT, RPL, PIY, SCR, CED)
-docs/                 Control-to-module cross-reference
+docs/                 Control mapping, verification record, compliance guides
+examples/             Management-account and member-account baselines composed from the modules
+proof/                Live-test fixtures, not reference code (see proof/README.md)
+tests/                pytest and SQL fixtures for the module Lambdas
 ```
 
 ## Modules
@@ -202,7 +205,7 @@ terraform test
 ## Security scanning
 
 Every push and PR to `main` runs automatically via GitHub Actions
-(`.github/workflows/ci.yml` and `security-scan.yml`):
+(`.github/workflows/ci.yml`, `security-scan.yml` and `codeql.yml`):
 
 - **Module README tables**: `terraform-docs` fails the build if a module README is stale
 - **`terraform fmt` + tflint**: formatting and Terraform best practices
@@ -213,11 +216,14 @@ Every push and PR to `main` runs automatically via GitHub Actions
 - **Gitleaks, Checkov, Trivy and zizmor** (`security-scan.yml`, a shared
   workflow): secret scanning and independent security/compliance scanners
   against the templates themselves
+- **CodeQL** (`codeql.yml`): static analysis of the Lambda Python
 
 Check the **Actions** tab on GitHub after your first push; new modules
 sometimes get flagged for things that are intentional design choices in a
-security baseline (for example, the permission boundary's broad `NotAction`
-grant is deliberate, not an oversight). Where a finding is an accepted
+security baseline (for example, the permission boundary in
+`modules/iam-access-control` allows `s3:*` and three other whole services
+on this account's resources as a ceiling, then denies the dangerous
+actions; that is deliberate, not an oversight). Where a finding is an accepted
 risk rather than a bug, add a `#checkov:skip=CKV_AWS_XXX:<reason>` comment
 directly above the resource so the justification travels with the code;
 see `CONTRIBUTING.md` for the pattern.
@@ -239,7 +245,10 @@ see `CONTRIBUTING.md` for the pattern.
    ```
    Pin module sources to a reviewed release tag (or full commit SHA) and upgrade
    explicitly after reviewing the changelog and Terraform plan. The provider lock
-   file does not pin Git module sources.
+   file does not pin Git module sources. `SECURITY.md` says which release
+   line gets fixes and how to [verify a release](SECURITY.md#verifying-a-release)
+   (`gh release verify`, and for releases after v3.0.0 `sha256sum -c` and
+   `gh attestation verify`).
 
 3. Check `docs/control-mapping.md` to see which NIST 800-53 control IDs (or
    KSI IDs) each module addresses, and use it to build your control

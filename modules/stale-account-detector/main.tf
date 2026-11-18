@@ -89,6 +89,17 @@ resource "aws_kms_key" "log_encryption" {
           StringEquals = { "kms:CallerAccount" = data.aws_caller_identity.current.account_id }
         }
       },
+      {
+        # The failure alarms publish to the encrypted topic.
+        Sid       = "AllowCloudWatchAlarmsUseOfKey"
+        Effect    = "Allow"
+        Principal = { Service = "cloudwatch.amazonaws.com" }
+        Action    = ["kms:GenerateDataKey*", "kms:Decrypt"]
+        Resource  = "*"
+        Condition = {
+          StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
+        }
+      },
     ]
   })
 }
@@ -258,4 +269,64 @@ resource "aws_lambda_permission" "allow_eventbridge" {
   function_name = aws_lambda_function.detector.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.schedule.arn
+}
+
+# ---------------------------------------------------------------------
+# Failure handling
+# ---------------------------------------------------------------------
+# A failed run goes straight to the DLQ. The default two async retries
+# would repeat the whole scan, and the next scheduled run does that anyway.
+resource "aws_lambda_function_event_invoke_config" "detector" {
+  function_name          = aws_lambda_function.detector.function_name
+  maximum_retry_attempts = 0
+}
+
+# Only CloudWatch alarms in this account may publish (confused-deputy
+# guard). The Lambda publishes through its role's identity policy.
+resource "aws_sns_topic_policy" "report" {
+  arn = aws_sns_topic.report.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "AllowCloudWatchAlarms"
+      Effect    = "Allow"
+      Principal = { Service = "cloudwatch.amazonaws.com" }
+      Action    = "sns:Publish"
+      Resource  = aws_sns_topic.report.arn
+      Condition = {
+        StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
+      }
+    }]
+  })
+}
+
+resource "aws_cloudwatch_metric_alarm" "errors" {
+  alarm_name          = "${aws_lambda_function.detector.function_name}-errors"
+  alarm_description   = "The stale-account detector Lambda failed or timed out, so no report was sent for that run."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Errors"
+  dimensions          = { FunctionName = aws_lambda_function.detector.function_name }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.report.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "dlq" {
+  alarm_name          = "${aws_sqs_queue.dlq.name}-not-empty"
+  alarm_description   = "The stale-account detector Lambda's dead-letter queue holds a failed invocation."
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  dimensions          = { QueueName = aws_sqs_queue.dlq.name }
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.report.arn]
 }
