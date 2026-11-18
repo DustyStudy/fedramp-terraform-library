@@ -1,6 +1,8 @@
 locals {
   account_id = data.aws_caller_identity.current.account_id
   partition  = data.aws_partition.current.partition
+
+  create_access_log_bucket = var.access_log_bucket == null
 }
 
 data "aws_caller_identity" "current" {}
@@ -36,9 +38,7 @@ resource "aws_kms_key" "ssm" {
 }
 
 # S3 Bucket for Patch Execution Logs with SSE-KMS
-#trivy:ignore:AWS-0089 Access logging is on when access_log_bucket is set; see the CKV_AWS_18 skip.
 resource "aws_s3_bucket" "patch_logs" {
-  #checkov:skip=CKV_AWS_18:Access logging is enabled by aws_s3_bucket_logging.patch_logs when access_log_bucket is set
   #checkov:skip=CKV_AWS_144:Cross-region replication is NOT configured by this module. If your contingency plan needs off-site log copies, add S3 replication, or tag the bucket Backup=true (versioning required) and set org-governance copy_destination_region
   #checkov:skip=CKV_AWS_145:KMS CMK encryption enforced below
   #checkov:skip=CKV_AWS_21:Versioning enabled below
@@ -47,13 +47,131 @@ resource "aws_s3_bucket" "patch_logs" {
   force_destroy = false
 }
 
-# Server access logs for the patch-log bucket (AU-2), sent to an existing
-# log bucket that grants logging.s3.amazonaws.com write access.
+# Server access logs for the patch-log bucket (AU-2): to access_log_bucket
+# when given, otherwise to the sink bucket this module creates below.
 resource "aws_s3_bucket_logging" "patch_logs" {
-  count         = var.access_log_bucket == null ? 0 : 1
   bucket        = aws_s3_bucket.patch_logs.id
-  target_bucket = var.access_log_bucket
+  target_bucket = local.create_access_log_bucket ? aws_s3_bucket.access_logs[0].id : var.access_log_bucket
   target_prefix = "ssm-patch-logs/"
+
+  # S3 must be allowed to write before logging is switched on.
+  depends_on = [aws_s3_bucket_policy.access_logs]
+}
+
+# --- Access-log bucket (terminal sink), only when access_log_bucket is null ---
+
+resource "aws_s3_bucket" "access_logs" {
+  #checkov:skip=CKV_AWS_18:This bucket IS the access-log destination for the patch-log bucket. A log-destination bucket logging to itself is a circular anti-pattern AWS advises against, so this is the terminal sink.
+  #checkov:skip=CKV_AWS_145:S3 server access logs must land in a bucket encrypted with SSE-S3, not SSE-KMS: an AWS restriction on the access-logging feature.
+  #checkov:skip=CKV_AWS_144:Cross-region replication is NOT configured by this module. If your contingency plan needs off-site log copies, add S3 replication, or tag the bucket Backup=true (versioning required) and set org-governance copy_destination_region
+  #checkov:skip=CKV2_AWS_62:Event notifications are not required for an access-log sink
+  count         = local.create_access_log_bucket ? 1 : 0
+  bucket        = "${var.environment}-fedramp-ssm-patch-access-logs-${local.account_id}"
+  force_destroy = false
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "access_logs" {
+  count  = local.create_access_log_bucket ? 1 : 0
+  bucket = aws_s3_bucket.access_logs[0].id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "access_logs" {
+  count                   = local.create_access_log_bucket ? 1 : 0
+  bucket                  = aws_s3_bucket.access_logs[0].id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "access_logs" {
+  count  = local.create_access_log_bucket ? 1 : 0
+  bucket = aws_s3_bucket.access_logs[0].id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
+  count  = local.create_access_log_bucket ? 1 : 0
+  bucket = aws_s3_bucket.access_logs[0].id
+
+  rule {
+    id     = "expire-access-logs"
+    status = "Enabled"
+
+    filter {}
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+
+    expiration {
+      days = 365
+    }
+
+    # Versioned bucket: expiration only adds a delete marker, so the old
+    # version must be expired too or the log is kept forever.
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+  }
+}
+
+data "aws_iam_policy_document" "access_logs_bucket" {
+  count = local.create_access_log_bucket ? 1 : 0
+
+  statement {
+    sid    = "S3ServerAccessLogsPolicy"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["logging.s3.amazonaws.com"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.access_logs[0].arn}/*"]
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = [aws_s3_bucket.patch_logs.arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+
+  statement {
+    sid       = "DenyInsecureTransport"
+    effect    = "Deny"
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.access_logs[0].arn, "${aws_s3_bucket.access_logs[0].arn}/*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "access_logs" {
+  count  = local.create_access_log_bucket ? 1 : 0
+  bucket = aws_s3_bucket.access_logs[0].id
+  policy = data.aws_iam_policy_document.access_logs_bucket[0].json
 }
 
 resource "aws_s3_bucket_versioning" "patch_logs" {
@@ -270,8 +388,8 @@ resource "aws_ssm_maintenance_window_task" "patch_task" {
   task_arn         = "AWS-RunPatchBaseline"
   priority         = 1
   service_role_arn = aws_iam_role.ssm_maintenance_window.arn
-  max_concurrency  = "50%"
-  max_errors       = "0"
+  max_concurrency  = var.max_concurrency
+  max_errors       = var.max_errors
 
   # Systems Manager rejects a role IAM created seconds ago with an
   # iam:PassRole error (seen in the live proof). The bucket's lifecycle
