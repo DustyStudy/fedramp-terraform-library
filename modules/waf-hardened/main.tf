@@ -83,6 +83,16 @@ resource "aws_wafv2_web_acl" "this" {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
+
+        dynamic "rule_action_override" {
+          for_each = toset(lookup(var.rule_action_overrides, "AWSManagedRulesCommonRuleSet", []))
+          content {
+            name = rule_action_override.value
+            action_to_use {
+              count {}
+            }
+          }
+        }
       }
     }
 
@@ -106,6 +116,16 @@ resource "aws_wafv2_web_acl" "this" {
       managed_rule_group_statement {
         name        = "AWSManagedRulesKnownBadInputsRuleSet"
         vendor_name = "AWS"
+
+        dynamic "rule_action_override" {
+          for_each = toset(lookup(var.rule_action_overrides, "AWSManagedRulesKnownBadInputsRuleSet", []))
+          content {
+            name = rule_action_override.value
+            action_to_use {
+              count {}
+            }
+          }
+        }
       }
     }
 
@@ -131,6 +151,16 @@ resource "aws_wafv2_web_acl" "this" {
         managed_rule_group_statement {
           name        = "AWSManagedRulesSQLiRuleSet"
           vendor_name = "AWS"
+
+          dynamic "rule_action_override" {
+            for_each = toset(lookup(var.rule_action_overrides, "AWSManagedRulesSQLiRuleSet", []))
+            content {
+              name = rule_action_override.value
+              action_to_use {
+                count {}
+              }
+            }
+          }
         }
       }
 
@@ -155,6 +185,16 @@ resource "aws_wafv2_web_acl" "this" {
       managed_rule_group_statement {
         name        = "AWSManagedRulesAmazonIpReputationList"
         vendor_name = "AWS"
+
+        dynamic "rule_action_override" {
+          for_each = toset(lookup(var.rule_action_overrides, "AWSManagedRulesAmazonIpReputationList", []))
+          content {
+            name = rule_action_override.value
+            action_to_use {
+              count {}
+            }
+          }
+        }
       }
     }
 

@@ -88,12 +88,12 @@ variable "reserved_concurrent_executions" {
   description = <<-EOT
     Concurrency reserved for the Lambda. Set -1 to reserve none: accounts at
     the 10-execution quota floor (new and sandbox accounts) reject any
-    reservation.
+    reservation. 0 is rejected because it throttles every run.
   EOT
   default     = 2
 
   validation {
-    condition     = var.reserved_concurrent_executions >= -1
-    error_message = "reserved_concurrent_executions must be -1 (unreserved) or a non-negative number."
+    condition     = var.reserved_concurrent_executions == -1 || var.reserved_concurrent_executions >= 1
+    error_message = "reserved_concurrent_executions must be -1 (unreserved) or at least 1; 0 would throttle every run."
   }
 }

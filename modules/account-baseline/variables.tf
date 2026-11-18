@@ -1,13 +1,38 @@
 variable "kms_key_arn" {
-  description = "Optional custom KMS Key ARN to use for default EBS encryption."
+  description = "Existing CMK ARN to use as the default EBS encryption key. Empty creates a dedicated CMK with rotation enabled. A key you bring needs its own key policy statements for the Auto Scaling service-linked role (see README)."
   type        = string
   default     = ""
 }
 
 variable "set_ebs_default_kms_key" {
-  description = "Set kms_key_arn as the default EBS key. Leave null to decide from kms_key_arn; set true when the key is created in the same plan, where its ARN is not known yet."
+  description = "Leave null to decide from kms_key_arn. Set true when kms_key_arn is a key created in the same plan, where its ARN is not known yet; the module then creates no key of its own."
   type        = bool
   default     = null
+}
+
+variable "ebs_kms_key_deletion_window_in_days" {
+  description = "Waiting period (7-30 days) before the module-created EBS CMK is deleted after it is destroyed."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.ebs_kms_key_deletion_window_in_days >= 7 && var.ebs_kms_key_deletion_window_in_days <= 30
+    error_message = "ebs_kms_key_deletion_window_in_days must be between 7 and 30."
+  }
+}
+
+variable "ebs_kms_key_grant_autoscaling" {
+  description = <<-EOT
+    Grant the Auto Scaling service-linked role (AWSServiceRoleForAutoScaling)
+    use of the module-created EBS CMK when that role exists in the account.
+    Without the grant, Auto Scaling launches (EKS managed node groups, ECS
+    capacity providers) fail with Client.InternalError. AWS creates the role
+    with the account's first Auto Scaling group; in an account that does not
+    have it yet, create it first or re-apply this module afterwards (see
+    README). Needs iam:ListRoles. Ignored when you supply kms_key_arn.
+  EOT
+  type        = bool
+  default     = true
 }
 
 variable "minimum_password_length" {

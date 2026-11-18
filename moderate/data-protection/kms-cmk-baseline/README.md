@@ -26,3 +26,8 @@ Deploy one instance of this module per workload or data-classification
 tier rather than sharing a single key across unrelated systems — that
 keeps blast radius contained if one workload's access needs to be revoked
 or investigated independently of others.
+
+Roles in `key_user_role_arns` can encrypt and decrypt with the key, and
+can create grants on it only for AWS services (`kms:GrantIsForAWSResource`),
+which is what launching an encrypted EBS volume or RDS instance needs. They
+cannot create grants for other principals.

@@ -86,6 +86,38 @@ run "routes_high_severity_findings" {
   }
 }
 
+run "securityhub_rule_skips_archived_and_guardduty_findings" {
+  command = plan
+
+  assert {
+    condition     = jsondecode(aws_cloudwatch_event_rule.securityhub_critical_high.event_pattern).detail.findings.RecordState == ["ACTIVE"]
+    error_message = "Archived findings must not be routed when they are re-imported."
+  }
+
+  assert {
+    condition     = jsondecode(aws_cloudwatch_event_rule.securityhub_critical_high.event_pattern).detail.findings.ProductName == [{ "anything-but" = "GuardDuty" }]
+    error_message = "GuardDuty findings must be left to the GuardDuty rule, or each one is delivered twice."
+  }
+}
+
+run "securityhub_rule_can_keep_guardduty_findings" {
+  command = plan
+
+  variables {
+    exclude_guardduty_from_securityhub = false
+  }
+
+  assert {
+    condition     = !can(jsondecode(aws_cloudwatch_event_rule.securityhub_critical_high.event_pattern).detail.findings.ProductName)
+    error_message = "With exclude_guardduty_from_securityhub off, the Security Hub rule must not filter on product."
+  }
+
+  assert {
+    condition     = jsondecode(aws_cloudwatch_event_rule.securityhub_critical_high.event_pattern).detail.findings.RecordState == ["ACTIVE"]
+    error_message = "Archived findings must not be routed when they are re-imported."
+  }
+}
+
 run "findings_reach_the_encrypted_topic" {
   command = plan
 

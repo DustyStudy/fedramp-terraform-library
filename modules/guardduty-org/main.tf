@@ -48,9 +48,9 @@ resource "aws_guardduty_organization_configuration_feature" "this" {
 
   detector_id = aws_guardduty_detector.this.id
   name        = each.key
-  # What the datasources block's auto_enable = true meant, whatever
-  # auto_enable_organization_members is set to.
-  auto_enable = "NEW"
+  # Follows the member setting unless overridden, so "ALL" gives existing
+  # members the protections along with the detector.
+  auto_enable = coalesce(var.auto_enable_organization_features, var.auto_enable_organization_members)
 
   depends_on = [aws_guardduty_organization_configuration.this]
 }

@@ -12,6 +12,9 @@ provider "aws" {
 
 variables {
   target_ou_or_account_ids = ["ou-abcd-11111111", "123456789012"]
+  # Attaching with no exemptions fails the module's check block, which
+  # terraform test treats as a run failure.
+  exempt_principal_arns = ["arn:aws:iam::*:role/terraform-deployer"]
 }
 
 run "denies_disabling_security_services" {
@@ -41,13 +44,13 @@ run "region_lock_uses_approved_regions" {
   command = plan
 
   variables {
-    approved_regions = ["us-gov-west-1", "us-gov-east-1"]
+    approved_regions = ["us-east-2", "us-west-1"]
   }
 
   assert {
     condition = toset(
       one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == "DenyUnapprovedRegions"]).Condition.StringNotEquals["aws:RequestedRegion"]
-    ) == toset(["us-gov-west-1", "us-gov-east-1"])
+    ) == toset(["us-east-2", "us-west-1"])
     error_message = "The region lock must deny every region outside approved_regions."
   }
 
@@ -117,6 +120,11 @@ run "imdsv2_denies_launch_and_downgrade" {
 run "no_exemptions_means_unconditional_denies" {
   command = plan
 
+  variables {
+    target_ou_or_account_ids = [] # unattached, so the check block stays quiet
+    exempt_principal_arns    = []
+  }
+
   assert {
     condition = alltrue([
       for sid in ["DenyDisablingSecurityServices", "DenyModifyingAccountBaseline"] :
@@ -168,5 +176,90 @@ run "global_services_are_exempt_from_the_region_lock" {
   assert {
     condition     = !contains(one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == "DenyUnapprovedRegions"]).NotAction, "wafv2:*")
     error_message = "WAFv2 has regional resources; exempting it would let web ACLs be created outside approved_regions."
+  }
+}
+
+run "commercial_partition_defaults_to_commercial_regions" {
+  command = plan
+
+  assert {
+    condition = toset(
+      one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == "DenyUnapprovedRegions"]).Condition.StringNotEquals["aws:RequestedRegion"]
+    ) == toset(["us-east-1", "us-west-2"])
+    error_message = "With approved_regions unset in the aws partition, the lock must allow us-east-1 and us-west-2."
+  }
+}
+
+run "govcloud_partition_defaults_to_govcloud_regions" {
+  command = plan
+
+  override_data {
+    target = data.aws_partition.current
+    values = {
+      partition = "aws-us-gov"
+    }
+  }
+
+  assert {
+    condition = toset(
+      one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == "DenyUnapprovedRegions"]).Condition.StringNotEquals["aws:RequestedRegion"]
+    ) == toset(["us-gov-west-1", "us-gov-east-1"])
+    error_message = "With approved_regions unset in GovCloud, the lock must allow only us-gov-west-1 and us-gov-east-1."
+  }
+}
+
+run "govcloud_rejects_commercial_regions" {
+  command = plan
+
+  override_data {
+    target = data.aws_partition.current
+    values = {
+      partition = "aws-us-gov"
+    }
+  }
+
+  variables {
+    approved_regions = ["us-gov-west-1", "us-east-1"]
+  }
+
+  expect_failures = [aws_organizations_policy.fedramp_boundary]
+}
+
+run "commercial_rejects_govcloud_regions" {
+  command = plan
+
+  variables {
+    approved_regions = ["us-gov-west-1", "us-gov-east-1"]
+  }
+
+  expect_failures = [aws_organizations_policy.fedramp_boundary]
+}
+
+run "rejects_empty_approved_regions" {
+  command = plan
+
+  variables {
+    approved_regions = []
+  }
+
+  expect_failures = [aws_organizations_policy.fedramp_boundary]
+}
+
+run "warns_when_attached_without_exemptions" {
+  command = plan
+
+  variables {
+    exempt_principal_arns = []
+  }
+
+  expect_failures = [check.exempt_principals_set_when_attached]
+}
+
+run "no_warning_when_not_attached" {
+  command = plan
+
+  variables {
+    target_ou_or_account_ids = []
+    exempt_principal_arns    = []
   }
 }

@@ -13,8 +13,8 @@ IMDSv1. Deploy from the AWS Organizations management account.
 module "org_scp_boundary" {
   source                    = "../../modules/org-scp-boundary"
   policy_name               = "fedramp-moderate-authorization-boundary"
-  approved_regions          = ["us-east-1", "us-west-2"]
   target_ou_or_account_ids  = ["ou-xxxx-xxxxxxxx"]
+  exempt_principal_arns     = ["arn:<partition>:iam::*:role/terraform-deployer"]
 }
 ```
 
@@ -37,11 +37,15 @@ module "org_scp_boundary" {
   `aws-portal`, `budgets`) via `not_actions` — without that exclusion list
   a region-lock SCP will lock you out of managing IAM and Organizations
   entirely, since those APIs don't run "in" a region the way EC2 or S3 do.
-- `approved_regions` defaults to standard AWS commercial regions
-  (`us-east-1`, `us-west-2`). If you're deploying in AWS GovCloud,
-  override with GovCloud region names (`us-gov-west-1`, `us-gov-east-1`)
-  instead — the two partitions don't share regions, and the default will
-  lock GovCloud accounts out of their own region.
+- `approved_regions` left unset follows the provider's partition:
+  `us-gov-west-1` and `us-gov-east-1` in GovCloud, `us-east-1` and
+  `us-west-2` elsewhere. A list that is empty or names the other
+  partition's regions fails the plan, because that region lock would deny
+  every regional action in the targeted accounts.
+- Attaching the SCP with an empty `exempt_principal_arns` produces a plan
+  warning (a `check` block, so it does not stop the apply): nobody in the
+  targeted accounts, your pipeline included, can then set the S3 account
+  public access block, change GuardDuty or Config, or delete a KMS key.
 - See `../../high/org-scp-boundary` for the same SCP with a High-track
   policy name — the boundary logic itself doesn't change between
   Moderate and High, only the naming.
@@ -51,7 +55,7 @@ module "org_scp_boundary" {
 
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
-| approved_regions | List of approved FedRAMP regions. Defaults assume a standard AWS commercial deployment (us-east-1, us-west-2) — if deploying in AWS GovCloud, override with GovCloud region names (e.g. us-gov-west-1, us-gov-east-1) instead, since the two partitions don't share regions. | `list(string)` | ```[ "us-east-1", "us-west-2" ]``` | no |
+| approved_regions | Regions the SCP allows. null (the default) picks them from the partition the provider runs in: us-gov-west-1 and us-gov-east-1 in GovCloud, us-east-1 and us-west-2 elsewhere. A list must be non-empty and belong to that partition (only us-gov-* regions in GovCloud, none of them outside it), or the plan fails: a region lock naming another partition's regions denies every regional action in the targets. | `list(string)` | `null` | no |
 | exempt_principal_arns | IAM role ARNs (wildcards allowed, e.g. an Identity Center permission set role "arn:<partition>:iam::*:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_SecurityAdmin_*") that the security-service and account-baseline denies do not apply to. Without one, nobody in a member account, including your deployment pipeline, can create the S3 account public access block, enable GuardDuty features or delete a KMS key once the SCP is attached. | `list(string)` | `[]` | no |
 | policy_name | Name of the SCP | `string` | `"fedramp-authorization-boundary-scp"` | no |
 | require_imdsv2 | Add statements that deny launching an EC2 instance without IMDSv2 (HttpTokens = required) and deny switching an instance back to IMDSv1. Off by default: turning it on breaks any launch template, AMI pipeline or tool that still sets HttpTokens to optional. | `bool` | `false` | no |

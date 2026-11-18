@@ -27,8 +27,17 @@ module "guardduty_org" {
 - Three protections are enabled: S3 data events, EKS audit logs and EBS
   malware protection, each as an `aws_guardduty_detector_feature` with a
   matching `aws_guardduty_organization_configuration_feature` that turns
-  it on for accounts joining the organization. Newer protections (RDS login events,
-  Lambda network logs, Runtime Monitoring) are not enabled here.
+  it on for member accounts. `additional_features` adds RDS login events
+  and Lambda network logs by default; Runtime Monitoring is not offered.
+- Which members get the protections follows
+  `auto_enable_organization_members` (`NEW`, `ALL` or `NONE`). Earlier
+  releases always used `NEW`, so `ALL` gave existing members a detector
+  with no protections. Set `auto_enable_organization_features = "NEW"` to
+  keep that.
+- The organization configuration only works in the delegated
+  administrator account, after the management account has created
+  `aws_guardduty_organization_admin_account`. See
+  `examples/management-account-baseline` for both in one root.
 - Upgrading from a release that used the `datasources` block adds six
   feature resources to the plan. The protections are already on, so
   nothing changes in the account.
@@ -40,6 +49,7 @@ module "guardduty_org" {
 | ---- | ----------- | ---- | ------- | :------: |
 | additional_features | GuardDuty protections to turn on besides S3, EKS audit logs and EBS malware scanning: RDS_LOGIN_EVENTS (anomalous Aurora/RDS logins) and LAMBDA_NETWORK_LOGS (Lambda network activity). Each adds GuardDuty charges. To leave them off, set [] before the first apply: removing a feature later only drops it from Terraform state, it does not turn the protection off (do that in GuardDuty). A few commercial regions lack some protections (RDS Protection isn't in ap-east-2, for example); see the GuardDuty regions page and drop those features there. Runtime Monitoring is not offered here because it also needs its security agent managed. | `set(string)` | ```[ "RDS_LOGIN_EVENTS", "LAMBDA_NETWORK_LOGS" ]``` | no |
 | auto_enable | Deprecated: AWS provider v6 removed the auto_enable argument. Use auto_enable_organization_members instead. Kept so existing callers still plan; false must be paired with auto_enable_organization_members = "NONE". | `bool` | `true` | no |
+| auto_enable_organization_features | Which member accounts get each protection (S3, EKS audit logs, EBS malware scanning and additional_features): ALL, NEW or NONE. null (the default) follows auto_enable_organization_members. Before this variable existed the module always used NEW, so with members set to ALL existing accounts got a detector but no protections; set "NEW" to keep that. | `string` | `null` | no |
 | auto_enable_organization_members | GuardDuty auto-enablement for member accounts: NEW (accounts that join later; matches the old auto_enable = true behavior), ALL (existing members too), or NONE. | `string` | `"NEW"` | no |
 | finding_publishing_frequency | How often GuardDuty publishes findings to CloudWatch Events. | `string` | `"FIFTEEN_MINUTES"` | no |
 
