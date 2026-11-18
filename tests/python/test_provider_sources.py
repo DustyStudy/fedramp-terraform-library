@@ -93,3 +93,33 @@ def test_guard_ignores_module_sources_and_comments():
         'module "m" {\n  source = "../../modules/org-governance"\n}\n'
     )
     assert list(_required_provider_sources(tf)) == ["hashicorp/aws"]
+
+
+# One range for the whole library (modules/org-cloudtrail/versions.tf says
+# why). CI's floor leg installs exactly the lower ends, so a constraint
+# that drifts in one directory would advertise a version nothing tests.
+TERRAFORM_CONSTRAINT = ">= 1.12"
+AWS_CONSTRAINT = ">= 6.0, < 7.0"
+CI_FLOOR_PINS = ('terraform: "1.12.0"', 'aws: "6.0.0"', 'archive: "2.4.0"')
+
+# These two declare their terraform block in main.tf and are still on the
+# old "< 6.71.1" ceiling. Delete this set once they are moved to the range.
+_NOT_YET_UNIFORM = {"high/org-governance/main.tf", "moderate/org-governance/main.tf"}
+
+CONSTRAINED = sorted(
+    {p for p, _ in DECLARATIONS if p.split("/")[0] in ("modules", "moderate", "high", "examples")}
+    - _NOT_YET_UNIFORM
+)
+
+
+@pytest.mark.parametrize("path", CONSTRAINED)
+def test_version_constraints_are_uniform(path):
+    text = (REPO_ROOT / path).read_text(encoding="utf-8")
+    assert f'required_version = "{TERRAFORM_CONSTRAINT}"' in text
+    assert f'version = "{AWS_CONSTRAINT}"' in text
+
+
+def test_ci_floor_leg_matches_the_constraints():
+    ci = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    for pin in CI_FLOOR_PINS:
+        assert pin in ci, f"ci.yml module-tests floor leg no longer pins {pin}"

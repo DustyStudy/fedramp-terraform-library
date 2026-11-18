@@ -10,13 +10,14 @@ updates:
       github-actions:
         patterns: ["*"]
 
+  # Root stacks only: they commit .terraform.lock.hcl, so a new provider
+  # release inside the ">= 6.0, < 7.0" range is a lock-file update.
+  # Modules carry no lock file and no patch-level ceiling, so there is
+  # nothing for Dependabot to rewrite under /modules.
   - package-ecosystem: "terraform"
-
     cooldown:
-
       default-days: 7
     directories:
-      - "/modules/**"
       - "/high/**"
       - "/moderate/**"
       - "/examples/**"
@@ -25,3 +26,22 @@ updates:
     groups:
       terraform:
         patterns: ["*"]
+
+  # requirements-dev.in and its hash-pinned requirements-dev.txt.
+  - package-ecosystem: "pip"
+    cooldown:
+      default-days: 7
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-dev:
+        patterns: ["*"]
+
+  # The PostgreSQL image digest used by the sql-role-audit CI job.
+  - package-ecosystem: "docker-compose"
+    cooldown:
+      default-days: 7
+    directory: "/.github/sql-role-audit"
+    schedule:
+      interval: "weekly"

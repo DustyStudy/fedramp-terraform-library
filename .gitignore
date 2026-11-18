@@ -1,9 +1,13 @@
 # Local .terraform directories
 **/.terraform/*
 
-# Terraform lock file for consumer root modules — not meaningful for a
-# module library, so it isn't committed here
+# Lock files: callers ignore a module's lock file, so modules/ doesn't
+# commit one. The deployable root stacks do, so CI and adopters install
+# provider builds whose checksums were reviewed.
 .terraform.lock.hcl
+!examples/**/.terraform.lock.hcl
+!moderate/**/.terraform.lock.hcl
+!high/**/.terraform.lock.hcl
 
 # Terraform state files — may contain sensitive data
 *.tfstate
