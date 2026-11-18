@@ -33,12 +33,12 @@ module "org_cloudtrail" {
 
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
-| organization_id | AWS Organizations ID (e.g. o-xxxxxxxxxx). Required for the bucket policy trust condition. | `string` | n/a | yes |
-| log_retention_days | CloudWatch Logs retention. Moderate baseline typically expects >= 90 days readily available plus 1 year total; High baseline commonly expects 3+ years total retention — confirm against your SSP. | `number` | `365` | no |
+| organization_id | AWS Organizations ID (e.g. o-xxxxxxxxxx). No longer used: the trail's KMS key policy is pinned to the trail ARN instead. Kept so existing callers do not break; will be removed in the next major version. | `string` | n/a | yes |
+| log_retention_days | CloudWatch Logs retention. Moderate baseline typically expects >= 90 days readily available plus 1 year total; High baseline commonly expects 3+ years total retention — confirm against your SSP. Must be a value CloudWatch Logs accepts; 0 keeps logs forever. | `number` | `365` | no |
 | log_s3_data_events | Record S3 object-level (data) events for every bucket in the organization (AU-2, AU-12). This can cost a lot in busy accounts; set false to log management events only and add targeted data events in a separate trail. | `bool` | `true` | no |
 | object_lock_mode | GOVERNANCE lets principals with s3:BypassGovernanceRetention remove a lock; COMPLIANCE lets no one, including root, until retention ends. | `string` | `"GOVERNANCE"` | no |
 | object_lock_retention_days | Turn on S3 Object Lock for the trail bucket with this default retention, so no one can delete or overwrite a log file before it ends (AU-9). Null (the default) leaves Object Lock off. Must not exceed s3_log_retention_days. Object Lock can't be turned off once enabled. | `number` | `null` | no |
-| s3_log_retention_days | S3 lifecycle retention in days for the long-term log archive (default ~7 years). Adjust to your organization's records retention schedule. | `number` | `2555` | no |
+| s3_log_retention_days | S3 lifecycle retention in days for the long-term log archive (default ~7 years). Must be more than 365: logs move to Glacier at day 365 and S3 rejects an expiration that is not later. Adjust to your organization's records retention schedule. | `number` | `2555` | no |
 | trail_name | Name for the organization trail. | `string` | `"org-security-trail"` | no |
 
 ## Outputs

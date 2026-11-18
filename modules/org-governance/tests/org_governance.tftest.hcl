@@ -44,6 +44,11 @@ run "perimeter_scp_denies" {
   }
 
   assert {
+    condition     = !can(one([for s in jsondecode(data.aws_iam_policy_document.workload_perimeter_scp.json).Statement : s if s.Sid == "DenyDirectInternetGateways"]).Condition)
+    error_message = "With no exempt principals, the internet gateway deny must have no condition (SC-7)."
+  }
+
+  assert {
     condition     = toset(one([for s in jsondecode(data.aws_iam_policy_document.workload_perimeter_scp.json).Statement : s if s.Sid == "DenyLocalIAMUsersAndAccessKeys"]).Action) == toset(["iam:CreateUser", "iam:CreateAccessKey"])
     error_message = "The SCP must deny IAM users and access keys (IA-2, IA-5)."
   }
@@ -59,7 +64,7 @@ run "perimeter_scp_denies" {
   }
 
   assert {
-    condition     = one([for s in jsondecode(data.aws_iam_policy_document.workload_perimeter_scp.json).Statement : s if s.Sid == "DenyBypassOrDeleteObjectLock"]).Condition.StringNotEquals["aws:PrincipalArn"] == "arn:aws-us-gov:iam::123456789012:role/SecurityAdmin"
+    condition     = one([for s in jsondecode(data.aws_iam_policy_document.workload_perimeter_scp.json).Statement : s if s.Sid == "DenyBypassOrDeleteObjectLock"]).Condition.ArnNotLike["aws:PrincipalArn"] == "arn:aws-us-gov:iam::123456789012:role/SecurityAdmin"
     error_message = "Only the authorized security admins may change Object Lock settings (AU-9)."
   }
 }
@@ -165,10 +170,29 @@ run "several_admins_are_all_exempt" {
   }
 
   assert {
-    condition = toset(one([for s in jsondecode(data.aws_iam_policy_document.workload_perimeter_scp.json).Statement : s if s.Sid == "DenyBypassOrDeleteObjectLock"]).Condition.StringNotEquals["aws:PrincipalArn"]) == toset([
+    condition = toset(one([for s in jsondecode(data.aws_iam_policy_document.workload_perimeter_scp.json).Statement : s if s.Sid == "DenyBypassOrDeleteObjectLock"]).Condition.ArnNotLike["aws:PrincipalArn"]) == toset([
       "arn:aws-us-gov:iam::123456789012:role/SecurityAdmin",
       "arn:aws-us-gov:iam::123456789012:role/BreakGlass",
     ])
     error_message = "Every authorized admin must be exempt from the Object Lock deny."
+  }
+}
+
+run "wildcard_exemptions_use_arn_not_like" {
+  command = plan
+
+  variables {
+    authorized_security_admin_arns         = ["arn:aws-us-gov:iam::*:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_SecurityAdmin_*"]
+    internet_gateway_exempt_principal_arns = ["arn:aws-us-gov:iam::210987654321:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_NetworkAdmin_*"]
+  }
+
+  assert {
+    condition     = one([for s in jsondecode(data.aws_iam_policy_document.workload_perimeter_scp.json).Statement : s if s.Sid == "DenyBypassOrDeleteObjectLock"]).Condition == { ArnNotLike = { "aws:PrincipalArn" = "arn:aws-us-gov:iam::*:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_SecurityAdmin_*" } }
+    error_message = "Wildcard admin ARNs need ArnNotLike; StringNotEquals never matches them (AU-9)."
+  }
+
+  assert {
+    condition     = one([for s in jsondecode(data.aws_iam_policy_document.workload_perimeter_scp.json).Statement : s if s.Sid == "DenyDirectInternetGateways"]).Condition == { ArnNotLike = { "aws:PrincipalArn" = "arn:aws-us-gov:iam::210987654321:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_NetworkAdmin_*" } }
+    error_message = "Exempt principals must be excluded from the internet gateway deny with ArnNotLike (SC-7)."
   }
 }

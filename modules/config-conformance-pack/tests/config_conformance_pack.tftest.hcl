@@ -116,3 +116,50 @@ run "rejects_both_template_sources" {
 
   expect_failures = [aws_config_conformance_pack.this]
 }
+
+run "config_service_key_grant_uses_arn_like" {
+  command = plan
+
+  assert {
+    condition     = one([for s in jsondecode(data.aws_iam_policy_document.config_kms.json).Statement : s if s.Sid == "AllowConfigServiceEncrypt"]).Condition.ArnLike["aws:SourceArn"] == "arn:aws:config:us-east-1:123456789012:*"
+    error_message = "The wildcard source ARN needs ArnLike; StringEquals never matches it."
+  }
+}
+
+run "history_expires_after_a_year_by_default" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for lc in [aws_s3_bucket_lifecycle_configuration.config, aws_s3_bucket_lifecycle_configuration.config_access_log] :
+      lc.rule[0].expiration[0].days == 365
+    ])
+    error_message = "Default retention must stay 365 days."
+  }
+}
+
+run "retention_is_configurable" {
+  command = plan
+
+  variables {
+    retention_days = 1096
+  }
+
+  assert {
+    condition = alltrue([
+      for lc in [aws_s3_bucket_lifecycle_configuration.config, aws_s3_bucket_lifecycle_configuration.config_access_log] :
+      lc.rule[0].expiration[0].days == 1096
+    ])
+    error_message = "retention_days must set the expiry on both buckets."
+  }
+}
+
+run "rejects_retention_not_after_ia_transition" {
+  command = plan
+
+  variables {
+    retention_days = 90
+  }
+
+  expect_failures = [var.retention_days]
+}

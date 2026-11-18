@@ -56,3 +56,19 @@ variable "conformance_pack_template_s3_uri" {
     error_message = "conformance_pack_template_s3_uri must look like s3://bucket/key."
   }
 }
+
+variable "retention_days" {
+  type        = number
+  default     = 365
+  description = <<-EOT
+    Days to keep Config history and snapshots in S3 (and the bucket's access
+    logs) before they expire. High baseline commonly expects 3+ years:
+    confirm against your SSP. Must be more than 90, when objects move to
+    Standard-IA.
+  EOT
+
+  validation {
+    condition     = var.retention_days > 90
+    error_message = "retention_days must be greater than 90: objects move to Standard-IA at day 90 and S3 rejects an expiration that is not later than the transition."
+  }
+}

@@ -36,6 +36,17 @@ data "aws_iam_policy_document" "workload_perimeter_scp" {
       "ec2:CreateEgressOnlyInternetGateway"
     ]
     resources = ["*"]
+
+    # The network/egress account's deployer must be able to build the central
+    # egress gateway. Omitted when empty, for the same reason as below.
+    dynamic "condition" {
+      for_each = length(var.internet_gateway_exempt_principal_arns) > 0 ? [1] : []
+      content {
+        test     = "ArnNotLike"
+        variable = "aws:PrincipalArn"
+        values   = var.internet_gateway_exempt_principal_arns
+      }
+    }
   }
 
   # Deny Creating Local IAM Users / Access Keys (Forces SSO / IA-2)
@@ -65,10 +76,12 @@ data "aws_iam_policy_document" "workload_perimeter_scp" {
 
     # An empty value list renders "aws:PrincipalArn": [], which AWS may not
     # evaluate as "no exemptions"; with no admins, deny unconditionally.
+    # ArnNotLike, not StringNotEquals, so wildcard ARNs (Identity Center
+    # roles) match.
     dynamic "condition" {
       for_each = length(var.authorized_security_admin_arns) > 0 ? [1] : []
       content {
-        test     = "StringNotEquals"
+        test     = "ArnNotLike"
         variable = "aws:PrincipalArn"
         values   = var.authorized_security_admin_arns
       }

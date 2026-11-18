@@ -38,11 +38,9 @@ data "aws_iam_policy_document" "cloudtrail_kms" {
     actions   = ["kms:GenerateDataKey*", "kms:Decrypt", "kms:DescribeKey"]
     resources = ["*"]
 
-    condition {
-      test     = "StringEquals"
-      variable = "aws:SourceOrgID"
-      values   = [var.organization_id]
-    }
+    # aws:SourceArn is the condition key CloudTrail documents for its KMS
+    # calls. aws:SourceOrgID is not documented for them, and a condition on
+    # a key CloudTrail does not send would stop every log delivery.
     condition {
       test     = "StringEquals"
       variable = "aws:SourceArn"

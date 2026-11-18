@@ -53,18 +53,27 @@ module "org_governance" {
   *no one* is exempt from the Object Lock protection statement by default.
   Populate it with your actual break-glass/security-admin role ARNs
   before attaching this in a real account, or legitimate retention
-  management will be denied along with everything else.
+  management will be denied along with everything else. Wildcard ARNs
+  work (the condition is `ArnNotLike`), so Identity Center roles such as
+  `arn:<partition>:iam::*:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_SecurityAdmin_*`
+  can be listed.
+- `DenyDirectInternetGateways` applies to every target, including the
+  network/egress account if it is under one. Set
+  `internet_gateway_exempt_principal_arns` to that account's network
+  deployer role so it can build the central egress gateway; scope the ARN
+  to the network account ID, not `*`.
 
 <!-- BEGIN_TF_DOCS -->
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
-| authorized_security_admin_arns | ARNs allowed to manage S3 Object Lock settings | `list(string)` | `[]` | no |
+| authorized_security_admin_arns | Principal ARNs allowed to manage S3 Object Lock settings. Wildcards are allowed (matched with ArnNotLike), e.g. arn:aws-us-gov:iam::*:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_SecurityAdmin_*. | `list(string)` | `[]` | no |
 | backup_regions | Regions where the centralized backup plan runs (this does NOT copy backups between regions; use copy_destination_region for that). Defaults assume a standard AWS commercial deployment (us-east-1, us-west-2) — if deploying in AWS GovCloud, override with GovCloud region names (e.g. us-gov-west-1, us-gov-east-1) instead, since the two partitions don't share regions. | `list(string)` | ```[ "us-east-1", "us-west-2" ]``` | no |
 | backup_retention_days | Number of days to retain backups (and cross-region copies). FedRAMP assigns no CP-9 retention value: set this from your own contingency plan. AWS requires deletion at least 90 days after the day-30 cold-storage move. | `number` | `365` | no |
 | backup_vault_name | Name of the AWS Backup vault the policy writes to. The vault must exist in every member account and every region in backup_regions before backups run: deploy modules/account-baseline (create_backup_vault = true, the default) per account and region, or create it another way. | `string` | `"FedRAMPComplianceVault"` | no |
 | copy_destination_region | Optional region to copy every backup to (same vault name, same member account). Empty string disables cross-region copies. The destination vault must exist in that region in every member account. | `string` | `""` | no |
+| internet_gateway_exempt_principal_arns | Principal ARNs exempt from the internet gateway deny, so the network/egress account can build the central egress gateway. Wildcards are allowed (matched with ArnNotLike). Empty (the default) denies everyone in the target OUs and accounts. Scope each ARN to the network account: a wildcard account ID exempts that role name in every target account. | `list(string)` | `[]` | no |
 | target_ou_or_account_ids | List of OUs or Account IDs to attach these policies to | `list(string)` | `[]` | no |
 
 ## Outputs
