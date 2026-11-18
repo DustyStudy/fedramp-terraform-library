@@ -1,7 +1,7 @@
 # State fixture for moved.tftest.hcl: the root-level key that
 # high/account-baseline created up to library 3.0.0.
 terraform {
-  required_version = ">= 1.11"
+  required_version = ">= 1.12"
   required_providers {
     aws = {
       source  = "hashicorp/aws"

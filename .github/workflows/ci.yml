@@ -97,7 +97,7 @@ jobs:
           # tests/python/test_provider_sources.py keeps these in step with
           # the constraints.
           - name: floor
-            terraform: "1.11.0"
+            terraform: "1.12.0"
             aws: "6.0.0"
             archive: "2.4.0"
           # Newest Terraform. Modules get the newest provider in range and

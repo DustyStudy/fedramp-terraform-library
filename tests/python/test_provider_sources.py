@@ -98,9 +98,9 @@ def test_guard_ignores_module_sources_and_comments():
 # One range for the whole library (modules/org-cloudtrail/versions.tf says
 # why). CI's floor leg installs exactly the lower ends, so a constraint
 # that drifts in one directory would advertise a version nothing tests.
-TERRAFORM_CONSTRAINT = ">= 1.11"
+TERRAFORM_CONSTRAINT = ">= 1.12"
 AWS_CONSTRAINT = ">= 6.0, < 7.0"
-CI_FLOOR_PINS = ('terraform: "1.11.0"', 'aws: "6.0.0"', 'archive: "2.4.0"')
+CI_FLOOR_PINS = ('terraform: "1.12.0"', 'aws: "6.0.0"', 'archive: "2.4.0"')
 
 # These two declare their terraform block in main.tf and are still on the
 # old "< 6.71.1" ceiling. Delete this set once they are moved to the range.
