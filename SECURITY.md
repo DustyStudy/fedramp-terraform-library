@@ -35,10 +35,10 @@ once confirmed.
 
 ## Supported scope
 
-The latest major release line is supported: currently **3.x**. Security
+The latest major release line is supported: currently **4.x**. Security
 fixes ship as a new tagged release on that line (a patch release such as
-`v3.0.1` where the fix is not a breaking change) and are recorded in
-`CHANGELOG.md`. Earlier majors (1.x, 2.x) get no fixes; upgrade using the
+`v4.0.1` where the fix is not a breaking change) and are recorded in
+`CHANGELOG.md`. Earlier majors (1.x to 3.x) get no fixes; upgrade using the
 changelog's upgrade notes. `main` is the development branch and can be
 ahead of the latest release, so pin a release tag or a full commit SHA in
 your `source` reference, not `main`.
@@ -51,11 +51,11 @@ attestation recording which commit the tag points to. Check it with the
 GitHub CLI:
 
 ```sh
-gh release verify v3.0.0 --repo DustyStudy/fedramp-terraform-library
+gh release verify v4.0.0 --repo DustyStudy/fedramp-terraform-library
 ```
 
 The command prints the commit the tag resolves to. A Git module source
-(`?ref=v3.0.0`) is not checked by Terraform against anything, so for the
+(`?ref=v4.0.0`) is not checked by Terraform against anything, so for the
 strongest pin use that full commit SHA as the `ref`.
 
 Releases **after v3.0.0** are published by

@@ -12,6 +12,227 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-11-17
+
+Fixes from a production-readiness review of every module, root stack and
+workflow (#75 to #86).
+
+### Upgrade notes
+Read these before you move a deployment from 3.x. Each is detailed below.
+- **Version floor:** every module and root stack now requires Terraform
+  `>= 1.12` and AWS provider `>= 6.0, < 7.0`. AWS provider 5.x and
+  Terraform 1.5 to 1.11 are no longer supported.
+- **Can fail the first apply:** `rds-postgres-hardened` now creates the
+  instance's `postgresql` and `upgrade` log groups. Import the ones RDS
+  already created, or the apply fails with
+  `ResourceAlreadyExistsException`; the module README has the `import`
+  blocks.
+- **Can fail the first apply:** `account-baseline` grants the Auto
+  Scaling service-linked role use of the default EBS key only when that
+  role exists. In an account without `AWSServiceRoleForAutoScaling`,
+  create it first or re-apply after the first Auto Scaling group exists.
+  The deploying role now needs `iam:ListRoles`.
+- **Changes encryption:** `account-baseline` always sets a customer
+  managed key as the default EBS key. Callers that passed no
+  `kms_key_arn` (the Moderate root, the member example) get a new key;
+  existing volumes keep theirs, and roles that create volumes need KMS
+  permissions on the new key. `high/account-baseline` moves its key into
+  the module with a `moved` block: expect a move and an in-place update,
+  not a replacement.
+- **Can block traffic:** `network-perimeter-vpc` moves its subnets from
+  the VPC's main route table to new per-tier tables and adds a database
+  network ACL that admits only the application CIDRs on `database_port`
+  (default 5432). Pass `application_route_table_ids` to
+  `fips-vpc-endpoints` in the same apply, re-add any hand-made routes,
+  and set `database_port` or `enable_database_nacl = false` as needed.
+- **Changes the cluster:** `eks-hardened` defaults `kubernetes_version`
+  to `1.36`, `support_type` to `STANDARD` and `authentication_mode` to
+  `API`. Set `authentication_mode = "API_AND_CONFIG_MAP"` first if you use
+  the `aws-auth` ConfigMap: `API` ignores it and the mode cannot be moved
+  back. Pin the version to upgrade on your own schedule, and set
+  `support_type = "EXTENDED"` for a cluster already in extended support.
+- **Changes who can act:** principals under the `iam-access-control`
+  developer boundary can no longer change bucket policies, bucket ACLs or
+  public access blocks, add Lambda permissions, or call
+  `sqs:SetQueueAttributes` / `sns:SetTopicAttributes`. Removing a
+  permissions boundary is denied unconditionally.
+- **Adds charges:** with `auto_enable_organization_members = "ALL"`,
+  `guardduty-org` now turns the protections on for existing members too.
+  Set `auto_enable_organization_features = "NEW"` to keep the old
+  behaviour.
+- **Changes paging:** `incident-notifications` no longer pages for
+  GuardDuty findings that arrive through Security Hub. If GuardDuty events
+  from aggregated regions or accounts do not reach the same event bus, or
+  `guardduty_severity_threshold` is above 7, set
+  `exclude_guardduty_from_securityhub = false`.
+- **New resources and findings:** the four auditor modules now manage
+  their SNS topic's policy (a policy you attach yourself will be
+  overwritten) and report more. `ssm-patching-hardened` creates an
+  access-log bucket when `access_log_bucket` is unset.
+- **Stricter inputs:** `org-cloudtrail` rejects `s3_log_retention_days`
+  of 365 or less and log retention values CloudWatch does not accept;
+  `org-scp-boundary` rejects empty or cross-partition `approved_regions`;
+  the auditors reject `reserved_concurrent_executions = 0`.
+- **Examples:** `examples/management-account-baseline` now needs
+  `exempt_principal_arns` and `security_account_id`. If you applied the
+  old example, remove its GuardDuty and Security Hub resources from the
+  management account's state before re-applying.
+
+### Added
+- `eks-hardened`: `access_config` (`authentication_mode`, default `API`;
+  `bootstrap_cluster_creator_admin_permissions`) and
+  `cluster_admin_principal_arns`, which creates an access entry with
+  `AmazonEKSClusterAdminPolicy` per ARN. Before, only the principal that
+  created the cluster could administer it. New `support_type` (default
+  `STANDARD`); EKS's own default of `EXTENDED` moved old clusters onto
+  extended-support billing. (#82)
+- `network-perimeter-vpc`: a route table per tier with outputs
+  `public_route_table_id`, `application_route_table_ids` and
+  `database_route_table_id`; opt-in `enable_internet_gateway` and
+  `nat_gateway_mode` (`none`, `single`, `per_az`); a database-tier network
+  ACL (`database_port`, `enable_database_nacl`). The database tier never
+  gets a route to the internet. (#79)
+- `waf-hardened`: `rule_action_overrides` sets named rules inside a
+  managed rule group to count, for example `SizeRestrictions_BODY` for
+  request bodies over 8 KB. (#84)
+- `org-governance`: `internet_gateway_exempt_principal_arns` exempts the
+  network account's deployer from the internet gateway SCP. (#85)
+- `config-conformance-pack`: `retention_days` (default 365) for the Config
+  bucket and its access-log bucket. (#85)
+- `security-hub-org`: optional `delegated_admin_account_id`, which waits
+  for the designation and fails the plan outside the delegated
+  administrator account. (#83)
+- `guardduty-org`: `auto_enable_organization_features`. (#83)
+- `iam-access-control`: `developer_role_path` (default `/developer/`) and
+  `allow_password_change_without_mfa` (default `false`). (#81)
+- `ssm-patching-hardened`: `max_concurrency` and `max_errors`
+  variables. (#84)
+- `incident-notifications`: `exclude_guardduty_from_securityhub` (default
+  `true`). (#84)
+- The four auditor modules (`trust-policy-auditor`, `rds-access-auditor`,
+  `identity-center-access-auditor`, `stale-account-detector`): CloudWatch
+  alarms on Lambda `Errors` and on the dead-letter queue notify the
+  module's SNS topic, and failed runs are no longer retried twice. (#78,
+  #80)
+- `account-baseline`: `ebs_kms_key_deletion_window_in_days`,
+  `ebs_kms_key_grant_autoscaling` and the `ebs_kms_key_arn` output. (#77)
+- Release workflow (`.github/workflows/release.yml`): a `vX.Y.Z` tag push
+  publishes the release with a source tarball, `SHA256SUMS`, an SPDX SBOM
+  and a build provenance attestation. `SECURITY.md` explains how to
+  verify a release. (#76)
+- `.github/CODEOWNERS`; READMEs for the `moderate/` and `high/`
+  `account-baseline`, `org-governance` and `org-scp-boundary` roots; and
+  `proof/README.md`, which marks `proof/` as live-test fixtures that are
+  not for production. (#76)
+- CI runs the module tests at both ends of the supported range (Terraform
+  1.12.0 with AWS provider 6.0.0, and the latest of each), and tflint now
+  loads the AWS ruleset. Root stacks under `examples/`, `moderate/` and
+  `high/` commit a four-platform `.terraform.lock.hcl`. (#86)
+
+### Changed
+- **Breaking:** one version range everywhere: Terraform `>= 1.12`, AWS
+  provider `>= 6.0, < 7.0`. It replaces a mix of 5.0, 5.21 and 6.0 floors
+  and four different ceilings, two of which held roots on provider
+  5.x. (#86)
+- `account-baseline`: creates a rotating customer managed key for default
+  EBS encryption when `kms_key_arn` is empty and always sets it; the
+  Moderate root and the member example used the AWS-managed `aws/ebs` key
+  before. `set_ebs_default_kms_key = true` with no ARN is rejected. (#77)
+- `eks-hardened`: `kubernetes_version` defaults to `1.36` (was `1.35`,
+  which leaves standard support on 2027-03-27). (#82)
+- `network-perimeter-vpc`: `availability_zones` defaults to the region's
+  available zones. The old `us-east-1a`/`us-east-1b` default failed in
+  GovCloud and every other region. A subnet CIDR list longer than the
+  zone list now fails the plan with a clear message. (#79)
+- `org-scp-boundary`: `approved_regions` defaults to the provider's
+  partition (`us-gov-west-1`/`us-gov-east-1` in GovCloud). A `check`
+  warns when the SCP is attached with no `exempt_principal_arns`; it
+  fails a caller's `terraform test` run unless expected. (#83)
+- `guardduty-org`: organization feature auto-enable follows
+  `auto_enable_organization_members`; it was fixed at `NEW`. (#83)
+- `ssm-patching-hardened`: server access logging on the patch-log bucket
+  is always on; with `access_log_bucket` unset the module creates
+  `<environment>-fedramp-ssm-patch-access-logs-<account>`. `max_errors`
+  defaults to `10%` (was `0`, which stopped patching for half the fleet
+  after one unhealthy node). (#84)
+- `iam-access-control`: the developer boundary denies resource-policy and
+  public-access changes, and denies removing a permissions boundary
+  unconditionally. (#81)
+- `examples/management-account-baseline`: designates the security account
+  as GuardDuty and Security Hub delegated administrator and runs both
+  modules there through an `aws.security` provider alias. (#83)
+- Trust-policy and RDS auditor reports: the section "Accounts not
+  scanned" is renamed "Not scanned", because it now also lists
+  regions. (#80)
+
+### Fixed
+- `account-baseline`: the default EBS key's policy grants the Auto Scaling
+  service-linked role use of the key. Without it every Auto Scaling
+  launch (EKS managed node groups, ECS capacity providers) failed with
+  `Client.InternalError`. (#77)
+- `rds-postgres-hardened`: `engine_version` is a variable (default `"16"`,
+  major version only) instead of a hardcoded `"16.3"`. With automatic
+  minor upgrades on, the old pin made every plan propose a downgrade that
+  failed on apply. (#75)
+- `rds-postgres-hardened`: the `postgresql` and `upgrade` log groups are
+  created by the module, encrypted with its key and kept for
+  `log_retention_days` (default 365). RDS created them unencrypted with no
+  retention. (#75)
+- `trust-policy-auditor`, `rds-access-auditor`: a large organization no
+  longer times out with no report. The Lambda stops two minutes before
+  its deadline (timeout raised to 900 seconds) and lists unscanned
+  accounts as "ran out of time". A network error in one account, or any
+  error in one region, is recorded and the remaining findings are
+  kept. (#80)
+- `trust-policy-auditor`: an `sts:ExternalId` condition that admits any
+  caller (`StringLike "*"`, negated, `Null`, `...IfExists`) no longer
+  suppresses the HIGH cross-account finding. (#80)
+- `identity-center-access-auditor`: evaluates every attached AWS-managed
+  policy's default version (`IAMFullAccess`, `PowerUserAccess` and
+  others), not only `AdministratorAccess`, and treats an `Allow` with
+  `NotResource` as `Resource "*"`. The Lambda role gains `iam:GetPolicy`
+  and `iam:GetPolicyVersion` on AWS-managed policies. (#78)
+- `identity-center-access-auditor`: timeout raised from 180 to 900
+  seconds, with adaptive retries and cached lookups; a run that nears the
+  timeout publishes a report marked `INCOMPLETE` instead of none. (#78)
+- `stale-account-detector`: running out of time while listing Identity
+  Center assignments no longer loses the IAM findings. (#78)
+- The four auditor modules: `reserved_concurrent_executions = 0` is
+  rejected (it throttled every run). Use `-1` or at least `1`. (#78, #80)
+- `org-governance`: the Object Lock SCP exemption uses `ArnNotLike`, so
+  wildcard ARNs (Identity Center roles) in
+  `authorized_security_admin_arns` are exempt. (#85)
+- `org-cloudtrail`: `s3_log_retention_days = 365` failed mid-apply; it
+  must now be greater than the 365-day Glacier transition. The trail key
+  policy no longer requires `aws:SourceOrgID`, which AWS does not document
+  for trails; `organization_id` is now unused and will be removed in the
+  next major version. (#85)
+- `config-conformance-pack`: the Config service grant on the key uses
+  `ArnLike`; `StringEquals` compared the trailing `:*` literally and never
+  matched. (#85)
+- `iam-access-control`: the developer boundary allows `iam:PassRole` to
+  Lambda for roles under `developer_role_path`, CloudWatch Logs on
+  `/aws/lambda/*`, and KMS use through DynamoDB, Lambda, S3, SNS and SQS.
+  Before, a bounded developer could not create a Lambda with an execution
+  role or read SSE-KMS data. The require-MFA policy exempts
+  `iam:GetMFADevice`. (#81)
+- `incident-notifications`: the Security Hub rule no longer routes
+  archived findings, or GuardDuty findings the GuardDuty rule already
+  routed. (#84)
+- `kms-cmk-baseline`: roles in `key_user_role_arns` can create grants for
+  AWS services, so they can launch encrypted EBS volumes and RDS
+  instances. (#84)
+- `examples/`: the member example no longer fails with AccessDenied after
+  the management example attaches the boundary SCP. (#83)
+- `SECURITY.md` said there were no tagged releases; it now states the
+  supported release line. `README.md` described a permission-boundary
+  `NotAction` grant that no longer exists. (#76)
+- `high/org-governance` and `moderate/org-governance` now carry the same
+  version range as every other root; they were left on the old ceiling.
+- `proof/member` and `proof/patching` pass
+  `application_route_table_ids` to `fips-vpc-endpoints`; the main route
+  table no longer serves the perimeter subnets.
+
 ## [3.0.0] - 2026-11-13
 
 ### Upgrade notes
