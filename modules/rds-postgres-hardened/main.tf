@@ -2,6 +2,8 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.name
   partition  = data.aws_partition.current.partition
+
+  log_exports = ["postgresql", "upgrade"]
 }
 
 data "aws_caller_identity" "current" {}
@@ -23,6 +25,25 @@ data "aws_iam_policy_document" "rds_kms" {
     actions   = ["kms:*"]
     resources = ["*"]
   }
+
+  # CloudWatch Logs encrypts the exported database log groups as the logs
+  # service, not as the IAM principal that created them.
+  statement {
+    sid    = "AllowCloudWatchLogsEncrypt"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${local.region}.amazonaws.com"]
+    }
+    actions   = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
+    resources = ["*"]
+
+    condition {
+      test     = "ArnLike"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values   = ["arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group:/aws/rds/instance/${var.db_name}/*"]
+    }
+  }
 }
 
 resource "aws_kms_key" "rds" {
@@ -42,7 +63,7 @@ resource "aws_db_subnet_group" "this" {
 # Parameter Group Enforcing TLS and Audit Logging
 resource "aws_db_parameter_group" "this" {
   name        = "${var.db_name}-pg"
-  family      = "postgres16"
+  family      = "postgres${split(".", var.engine_version)[0]}"
   description = "FedRAMP compliant PostgreSQL parameter group enforcing TLS and query logging"
 
   # PostgreSQL 15 and later already default rds.force_ssl to 1. RDS then
@@ -127,11 +148,22 @@ resource "aws_iam_role_policy_attachment" "rds_monitoring" {
   policy_arn = "arn:${local.partition}:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
 
+# Exported database log groups. If these aren't created first, RDS
+# auto-creates them with no encryption and no retention limit
+# (AU-9 / AU-11 / SC-28).
+resource "aws_cloudwatch_log_group" "rds" {
+  for_each = toset(local.log_exports)
+
+  name              = "/aws/rds/instance/${var.db_name}/${each.key}"
+  retention_in_days = var.log_retention_days
+  kms_key_id        = aws_kms_key.rds.arn
+}
+
 # Hardened PostgreSQL RDS Instance
 resource "aws_db_instance" "this" {
   identifier                            = var.db_name
   engine                                = "postgres"
-  engine_version                        = "16.3"
+  engine_version                        = var.engine_version
   instance_class                        = var.instance_class
   allocated_storage                     = var.allocated_storage
   max_allocated_storage                 = var.max_allocated_storage
@@ -157,7 +189,9 @@ resource "aws_db_instance" "this" {
   performance_insights_enabled          = true
   performance_insights_kms_key_id       = aws_kms_key.rds.arn
   performance_insights_retention_period = 731
-  enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
+  enabled_cloudwatch_logs_exports       = local.log_exports
   skip_final_snapshot                   = false
   final_snapshot_identifier             = "${var.db_name}-final-snapshot"
+
+  depends_on = [aws_cloudwatch_log_group.rds]
 }

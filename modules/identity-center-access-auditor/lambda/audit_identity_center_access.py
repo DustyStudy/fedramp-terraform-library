@@ -8,16 +8,18 @@ of their day. A human should review and right-size deliberately.
 Three checks, run across every Identity Center instance in the account
 (normally exactly one - the Organization instance):
 
-1. Over-privileged permission sets: any permission set with the
-   AdministratorAccess AWS-managed policy attached, or an inline policy
+1. Over-privileged permission sets: any permission set whose inline
+   policy, or the default version of an attached AWS-managed policy
+   (AdministratorAccess, IAMFullAccess, PowerUserAccess, ...), has a
    statement granting a full wildcard action ("*") or a service-wide
    wildcard (e.g. "iam:*") on a sensitive service combined with
-   Resource "*". Reported together with how many accounts it's
+   Resource "*". An Allow with NotResource counts as Resource "*".
+   Reported together with how many accounts it's
    provisioned to and whether it's assigned directly to a user (see
    check 2) - a permission set like this assigned org-wide is a very
    different risk than one assigned to a single break-glass group in
    one account.
-   Also flagged: an inline statement that allows a named privilege
+   Also flagged: a statement that allows a named privilege
    escalation action (iam:PutRolePolicy, iam:AttachRolePolicy,
    iam:DeleteRolePermissionsBoundary, iam:PassRole,
    sso:CreateAccountAssignment and similar) on a wildcard resource. A
@@ -36,7 +38,7 @@ Three checks, run across every Identity Center instance in the account
    as an informational addendum alongside real findings, never as the
    sole reason to notify.
 
-Only AWS-managed policy content is evaluated for check 1. Customer-managed
+Only inline and AWS-managed policy content is evaluated for check 1. Customer-managed
 policies attached to a permission set are counted and named in the report,
 but their content isn't fetched - the underlying IAM policy for a
 customer-managed reference lives per-account, not centrally, so evaluating
@@ -60,12 +62,17 @@ Env vars:
                                  informational addendum when there's
                                  already something to report (default
                                  "true")
+
+A run that nears the Lambda timeout stops walking permission sets and
+publishes what it has, marked INCOMPLETE, rather than dying with no report.
 """
 
 import fnmatch
+import functools
 import json
 import logging
 import os
+import time
 
 import boto3
 from botocore.config import Config
@@ -78,9 +85,15 @@ logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 # AWS_USE_FIPS_ENDPOINT set, the SDK builds sso-fips.<region> and
 # identitystore-fips.<region>, which do not exist in the commercial
 # partition. In GovCloud the standard endpoint is the FIPS one.
-_NO_FIPS_VARIANT = Config(use_fips_endpoint=False)
+#
+# One ListAccountAssignments per permission set per account throttles in a
+# large organization; adaptive mode backs off client-side instead of
+# failing the run after the default four attempts.
+_RETRIES = {"mode": "adaptive", "max_attempts": 10}
+_NO_FIPS_VARIANT = Config(use_fips_endpoint=False, retries=_RETRIES)
 sso_admin = boto3.client("sso-admin", config=_NO_FIPS_VARIANT)
 identitystore = boto3.client("identitystore", config=_NO_FIPS_VARIANT)
+iam = boto3.client("iam", config=Config(retries=_RETRIES))
 organizations = boto3.client("organizations")
 sns = boto3.client("sns")
 
@@ -177,6 +190,9 @@ def _statement_is_risky(statement):
 
     actions = [a.lower() for a in _as_list(statement.get("Action"))]
     resources = _as_list(statement.get("Resource"))
+    # Allow + NotResource reaches every resource except the listed ones.
+    if statement.get("NotResource") is not None:
+        resources = ["*"]
     has_wildcard_resource = "*" in resources
 
     if "*" in actions:
@@ -236,8 +252,20 @@ def _inline_policy_findings(instance_arn, permission_set_arn):
     return findings
 
 
+@functools.cache
+def _aws_managed_policy_reasons(policy_arn):
+    """Why the default version of an AWS-managed policy is risky, cached
+    because the same few policies sit on many permission sets. The ARN
+    comes from Identity Center, so it already carries the partition. An
+    API error propagates: an unread policy must not look like a safe one."""
+    version = iam.get_policy(PolicyArn=policy_arn)["Policy"]["DefaultVersionId"]
+    document = iam.get_policy_version(PolicyArn=policy_arn, VersionId=version)["PolicyVersion"]["Document"]
+    reasons = (_statement_is_risky(s) for s in _as_list(document.get("Statement")) if isinstance(s, dict))
+    return tuple(dict.fromkeys(r for r in reasons if r))
+
+
 def _managed_policy_findings(instance_arn, permission_set_arn):
-    has_admin = False
+    findings = []
     other_managed = []
     for policy in _paginate(
         sso_admin,
@@ -247,11 +275,14 @@ def _managed_policy_findings(instance_arn, permission_set_arn):
         PermissionSetArn=permission_set_arn,
     ):
         arn = policy.get("Arn", "")
+        name = policy.get("Name", arn)
         if arn.endswith(ADMIN_POLICY_ARN_SUFFIX):
-            has_admin = True
+            findings.append("AdministratorAccess attached")
+        elif reasons := _aws_managed_policy_reasons(arn):
+            findings += [f"AWS-managed policy {name}: {reason}" for reason in reasons]
         else:
-            other_managed.append(policy.get("Name", arn))
-    return has_admin, other_managed
+            other_managed.append(name)
+    return findings, other_managed
 
 
 def _customer_managed_policy_count(instance_arn, permission_set_arn):
@@ -279,6 +310,7 @@ def _provisioned_accounts(instance_arn, permission_set_arn):
     )
 
 
+@functools.cache  # one user is often assigned in many accounts
 def _resolve_principal_name(identity_store_id, principal_id, principal_type):
     try:
         if principal_type == "USER":
@@ -307,12 +339,17 @@ def _account_assignments(instance_arn, account_id, permission_set_arn):
     )
 
 
-def _audit_instance(instance_arn, identity_store_id, account_names):
+def _audit_instance(instance_arn, identity_store_id, account_names, deadline):
     over_privileged = []
     direct_user_assignments = []
     unused_permission_sets = []
+    not_finished = 0  # permission sets not reached, or whose assignments were only partly walked
 
-    for ps_arn in _paginate(sso_admin, "list_permission_sets", "PermissionSets", InstanceArn=instance_arn):
+    ps_arns = list(_paginate(sso_admin, "list_permission_sets", "PermissionSets", InstanceArn=instance_arn))
+    for index, ps_arn in enumerate(ps_arns):
+        if time.monotonic() >= deadline:
+            not_finished += len(ps_arns) - index
+            break
         try:
             ps_name = sso_admin.describe_permission_set(InstanceArn=instance_arn, PermissionSetArn=ps_arn)[
                 "PermissionSet"
@@ -327,12 +364,15 @@ def _audit_instance(instance_arn, identity_store_id, account_names):
             unused_permission_sets.append(ps_name)
             continue  # nothing assigned, so no assignments to walk below
 
-        has_admin, other_managed = _managed_policy_findings(instance_arn, ps_arn)
+        managed_findings, other_managed = _managed_policy_findings(instance_arn, ps_arn)
         inline_findings = _inline_policy_findings(instance_arn, ps_arn)
         customer_managed_count = _customer_managed_policy_count(instance_arn, ps_arn)
 
         has_direct_user = False
         for account_id in provisioned_accounts:
+            if time.monotonic() >= deadline:
+                not_finished += 1
+                break
             for assignment in _account_assignments(instance_arn, account_id, ps_arn):
                 principal_type = assignment.get("PrincipalType")
                 principal_id = assignment.get("PrincipalId")
@@ -348,11 +388,8 @@ def _audit_instance(instance_arn, identity_store_id, account_names):
                             }
                         )
 
-        if has_admin or inline_findings:
-            reasons = []
-            if has_admin:
-                reasons.append("AdministratorAccess attached")
-            reasons.extend(inline_findings)
+        reasons = managed_findings + inline_findings
+        if reasons:
             over_privileged.append(
                 {
                     "permission_set": ps_name,
@@ -365,33 +402,44 @@ def _audit_instance(instance_arn, identity_store_id, account_names):
                 }
             )
 
-    return over_privileged, direct_user_assignments, unused_permission_sets
+    return over_privileged, direct_user_assignments, unused_permission_sets, not_finished
 
 
 def lambda_handler(event, context):
     logger.info("Starting Identity Center access audit")
+    # Leave a minute to build and publish the report.
+    remaining = context.get_remaining_time_in_millis() / 1000 if context else 900
+    deadline = time.monotonic() + max(remaining - 60, 0)
 
     account_names = _account_name_map()
     all_over_privileged = []
     all_direct_user_assignments = []
     all_unused = []
+    not_finished = 0
 
     for instance in _paginate(sso_admin, "list_instances", "Instances"):
         instance_arn = instance["InstanceArn"]
         identity_store_id = instance["IdentityStoreId"]
         logger.info("Auditing Identity Center instance %s", instance_arn)
 
-        over_privileged, direct_user_assignments, unused = _audit_instance(
-            instance_arn, identity_store_id, account_names
+        over_privileged, direct_user_assignments, unused, skipped = _audit_instance(
+            instance_arn, identity_store_id, account_names, deadline
         )
+        not_finished += skipped
         all_over_privileged.extend(over_privileged)
         all_direct_user_assignments.extend(direct_user_assignments)
         all_unused.extend(unused)
 
     has_findings = bool(all_over_privileged or all_direct_user_assignments)
 
-    if has_findings:
+    if has_findings or not_finished:
         lines = []
+        if not_finished:
+            logger.warning("Ran out of time: %d permission set(s) not fully audited", not_finished)
+            lines.append(
+                f"\nINCOMPLETE: ran out of time with {not_finished} permission set(s) not fully audited. "
+                "The findings below are partial; a clean result here is not a clean audit."
+            )
 
         if all_over_privileged:
             lines.append(f"\n=== Over-privileged permission sets ({len(all_over_privileged)}) ===")
@@ -423,7 +471,8 @@ def lambda_handler(event, context):
                 lines.append(f"  - {name}")
 
         _notify(
-            subject=(
+            subject=("INCOMPLETE " if not_finished else "")
+            + (
                 f"Identity Center audit: {len(all_over_privileged)} over-privileged permission set(s), "
                 f"{len(all_direct_user_assignments)} direct-to-user assignment(s)"
             ),
@@ -442,6 +491,7 @@ def lambda_handler(event, context):
                 "over_privileged_permission_set_count": len(all_over_privileged),
                 "direct_user_assignment_count": len(all_direct_user_assignments),
                 "unused_permission_set_count": len(all_unused),
+                "permission_sets_not_finished": not_finished,
             }
         ),
     }

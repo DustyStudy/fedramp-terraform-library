@@ -24,6 +24,14 @@ override_data {
   }
 }
 
+# No Auto Scaling service-linked role unless a run says otherwise.
+override_data {
+  target = data.aws_iam_roles.autoscaling
+  values = {
+    arns = []
+  }
+}
+
 run "account_level_guardrails" {
   command = plan
 
@@ -142,4 +150,125 @@ run "backup_role_can_be_skipped" {
     condition     = length(aws_iam_role.backup) == 0 && length(aws_iam_role_policy_attachment.backup) == 0
     error_message = "create_backup_service_role = false must not create the role, for a second region or an account that has it."
   }
+}
+
+run "ebs_default_key_is_a_rotating_cmk" {
+  command = plan
+
+  assert {
+    condition     = length(aws_kms_key.ebs) == 1 && aws_kms_key.ebs[0].enable_key_rotation && aws_kms_key.ebs[0].deletion_window_in_days == 30
+    error_message = "Without a supplied key, default EBS encryption must get its own rotating CMK, not aws/ebs (SC-12, SC-28)."
+  }
+
+  assert {
+    condition     = [for s in jsondecode(aws_kms_key.ebs[0].policy).Statement : s.Sid] == ["AllowRootAccountAdmin"]
+    error_message = "With no Auto Scaling service-linked role in the account the key policy must not name it; KMS rejects a missing principal."
+  }
+}
+
+run "ebs_key_grants_the_autoscaling_role_when_it_exists" {
+  command = plan
+
+  override_data {
+    target = data.aws_iam_roles.autoscaling
+    values = {
+      arns = ["arn:aws:iam::123456789012:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling"]
+    }
+  }
+
+  assert {
+    condition = one([
+      for s in jsondecode(aws_kms_key.ebs[0].policy).Statement : s
+      if s.Sid == "AllowAutoScalingUseOfTheKey"
+      ]) == {
+      Sid       = "AllowAutoScalingUseOfTheKey"
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::123456789012:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling" }
+      Action    = ["kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Encrypt", "kms:DescribeKey", "kms:Decrypt"]
+      Resource  = "*"
+    }
+    error_message = "The Auto Scaling service-linked role needs the AWS-documented use permissions on the EBS key."
+  }
+
+  assert {
+    condition = one([
+      for s in jsondecode(aws_kms_key.ebs[0].policy).Statement : s
+      if s.Sid == "AllowAutoScalingAttachmentOfPersistentResources"
+      ]) == {
+      Sid       = "AllowAutoScalingAttachmentOfPersistentResources"
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::123456789012:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling" }
+      Action    = "kms:CreateGrant"
+      Resource  = "*"
+      Condition = { Bool = { "kms:GrantIsForAWSResource" = "true" } }
+    }
+    error_message = "kms:CreateGrant for Auto Scaling must be limited to grants for AWS resources."
+  }
+}
+
+run "ebs_key_autoscaling_grant_can_be_turned_off" {
+  command = plan
+
+  variables {
+    ebs_kms_key_grant_autoscaling = false
+  }
+
+  override_data {
+    target = data.aws_iam_roles.autoscaling
+    values = {
+      arns = ["arn:aws:iam::123456789012:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling"]
+    }
+  }
+
+  assert {
+    condition     = [for s in jsondecode(aws_kms_key.ebs[0].policy).Statement : s.Sid] == ["AllowRootAccountAdmin"]
+    error_message = "ebs_kms_key_grant_autoscaling = false must leave the Auto Scaling role out of the key policy."
+  }
+}
+
+run "ebs_default_key_uses_supplied_key" {
+  command = plan
+
+  variables {
+    kms_key_arn = "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+  }
+
+  assert {
+    condition     = length(aws_kms_key.ebs) == 0 && aws_ebs_default_kms_key.this.key_arn == "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    error_message = "A supplied kms_key_arn must become the default EBS key instead of a module-created CMK."
+  }
+}
+
+run "ebs_key_can_be_declared_as_supplied" {
+  command = plan
+
+  variables {
+    set_ebs_default_kms_key = true
+    kms_key_arn             = "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+  }
+
+  assert {
+    condition     = length(aws_kms_key.ebs) == 0
+    error_message = "set_ebs_default_kms_key = true must not create a CMK."
+  }
+}
+
+run "ebs_default_key_without_any_key_is_rejected" {
+  command = plan
+
+  variables {
+    set_ebs_default_kms_key = true
+  }
+
+  expect_failures = [aws_ebs_default_kms_key.this]
+}
+
+run "ebs_key_deletion_window_is_bounded" {
+  command = plan
+
+  variables {
+    ebs_kms_key_deletion_window_in_days = 5
+  }
+
+  expect_failures = [var.ebs_kms_key_deletion_window_in_days]
 }
