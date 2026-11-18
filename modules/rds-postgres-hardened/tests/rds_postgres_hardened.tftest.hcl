@@ -156,3 +156,66 @@ run "instance_uses_hardened_companions" {
     error_message = "Storage, the master secret and Performance Insights must all use the module's CMK (SC-28)."
   }
 }
+
+run "engine_version_defaults_to_major_only" {
+  command = plan
+
+  assert {
+    condition     = aws_db_instance.this.engine_version == "16" && aws_db_parameter_group.this.family == "postgres16"
+    error_message = "The default engine version must be the major version only, so automatic minor upgrades are not drift."
+  }
+}
+
+run "engine_version_override_sets_family" {
+  command = plan
+
+  variables {
+    engine_version = "17.7"
+  }
+
+  assert {
+    condition     = aws_db_instance.this.engine_version == "17.7" && aws_db_parameter_group.this.family == "postgres17"
+    error_message = "An overridden engine version must reach the instance and set the parameter group family."
+  }
+}
+
+run "engine_version_rejects_bad_format" {
+  command = plan
+
+  variables {
+    engine_version = "16.x"
+  }
+
+  expect_failures = [var.engine_version]
+}
+
+run "log_retention_rejects_unsupported_value" {
+  command = plan
+
+  variables {
+    log_retention_days = 100
+  }
+
+  expect_failures = [var.log_retention_days]
+}
+
+run "exported_logs_are_encrypted_and_retained" {
+  command = plan
+
+  assert {
+    condition     = toset([for g in aws_cloudwatch_log_group.rds : g.name]) == toset(["/aws/rds/instance/fedramp-postgres-db/postgresql", "/aws/rds/instance/fedramp-postgres-db/upgrade"])
+    error_message = "The module must create a log group for every exported log type, under the name RDS writes to."
+  }
+
+  assert {
+    condition     = alltrue([for g in aws_cloudwatch_log_group.rds : g.kms_key_id == "arn:aws-us-gov:kms:us-gov-west-1:123456789012:key/rds" && g.retention_in_days == 365])
+    error_message = "Exported database logs must use the module's CMK and a retention limit (AU-9, AU-11, SC-28)."
+  }
+
+  assert {
+    condition = one([
+      for s in jsondecode(data.aws_iam_policy_document.rds_kms.json).Statement : s if s.Sid == "AllowCloudWatchLogsEncrypt"
+    ]).Condition.ArnLike["kms:EncryptionContext:aws:logs:arn"] == "arn:aws-us-gov:logs:us-gov-west-1:123456789012:log-group:/aws/rds/instance/fedramp-postgres-db/*"
+    error_message = "The CMK policy must let CloudWatch Logs use the key for this database's log groups only."
+  }
+}
