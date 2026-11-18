@@ -1,37 +1,14 @@
-locals {
-  account_id = data.aws_caller_identity.current.account_id
-  partition  = data.aws_partition.current.partition
-}
-
-# Customer-Managed Key dedicated to default EBS encryption for High baseline
-data "aws_iam_policy_document" "ebs_kms" {
-  #checkov:skip=CKV_AWS_109:KMS administrative operations require root account wildcard
-  #checkov:skip=CKV_AWS_111:KMS key management requires write access for key admins
-  #checkov:skip=CKV_AWS_356:KMS key policies require wildcard resource within the key definition itself
-  statement {
-    sid    = "AllowRootAccountAdmin"
-    effect = "Allow"
-    principals {
-      type        = "AWS"
-      identifiers = ["arn:${local.partition}:iam::${local.account_id}:root"]
-    }
-    actions   = ["kms:*"]
-    resources = ["*"]
-  }
-}
-
-resource "aws_kms_key" "ebs" {
-  description             = "Dedicated KMS CMK for FedRAMP High EBS default encryption"
-  deletion_window_in_days = 30
-  enable_key_rotation     = true
-  policy                  = data.aws_iam_policy_document.ebs_kms.json
+# The EBS default-encryption CMK now lives in modules/account-baseline. This
+# keeps the key of a deployment made with library <= 3.0.0 instead of
+# destroying it and creating another.
+moved {
+  from = aws_kms_key.ebs
+  to   = module.account_baseline.aws_kms_key.ebs[0]
 }
 
 module "account_baseline" {
   source = "../../modules/account-baseline"
 
-  kms_key_arn               = aws_kms_key.ebs.arn
-  set_ebs_default_kms_key   = true
   minimum_password_length   = 16
   max_password_age          = 0 # NIST SP 800-63B-4: no periodic expiry
   password_reuse_prevention = 24
