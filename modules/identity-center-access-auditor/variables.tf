@@ -81,7 +81,7 @@ variable "reserved_concurrent_executions" {
   default     = 2
 
   validation {
-    condition     = var.reserved_concurrent_executions >= -1
-    error_message = "reserved_concurrent_executions must be -1 (unreserved) or a non-negative number."
+    condition     = var.reserved_concurrent_executions == -1 || var.reserved_concurrent_executions >= 1
+    error_message = "reserved_concurrent_executions must be -1 (unreserved) or at least 1. 0 throttles every run."
   }
 }

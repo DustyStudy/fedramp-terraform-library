@@ -1,7 +1,7 @@
 # account-baseline
 
 Account-wide baseline hardening: S3 account public access block, EBS
-default encryption (optionally with a customer-managed KMS key), an IAM
+default encryption with a customer-managed KMS key, an IAM
 password policy with NIST SP 800-63B-4 defaults, the AWS Backup vault that
 `org-governance`'s backup policy writes to, and optional adoption/lockdown of
 the default VPC and its default security group. Deploy in every member
@@ -28,10 +28,28 @@ module "account_baseline" {
 
 ## Notes
 
-- `kms_key_arn` is optional. Leave it unset and EBS default encryption
-  still enables with the AWS-managed key; pass a CMK ARN (see
-  `../../high/account-baseline` for an example that provisions one) if
-  your SSP requires customer-managed keys for encryption at rest.
+- **Default EBS key.** The account's default EBS encryption key is always a
+  customer-managed key, never the AWS-managed `aws/ebs` key. With
+  `kms_key_arn` unset the module creates a dedicated CMK (rotation on,
+  `ebs_kms_key_deletion_window_in_days` default 30); pass `kms_key_arn` to
+  use your own, plus `set_ebs_default_kms_key = true` if that key is created
+  in the same plan. Default EBS encryption is per region, and so is the key:
+  each regional deployment of this module gets its own.
+- **Auto Scaling and the EBS key.** The Auto Scaling service-linked role has
+  no KMS permissions of its own, so the key policy must grant it or every
+  Auto Scaling launch (EKS managed node groups, ECS capacity providers)
+  fails with `Client.InternalError`. KMS rejects a key policy that names a
+  role that does not exist, and AWS creates this role only with the
+  account's first Auto Scaling group, so the module looks the role up and
+  adds the [AWS-documented statements](https://docs.aws.amazon.com/autoscaling/ec2/userguide/key-policy-requirements-EBS-encryption.html)
+  when it finds it (`ebs_kms_key_grant_autoscaling`, default `true`). In a
+  new account, create the role before applying
+  (`aws iam create-service-linked-role --aws-service-name autoscaling.amazonaws.com`)
+  or re-apply this module after the first Auto Scaling group exists;
+  otherwise the first launches fail until you do. A key you bring through
+  `kms_key_arn` needs the same statements in its own policy. Other callers
+  (IAM roles, users) reach the key through their IAM policies, which the
+  key policy's account-root statement enables.
 - `manage_default_vpc` adopts the account's default VPC via
   `aws_default_vpc` specifically so this module can strip all rules from
   its default security group. If your account has already imported or
@@ -71,7 +89,9 @@ module "account_baseline" {
 | create_backup_service_role | Create service-role/AWSBackupDefaultServiceRole, the role modules/org-governance's backup policy runs jobs as. AWS creates it only the first time someone opens the Backup console, so new accounts lack it and every scheduled job fails. The role is global: when you deploy this module in more than one region, set this true in exactly one of them. Set false if the role already exists in the account. | `bool` | `true` | no |
 | create_backup_vault | Create the AWS Backup vault that modules/org-governance's backup policy targets. Deploy once per region listed in that policy's backup_regions. | `bool` | `true` | no |
 | create_backup_vault_kms_key | Create the dedicated backup vault CMK. Leave null to decide from backup_vault_kms_key_arn; set false when that key is created in the same plan, where its ARN is not known yet. | `bool` | `null` | no |
-| kms_key_arn | Optional custom KMS Key ARN to use for default EBS encryption. | `string` | `""` | no |
+| ebs_kms_key_deletion_window_in_days | Waiting period (7-30 days) before the module-created EBS CMK is deleted after it is destroyed. | `number` | `30` | no |
+| ebs_kms_key_grant_autoscaling | Grant the Auto Scaling service-linked role (AWSServiceRoleForAutoScaling) use of the module-created EBS CMK when that role exists in the account. Without the grant, Auto Scaling launches (EKS managed node groups, ECS capacity providers) fail with Client.InternalError. AWS creates the role with the account's first Auto Scaling group; in an account that does not have it yet, create it first or re-apply this module afterwards (see README). Needs iam:ListRoles. Ignored when you supply kms_key_arn. | `bool` | `true` | no |
+| kms_key_arn | Existing CMK ARN to use as the default EBS encryption key. Empty creates a dedicated CMK with rotation enabled. A key you bring needs its own key policy statements for the Auto Scaling service-linked role (see README). | `string` | `""` | no |
 | manage_default_vpc | Whether to adopt and restrict default VPC security groups. | `bool` | `true` | no |
 | max_password_age | Days before a password must be changed; 0 disables expiry. NIST SP 800-63B-4 says verifiers SHALL NOT require periodic changes, so 0 is the default. Set a value only if your own policy requires rotation. | `number` | `0` | no |
 | minimum_password_length | Minimum password length. NIST SP 800-63B-4: at least 15 for single-factor passwords; 8 only when always used with MFA. FedRAMP assigns no separate value. | `number` | `15` | no |
@@ -80,7 +100,7 @@ module "account_baseline" {
 | require_numbers | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
 | require_symbols | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
 | require_uppercase_characters | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
-| set_ebs_default_kms_key | Set kms_key_arn as the default EBS key. Leave null to decide from kms_key_arn; set true when the key is created in the same plan, where its ARN is not known yet. | `bool` | `null` | no |
+| set_ebs_default_kms_key | Leave null to decide from kms_key_arn. Set true when kms_key_arn is a key created in the same plan, where its ARN is not known yet; the module then creates no key of its own. | `bool` | `null` | no |
 
 ## Outputs
 
@@ -89,6 +109,7 @@ module "account_baseline" {
 | backup_service_role_arn | ARN of AWSBackupDefaultServiceRole (null when create_backup_service_role = false) |
 | backup_vault_arn | ARN of the AWS Backup vault (null when create_backup_vault = false) |
 | ebs_encryption_enabled | Whether EBS default encryption is enabled |
+| ebs_kms_key_arn | ARN of the CMK set as the default EBS encryption key (the module's own, or kms_key_arn) |
 | iam_password_policy_expire_passwords | Indicates whether passwords expire according to the IAM password policy |
 | s3_public_access_block_id | ID of the account-level S3 public access block |
 <!-- END_TF_DOCS -->

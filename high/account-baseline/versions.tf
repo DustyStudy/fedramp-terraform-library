@@ -11,6 +11,3 @@ terraform {
 provider "aws" {
   use_fips_endpoint = var.use_fips_endpoint
 }
-
-data "aws_caller_identity" "current" {}
-data "aws_partition" "current" {}
