@@ -26,3 +26,19 @@ variable "enable_sqli_rule_set" {
   default     = true
   description = "Add the AWS managed SQL injection rule group (AWSManagedRulesSQLiRuleSet, 200 WCU), which blocks requests that look like SQL injection (SI-10). Test it against your traffic before production; set false if your app has no SQL backend or you filter SQLi elsewhere."
 }
+
+variable "rule_action_overrides" {
+  type        = map(list(string))
+  default     = {}
+  description = "Rules inside a managed rule group to switch from block to count, keyed by rule group name, e.g. { AWSManagedRulesCommonRuleSet = [\"SizeRestrictions_BODY\"] } for apps that take request bodies over 8 KB (uploads, large JSON). A counted rule still shows in metrics and logs but no longer blocks, so record each override as a deviation and cover the gap another way (SI-10)."
+
+  validation {
+    condition = alltrue([for g in keys(var.rule_action_overrides) : contains([
+      "AWSManagedRulesCommonRuleSet",
+      "AWSManagedRulesKnownBadInputsRuleSet",
+      "AWSManagedRulesSQLiRuleSet",
+      "AWSManagedRulesAmazonIpReputationList",
+    ], g)])
+    error_message = "rule_action_overrides keys must be rule groups this module deploys: AWSManagedRulesCommonRuleSet, AWSManagedRulesKnownBadInputsRuleSet, AWSManagedRulesSQLiRuleSet, AWSManagedRulesAmazonIpReputationList."
+  }
+}
