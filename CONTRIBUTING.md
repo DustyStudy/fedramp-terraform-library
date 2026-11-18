@@ -34,6 +34,35 @@ trustworthy reference — please keep a few things in mind.
 - **Note any assumptions** (e.g. "assumes AWS Organizations is already set
   up", "assumes a delegated administrator account for security services").
 
+## Running the checks locally
+
+There is no pre-commit configuration; CI is the gate. To catch failures
+before pushing, run the same commands CI does, from the repository root:
+
+```sh
+terraform fmt -check -recursive
+tflint --init && tflint --recursive --minimum-failure-severity=warning
+for d in modules/*/; do terraform-docs "$d"; done   # then commit any README changes
+pip install --require-hashes -r requirements-dev.txt
+ruff check modules tests
+python -m pytest tests/python -q
+```
+
+and in each module you changed:
+
+```sh
+terraform init -backend=false
+terraform validate
+terraform test
+```
+
+## Review
+
+`.github/CODEOWNERS` names the reviewer for every path. Changes to
+`modules/org-scp-boundary`, `modules/org-governance`,
+`modules/iam-access-control` and `.github/` get the closest look: a
+mistake there reaches every account or the release pipeline.
+
 ## PR checklist
 
 - [ ] `terraform fmt -check` passes
@@ -47,6 +76,23 @@ trustworthy reference — please keep a few things in mind.
 - [ ] Any new provider is allowlisted in `tests/python/test_provider_sources.py`
 - [ ] Module README updated if this changes scope
 - [ ] Planned/applied successfully in a test account
+
+## Releasing (maintainers)
+
+1. Merge a PR that moves the `[Unreleased]` entries in `CHANGELOG.md`
+   under a new `## [X.Y.Z] - YYYY-MM-DD` heading and updates the
+   `?ref=` example in the root `README.md`.
+2. Tag that commit on `main` and push the tag:
+   `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`.
+3. `.github/workflows/release.yml` builds the source tarball,
+   `SHA256SUMS` and SBOM, attests them, and publishes the GitHub release
+   with that version's changelog section as the notes.
+
+Do not create the release by hand (`gh release create` or the web UI).
+Releases here are immutable, so a release published without assets
+cannot have them added, and the workflow fails if the release already
+exists. Tags cannot be moved or deleted either: if a release is wrong,
+fix forward with a new patch version.
 
 ## Handling a Checkov finding you disagree with
 
