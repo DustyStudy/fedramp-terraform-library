@@ -42,6 +42,25 @@ resource "aws_sns_topic" "audit" {
   kms_master_key_id = aws_kms_key.log_encryption.arn
 }
 
+resource "aws_sns_topic_policy" "audit" {
+  arn = aws_sns_topic.audit.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "AllowCloudWatchAlarms"
+      Effect    = "Allow"
+      Principal = { Service = "cloudwatch.amazonaws.com" }
+      Action    = "sns:Publish"
+      Resource  = aws_sns_topic.audit.arn
+      # Only alarms in this account may publish (confused-deputy guard).
+      Condition = {
+        StringEquals = { "aws:SourceAccount" = local.account }
+      }
+    }]
+  })
+}
+
 resource "aws_sns_topic_subscription" "email" {
   count     = var.notification_email != "" ? 1 : 0
   topic_arn = aws_sns_topic.audit.arn
@@ -90,6 +109,17 @@ resource "aws_kms_key" "log_encryption" {
         Resource  = "*"
         Condition = {
           StringEquals = { "kms:CallerAccount" = local.account }
+        }
+      },
+      {
+        # The failure alarms publish to the encrypted topic.
+        Sid       = "AllowCloudWatchAlarmsUseOfKey"
+        Effect    = "Allow"
+        Principal = { Service = "cloudwatch.amazonaws.com" }
+        Action    = ["kms:Decrypt", "kms:GenerateDataKey*"]
+        Resource  = "*"
+        Condition = {
+          StringEquals = { "aws:SourceAccount" = local.account }
         }
       },
     ]
@@ -189,7 +219,7 @@ resource "aws_lambda_function" "audit" {
   role                           = aws_iam_role.lambda_exec.arn
   handler                        = "audit_rds_access.lambda_handler"
   runtime                        = "python3.12"
-  timeout                        = 600
+  timeout                        = 900
   memory_size                    = 256
   reserved_concurrent_executions = var.reserved_concurrent_executions
   filename                       = data.archive_file.lambda_zip.output_path
@@ -213,6 +243,43 @@ resource "aws_lambda_function" "audit" {
       AWS_USE_FIPS_ENDPOINT = tostring(var.use_fips_endpoint)
     }
   }
+}
+
+# Lambda retries a failed async invocation twice by default, which would
+# re-run all of it. A failed run goes straight to the DLQ and the alarms.
+resource "aws_lambda_function_event_invoke_config" "audit" {
+  function_name          = aws_lambda_function.audit.function_name
+  maximum_retry_attempts = 0
+}
+
+resource "aws_cloudwatch_metric_alarm" "errors" {
+  alarm_name          = "${var.name_prefix}-errors"
+  alarm_description   = "The ${var.name_prefix} audit Lambda failed or timed out, so its report may not have been sent."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Errors"
+  dimensions          = { FunctionName = aws_lambda_function.audit.function_name }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.audit.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "dlq" {
+  alarm_name          = "${var.name_prefix}-dlq"
+  alarm_description   = "The ${var.name_prefix} dead-letter queue holds a failed audit run. Stays in alarm until the queue is emptied."
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  dimensions          = { QueueName = aws_sqs_queue.dlq.name }
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.audit.arn]
 }
 
 resource "aws_cloudwatch_log_group" "audit" {
