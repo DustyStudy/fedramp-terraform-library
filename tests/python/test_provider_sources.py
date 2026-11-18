@@ -102,13 +102,8 @@ TERRAFORM_CONSTRAINT = ">= 1.12"
 AWS_CONSTRAINT = ">= 6.0, < 7.0"
 CI_FLOOR_PINS = ('terraform: "1.12.0"', 'aws: "6.0.0"', 'archive: "2.4.0"')
 
-# These two declare their terraform block in main.tf and are still on the
-# old "< 6.71.1" ceiling. Delete this set once they are moved to the range.
-_NOT_YET_UNIFORM = {"high/org-governance/main.tf", "moderate/org-governance/main.tf"}
-
 CONSTRAINED = sorted(
     {p for p, _ in DECLARATIONS if p.split("/")[0] in ("modules", "moderate", "high", "examples")}
-    - _NOT_YET_UNIFORM
 )
 
 

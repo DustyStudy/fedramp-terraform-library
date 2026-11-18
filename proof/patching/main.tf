@@ -68,7 +68,7 @@ module "fips_vpc_endpoints" {
   vpc_id          = module.network_perimeter_vpc.vpc_id
   vpc_cidr        = data.aws_vpc.perimeter.cidr_block
   subnet_ids      = module.network_perimeter_vpc.application_subnet_ids
-  route_table_ids = [data.aws_vpc.perimeter.main_route_table_id]
+  route_table_ids = module.network_perimeter_vpc.application_route_table_ids
 }
 
 # --- Modules under test -------------------------------------------------------
