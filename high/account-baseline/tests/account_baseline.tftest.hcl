@@ -11,20 +11,6 @@ provider "aws" {
 }
 
 override_data {
-  target = data.aws_caller_identity.current
-  values = {
-    account_id = "123456789012"
-  }
-}
-
-override_data {
-  target = data.aws_partition.current
-  values = {
-    partition = "aws-us-gov"
-  }
-}
-
-override_data {
   target = module.account_baseline.data.aws_caller_identity.current
   values = {
     account_id = "123456789012"

@@ -11,6 +11,7 @@ terraform {
 }
 
 resource "aws_kms_key" "ebs" {
+  #checkov:skip=CKV2_AWS_64:State fixture for a mocked test, never deployed; the real key and its policy are in modules/account-baseline
   enable_key_rotation = true
 }
 
