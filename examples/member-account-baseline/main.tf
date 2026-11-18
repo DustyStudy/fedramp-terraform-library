@@ -3,6 +3,8 @@
 # Organizations management account (this account inherits org-wide
 # GuardDuty/Security Hub auto-enrollment and the org-governance/
 # org-scp-boundary SCPs from there — nothing here re-creates those).
+# The role applying this root must be in that root's
+# exempt_principal_arns, or the SCP denies s3:PutAccountPublicAccessBlock.
 # See ../README.md for the two duplicate-resource conflicts this
 # composition surfaced and why the choices below avoid them.
 

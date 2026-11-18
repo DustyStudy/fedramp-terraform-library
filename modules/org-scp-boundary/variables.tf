@@ -6,13 +6,15 @@ variable "policy_name" {
 
 variable "approved_regions" {
   description = <<-EOT
-    List of approved FedRAMP regions. Defaults assume a standard AWS
-    commercial deployment (us-east-1, us-west-2) — if deploying in AWS
-    GovCloud, override with GovCloud region names (e.g. us-gov-west-1,
-    us-gov-east-1) instead, since the two partitions don't share regions.
+    Regions the SCP allows. null (the default) picks them from the
+    partition the provider runs in: us-gov-west-1 and us-gov-east-1 in
+    GovCloud, us-east-1 and us-west-2 elsewhere. A list must be non-empty
+    and belong to that partition (only us-gov-* regions in GovCloud, none
+    of them outside it), or the plan fails: a region lock naming another
+    partition's regions denies every regional action in the targets.
   EOT
   type        = list(string)
-  default     = ["us-east-1", "us-west-2"]
+  default     = null
 }
 
 variable "target_ou_or_account_ids" {
