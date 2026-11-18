@@ -11,3 +11,15 @@ variable "guardduty_severity_threshold" {
     error_message = "guardduty_severity_threshold must be between 0 and 8.9."
   }
 }
+
+variable "exclude_guardduty_from_securityhub" {
+  type        = bool
+  default     = true
+  description = <<-EOT
+    Leave GuardDuty findings out of the Security Hub rule, so a finding the
+    GuardDuty rule already routed is not delivered a second time. Set false
+    if Security Hub in this account and region aggregates findings from
+    regions or accounts whose GuardDuty events do not reach this event bus;
+    those would otherwise not be routed at all.
+  EOT
+}

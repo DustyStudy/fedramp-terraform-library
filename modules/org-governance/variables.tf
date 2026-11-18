@@ -5,7 +5,19 @@ variable "target_ou_or_account_ids" {
 }
 
 variable "authorized_security_admin_arns" {
-  description = "ARNs allowed to manage S3 Object Lock settings"
+  description = "Principal ARNs allowed to manage S3 Object Lock settings. Wildcards are allowed (matched with ArnNotLike), e.g. arn:aws-us-gov:iam::*:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_SecurityAdmin_*."
+  type        = list(string)
+  default     = []
+}
+
+variable "internet_gateway_exempt_principal_arns" {
+  description = <<-EOT
+    Principal ARNs exempt from the internet gateway deny, so the network/egress
+    account can build the central egress gateway. Wildcards are allowed
+    (matched with ArnNotLike). Empty (the default) denies everyone in the
+    target OUs and accounts. Scope each ARN to the network account: a
+    wildcard account ID exempts that role name in every target account.
+  EOT
   type        = list(string)
   default     = []
 }

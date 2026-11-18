@@ -52,6 +52,7 @@ module "waf_hardened" {
 | environment | n/a | `string` | `"fedramp"` | no |
 | log_retention_days | Retention period for WAF logs in days | `number` | `365` | no |
 | rate_limit_threshold | Maximum requests allowed from a single IP per 5-minute window | `number` | `2000` | no |
+| rule_action_overrides | Rules inside a managed rule group to switch from block to count, keyed by rule group name, e.g. { AWSManagedRulesCommonRuleSet = ["SizeRestrictions_BODY"] } for apps that take request bodies over 8 KB (uploads, large JSON). A counted rule still shows in metrics and logs but no longer blocks, so record each override as a deviation and cover the gap another way (SI-10). | `map(list(string))` | `{}` | no |
 | scope | REGIONAL for ALB/API Gateway or CLOUDFRONT for edge distribution | `string` | `"REGIONAL"` | no |
 
 ## Outputs

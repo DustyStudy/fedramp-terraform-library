@@ -115,14 +115,19 @@ resource "aws_cloudwatch_event_rule" "securityhub_critical_high" {
     source      = ["aws.securityhub"]
     detail-type = ["Security Hub Findings - Imported"]
     detail = {
-      findings = {
+      findings = merge({
         Severity = {
           Label = ["CRITICAL", "HIGH"]
         }
         Workflow = {
           Status = ["NEW"]
         }
-      }
+        # Archived findings keep workflow status NEW and are re-imported.
+        RecordState = ["ACTIVE"]
+        }, {
+        # The GuardDuty rule above already pages for these.
+        for k, v in { ProductName = [{ "anything-but" = "GuardDuty" }] } : k => v if var.exclude_guardduty_from_securityhub
+      })
     }
   })
 }

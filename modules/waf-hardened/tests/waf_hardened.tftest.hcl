@@ -115,3 +115,43 @@ run "logging_redacts_credentials" {
     error_message = "The WAF log CMK must rotate and keep a 7 to 30 day deletion window (SC-12)."
   }
 }
+
+run "rule_action_overrides_count_named_rules_only" {
+  command = plan
+
+  variables {
+    rule_action_overrides = {
+      AWSManagedRulesCommonRuleSet = ["SizeRestrictions_BODY"]
+    }
+  }
+
+  assert {
+    condition = one([
+      for r in aws_wafv2_web_acl.this.rule : [
+        for o in r.statement[0].managed_rule_group_statement[0].rule_action_override : o.name if length(o.action_to_use[0].count) == 1
+      ] if r.name == "AWSManagedRulesCommonRuleSet"
+    ]) == ["SizeRestrictions_BODY"]
+    error_message = "The named rule must be overridden to count in its rule group."
+  }
+
+  assert {
+    condition = alltrue([
+      for r in aws_wafv2_web_acl.this.rule :
+      length(r.statement[0].managed_rule_group_statement[0].rule_action_override) == 0
+      if length(r.statement[0].managed_rule_group_statement) > 0 && r.name != "AWSManagedRulesCommonRuleSet"
+    ])
+    error_message = "Rule groups without an entry must keep every rule blocking."
+  }
+}
+
+run "rejects_override_for_unknown_rule_group" {
+  command = plan
+
+  variables {
+    rule_action_overrides = {
+      AWSManagedRulesCommonRuleSets = ["SizeRestrictions_BODY"]
+    }
+  }
+
+  expect_failures = [var.rule_action_overrides]
+}

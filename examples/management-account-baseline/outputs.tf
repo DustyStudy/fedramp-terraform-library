@@ -4,7 +4,7 @@ output "trail_arn" {
 }
 
 output "guardduty_detector_id" {
-  description = "GuardDuty detector ID (management account)"
+  description = "GuardDuty detector ID (security account)"
   value       = module.guardduty_org.detector_id
 }
 

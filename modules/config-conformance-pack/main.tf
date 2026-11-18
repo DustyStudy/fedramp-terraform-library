@@ -51,8 +51,9 @@ data "aws_iam_policy_document" "config_kms" {
       variable = "aws:SourceAccount"
       values   = [local.account_id]
     }
+    # ArnLike: StringEquals would compare the trailing * literally and never match.
     condition {
-      test     = "StringEquals"
+      test     = "ArnLike"
       variable = "aws:SourceArn"
       values   = ["arn:${local.partition}:config:${local.region}:${local.account_id}:*"]
     }
@@ -159,7 +160,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "config_access_log" {
       days_after_initiation = 7
     }
     expiration {
-      days = 365
+      days = var.retention_days
     }
     # Buckets are versioned: expiration only adds a delete marker, so the
     # old version must be expired too or the log is kept forever. 30 days
@@ -288,7 +289,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "config" {
       storage_class = "STANDARD_IA"
     }
     expiration {
-      days = 365
+      days = var.retention_days
     }
     # Buckets are versioned: expiration only adds a delete marker, so the
     # old version must be expired too or the log is kept forever. 30 days

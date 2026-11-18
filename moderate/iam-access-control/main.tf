@@ -6,6 +6,9 @@ module "iam_access_control" {
   unused_access_age           = var.unused_access_age
   analyzer_type               = var.analyzer_type
   root_usage_alert_topic_name = var.root_usage_alert_topic_name
+
+  allow_password_change_without_mfa = var.allow_password_change_without_mfa
+  developer_role_path               = var.developer_role_path
 }
 
 # Resources lived in this root before 1.3.0.

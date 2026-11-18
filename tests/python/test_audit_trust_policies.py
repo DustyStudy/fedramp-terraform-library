@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ReadTimeoutError
 
 LAMBDA = "modules/trust-policy-auditor/lambda/audit_trust_policies.py"
 ACCOUNT = "111111111111"
@@ -281,6 +281,19 @@ def test_vendor_role_with_external_id_and_network_condition_is_clean(fn, ctx):
     statement = _vendor_trust(StringEquals=EXTERNAL_ID, **VENDOR_NETWORK)
 
     assert fn.check_role_trust(_role(statement), ACCOUNT, ctx) == []
+
+
+@pytest.mark.parametrize("condition", [
+    {"StringLike": {"sts:ExternalId": "*"}},
+    {"Null": {"sts:ExternalId": "false"}},
+    {"StringNotEquals": {"sts:ExternalId": "someone-else"}},
+    {"StringEqualsIfExists": EXTERNAL_ID},
+])
+def test_external_id_condition_that_admits_any_caller_is_high(fn, ctx, condition):
+    findings = fn.check_role_trust(_role(_vendor_trust(**condition, **VENDOR_NETWORK)), ACCOUNT, ctx)
+
+    assert _severities(findings) == ["HIGH"]
+    assert "does not restrict the caller" in findings[0]["detail"]
 
 
 def test_external_id_alone_is_not_enough(fn, ctx):
@@ -591,12 +604,32 @@ def test_a_function_deleted_mid_scan_is_skipped(fn, ctx):
     lam.get_policy.assert_not_called()
 
 
-def test_get_policy_errors_other_than_not_found_fail_the_run(fn, ctx):
-    client = _account_clients(functions=[{"FunctionArn": FUNCTION}])
+def test_a_region_error_is_recorded_and_keeps_the_iam_findings(fn, ctx):
+    client = _account_clients(roles=[_role(_github({"StringEquals": AUD}))], functions=[{"FunctionArn": FUNCTION}])
     client("lambda", "us-east-1").get_policy.side_effect = ClientError({"Error": {"Code": "AccessDenied"}}, "GetPolicy")
+    errors = []
 
-    with pytest.raises(ClientError):
-        fn.audit_account(ACCOUNT, client, ["us-east-1"], ctx)
+    findings = fn.audit_account(ACCOUNT, client, ["us-east-1"], ctx, errors)
+
+    assert [f["check"] for f in findings] == ["oidc-trust"]
+    assert errors == [(f"{ACCOUNT} us-east-1", "AccessDenied")]
+
+
+def test_a_failed_region_does_not_stop_the_next_one(fn, ctx):
+    client = _account_clients(shares=[{**SHARE, "allowExternalPrincipals": True}])
+    working = client("lambda", None)
+    broken = MagicMock()
+    broken.get_paginator.side_effect = ReadTimeoutError(endpoint_url="https://lambda-fips.us-west-2.amazonaws.com")
+    errors = []
+
+    def by_region(service, region):
+        return broken if (service, region) == ("lambda", "us-west-2") else client(service, region)
+
+    findings = fn.audit_account(ACCOUNT, by_region, ["us-west-2", "us-east-1"], ctx, errors)
+
+    assert [f["check"] for f in findings] == ["ram-share"]
+    assert errors == [(f"{ACCOUNT} us-west-2", "ReadTimeoutError")]
+    working.get_paginator.assert_called()
 
 
 @pytest.fixture
@@ -621,7 +654,7 @@ def handler(load_lambda, monkeypatch):
         module.sns = MagicMock()
         module.audited = []
 
-        def audit_account(account_id, client, regions, ctx):
+        def audit_account(account_id, client, regions, ctx, errors=None):
             module.audited.append(account_id)
             return [module._finding("HIGH", "oidc-trust", account_id, "r", "d")]
 
@@ -658,7 +691,7 @@ def test_unreachable_account_is_reported_not_hidden(handler):
 
     assert result["errors"] == [(ORG_PEER, "AccessDenied")]
     message = module.sns.publish.call_args.kwargs["Message"]
-    assert "Accounts not scanned (1)" in message
+    assert "Not scanned (1)" in message
     assert ORG_PEER in message
 
 
@@ -800,7 +833,7 @@ def test_account_outside_any_organization_treats_every_other_account_as_outside(
         {"Error": {"Code": "AWSOrganizationsNotInUseException"}}, "ListAccounts"
     )
     seen = []
-    monkeypatch.setattr(module, "audit_account", lambda account_id, client, regions, ctx: seen.append(ctx) or [])
+    monkeypatch.setattr(module, "audit_account", lambda account_id, client, regions, ctx, errors: seen.append(ctx) or [])
 
     module.lambda_handler({}, None)
 
@@ -838,3 +871,29 @@ def test_cut_report_keeps_the_accounts_that_were_not_scanned(handler, monkeypatc
     message = module.sns.publish.call_args.kwargs["Message"]
     assert "truncated" in message
     assert f"{ORG_PEER}: AccessDenied" in message
+
+
+def test_a_network_error_in_one_account_does_not_stop_the_run(handler):
+    module = handler(member_role_name="audit-read")
+    module.sts.assume_role.side_effect = ReadTimeoutError(endpoint_url="https://sts-fips.us-gov-west-1.amazonaws.com")
+
+    result = module.lambda_handler({}, None)
+
+    assert result["errors"] == [(ORG_PEER, "ReadTimeoutError")]
+    assert result["accounts_scanned"] == 1
+    assert f"{ORG_PEER}: ReadTimeoutError" in module.sns.publish.call_args.kwargs["Message"]
+
+
+def test_accounts_left_when_time_runs_out_are_reported(handler, monkeypatch):
+    module = handler(member_role_name="audit-read")
+    # Deadline is 900 - 120 seconds after the first reading; the second account starts past it.
+    monkeypatch.setattr(module, "time", MagicMock(monotonic=MagicMock(side_effect=[0, 0, 800])))
+    context = MagicMock()
+    context.get_remaining_time_in_millis.return_value = 900_000
+
+    result = module.lambda_handler({}, context)
+
+    assert module.audited == [ACCOUNT]
+    assert result["accounts_scanned"] == 1
+    assert result["counts"]["HIGH"] == 1
+    assert f"{ORG_PEER}: ran out of time" in module.sns.publish.call_args.kwargs["Message"]

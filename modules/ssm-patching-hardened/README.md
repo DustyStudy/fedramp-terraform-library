@@ -36,15 +36,23 @@ module "ssm_patching_hardened" {
 - Patch baseline currently covers `AMAZON_LINUX_2023` only. Add additional
   `aws_ssm_patch_baseline` resources (and corresponding maintenance-window
   tasks) for other operating systems in your fleet.
+- Server access logging on the patch-log bucket is always on. With
+  `access_log_bucket` unset the module creates its own access-log bucket
+  (SSE-S3, versioned, TLS only, logs expire after 365 days); set it to send
+  the logs to a bucket you already have.
+- The patch task runs on 50% of targets at a time and stops after 10% of
+  them fail (`max_concurrency`, `max_errors`).
 
 <!-- BEGIN_TF_DOCS -->
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
-| access_log_bucket | Name of an existing S3 bucket to receive server access logs for the patch-log bucket (AU-2). Null leaves access logging off. S3 requires the destination to be in the same account and region, to allow logging.s3.amazonaws.com to write, to use SSE-S3 (not SSE-KMS), and to have no Object Lock default retention or Requester Pays. A central logging-account bucket can't be used directly; replicate from a local one instead. | `string` | `null` | no |
+| access_log_bucket | Name of an existing S3 bucket to receive server access logs for the patch-log bucket (AU-2). Null (the default) makes the module create its own access-log bucket. S3 requires the destination to be in the same account and region, to allow logging.s3.amazonaws.com to write, to use SSE-S3 (not SSE-KMS), and to have no Object Lock default retention or Requester Pays. A central logging-account bucket can't be used directly; replicate from a local one instead. | `string` | `null` | no |
 | environment | Environment identifier | `string` | `"fedramp"` | no |
 | maintenance_window_cron | Cron expression for maintenance window (Default: Sunday at 02:00 AM UTC) | `string` | `"cron(0 2 ? * SUN *)"` | no |
+| max_concurrency | How many targets the patch task runs on at once, as a count ("10") or a percentage ("50%"). Lower it if the nodes patched together are each other's redundancy. | `string` | `"50%"` | no |
+| max_errors | How many targets may fail before the patch task stops sending the command to more, as a count ("1") or a percentage ("10%"). With "0" one unhealthy node stops patching for every node not yet started. | `string` | `"10%"` | no |
 
 ## Outputs
 
