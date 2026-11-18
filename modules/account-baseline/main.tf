@@ -11,11 +11,99 @@ resource "aws_ebs_encryption_by_default" "this" {
   enabled = true
 }
 
+# The default EBS key is always a CMK: the module's own unless the caller
+# supplies kms_key_arn. Without this resource the account falls back to aws/ebs.
 resource "aws_ebs_default_kms_key" "this" {
+  key_arn = local.create_ebs_kms_key ? aws_kms_key.ebs[0].arn : var.kms_key_arn
+
+  lifecycle {
+    precondition {
+      condition     = local.create_ebs_kms_key || var.kms_key_arn != ""
+      error_message = "set_ebs_default_kms_key = true requires kms_key_arn; without a key the account would use the AWS-managed aws/ebs key."
+    }
+  }
+}
+
+# Auto Scaling's service-linked role has no KMS permissions of its own, so the
+# key policy must grant it or every Auto Scaling launch (EKS managed node
+# groups, ECS capacity providers) fails with Client.InternalError. A key policy
+# naming a principal that does not exist is rejected, and the role exists only
+# after the account's first Auto Scaling group, so look it up (the plural data
+# source returns an empty set instead of failing) and grant it when present.
+data "aws_iam_roles" "autoscaling" {
+  count       = local.create_ebs_kms_key && var.ebs_kms_key_grant_autoscaling ? 1 : 0
+  name_regex  = "^AWSServiceRoleForAutoScaling$"
+  path_prefix = "/aws-service-role/autoscaling.amazonaws.com/"
+}
+
+locals {
   # A key created in the same plan has an unknown ARN, so callers that create
-  # the key pass set_ebs_default_kms_key instead of relying on the comparison.
-  count   = (var.set_ebs_default_kms_key != null ? var.set_ebs_default_kms_key : var.kms_key_arn != "") ? 1 : 0
-  key_arn = var.kms_key_arn
+  # their own key pass set_ebs_default_kms_key = true instead of relying on
+  # the comparison.
+  create_ebs_kms_key = var.set_ebs_default_kms_key == true ? false : var.kms_key_arn == ""
+
+  ebs_kms_autoscaling_role_arns = sort(flatten(data.aws_iam_roles.autoscaling[*].arns))
+}
+
+data "aws_iam_policy_document" "ebs_kms" {
+  #checkov:skip=CKV_AWS_109:KMS administrative operations require root account wildcard
+  #checkov:skip=CKV_AWS_111:KMS key management requires write access for key admins
+  #checkov:skip=CKV_AWS_356:KMS key policies require wildcard resource within the key definition itself
+  count = local.create_ebs_kms_key ? 1 : 0
+
+  statement {
+    sid    = "AllowRootAccountAdmin"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  # The two statements AWS documents for Auto Scaling with a customer managed key:
+  # https://docs.aws.amazon.com/autoscaling/ec2/userguide/key-policy-requirements-EBS-encryption.html
+  dynamic "statement" {
+    for_each = length(local.ebs_kms_autoscaling_role_arns) > 0 ? [1] : []
+    content {
+      sid    = "AllowAutoScalingUseOfTheKey"
+      effect = "Allow"
+      principals {
+        type        = "AWS"
+        identifiers = local.ebs_kms_autoscaling_role_arns
+      }
+      actions   = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey"]
+      resources = ["*"]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = length(local.ebs_kms_autoscaling_role_arns) > 0 ? [1] : []
+    content {
+      sid    = "AllowAutoScalingAttachmentOfPersistentResources"
+      effect = "Allow"
+      principals {
+        type        = "AWS"
+        identifiers = local.ebs_kms_autoscaling_role_arns
+      }
+      actions   = ["kms:CreateGrant"]
+      resources = ["*"]
+      condition {
+        test     = "Bool"
+        variable = "kms:GrantIsForAWSResource"
+        values   = ["true"]
+      }
+    }
+  }
+}
+
+resource "aws_kms_key" "ebs" {
+  count                   = local.create_ebs_kms_key ? 1 : 0
+  description             = "CMK for account default EBS encryption"
+  deletion_window_in_days = var.ebs_kms_key_deletion_window_in_days
+  enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.ebs_kms[0].json
 }
 
 # IAM password policy — NIST SP 800-63B-4 defaults (see modules/iam-password-policy for rationale)

@@ -78,12 +78,21 @@ not run is listed as "Not checked"; it is never reported as zero findings.
 The Lambda also returns
 `{counts, accounts_scanned, errors, not_checked, findings}`.
 
+Failed runs are not retried (the default two async retries would repeat
+the whole scan); the failed event goes to the dead-letter queue. Two
+CloudWatch alarms notify the same SNS topic: one on the Lambda's `Errors`
+metric (which includes timeouts) and one when the dead-letter queue is not
+empty. The module sets the topic's policy so CloudWatch alarms in this
+account can publish; attaching your own `aws_sns_topic_policy` to the
+topic would replace it.
+
 ## Limits
 
 - CloudTrail event lookups return 50 events a page at two requests a
   second. With heavy Identity Center use, reading 90 days can take
   minutes; the Lambda has a 15-minute timeout and lists the Identity
-  Center checks as not checked if it runs out. An organization that
+  Center checks as not checked if it runs out, either there or while
+  listing account assignments. The IAM findings are still sent. An organization that
   outgrows this should read its organization trail with Athena instead.
 - Accounts are read one after another, with one `GetRole` call per
   role. If the 15 minutes run out, the accounts not reached are listed
