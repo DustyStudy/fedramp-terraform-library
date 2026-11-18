@@ -8,6 +8,23 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 data "aws_partition" "current" {}
 
+# Only read when availability_zones is not given. Local and Wavelength Zones
+# are left out: they cannot host every resource type a tier may need.
+data "aws_availability_zones" "available" {
+  count = var.availability_zones == null ? 1 : 0
+  state = "available"
+
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
+}
+
+locals {
+  azs       = var.availability_zones != null ? var.availability_zones : data.aws_availability_zones.available[0].names
+  nat_count = var.nat_gateway_mode == "none" ? 0 : var.nat_gateway_mode == "single" ? 1 : length(var.public_subnet_cidrs)
+}
+
 # KMS CMK for VPC Flow Logs
 data "aws_iam_policy_document" "flow_logs_kms" {
   #checkov:skip=CKV_AWS_109:KMS administrative operations require root account wildcard
@@ -125,6 +142,20 @@ resource "aws_vpc" "this" {
   tags = {
     Name = "${var.environment}-perimeter-vpc"
   }
+
+  # Checked here, ahead of every subnet, so a bad combination fails with these
+  # messages instead of "Invalid index".
+  lifecycle {
+    precondition {
+      condition     = max(length(var.public_subnet_cidrs), length(var.app_subnet_cidrs), length(var.db_subnet_cidrs)) <= length(local.azs)
+      error_message = "Each subnet CIDR list needs its own Availability Zone: no list may be longer than availability_zones (${length(local.azs)} zone(s): ${join(", ", local.azs)})."
+    }
+
+    precondition {
+      condition     = var.nat_gateway_mode == "none" || (var.enable_internet_gateway && length(var.public_subnet_cidrs) > 0)
+      error_message = "nat_gateway_mode other than \"none\" needs enable_internet_gateway = true and at least one public subnet, because NAT gateways sit in the public tier."
+    }
+  }
 }
 
 # Default Security Group Neutralization
@@ -143,12 +174,12 @@ resource "aws_flow_log" "this" {
   vpc_id                   = aws_vpc.this.id
 }
 
-# Subnet Tiers across 2 AZs
+# Subnet tiers, one subnet per CIDR, spread across the AZs in order
 resource "aws_subnet" "public" {
   count                   = length(var.public_subnet_cidrs)
   vpc_id                  = aws_vpc.this.id
   cidr_block              = var.public_subnet_cidrs[count.index]
-  availability_zone       = var.availability_zones[count.index]
+  availability_zone       = local.azs[count.index]
   map_public_ip_on_launch = false
 
   tags = {
@@ -160,7 +191,7 @@ resource "aws_subnet" "application" {
   count             = length(var.app_subnet_cidrs)
   vpc_id            = aws_vpc.this.id
   cidr_block        = var.app_subnet_cidrs[count.index]
-  availability_zone = var.availability_zones[count.index]
+  availability_zone = local.azs[count.index]
 
   tags = {
     Name = "${var.environment}-app-tier-${count.index + 1}"
@@ -171,10 +202,145 @@ resource "aws_subnet" "database" {
   count             = length(var.db_subnet_cidrs)
   vpc_id            = aws_vpc.this.id
   cidr_block        = var.db_subnet_cidrs[count.index]
-  availability_zone = var.availability_zones[count.index]
+  availability_zone = local.azs[count.index]
 
   tags = {
     Name = "${var.environment}-db-isolated-tier-${count.index + 1}"
+  }
+}
+
+# One route table per tier (one per subnet for the application tier, so a
+# per-AZ NAT never changes resource addresses). Each starts with the VPC-local
+# route only, which is what the main route table gave these subnets before.
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.this.id
+
+  tags = {
+    Name = "${var.environment}-public-tier"
+  }
+}
+
+resource "aws_route_table" "application" {
+  count  = length(var.app_subnet_cidrs)
+  vpc_id = aws_vpc.this.id
+
+  tags = {
+    Name = "${var.environment}-app-tier-${count.index + 1}"
+  }
+}
+
+# The module never adds a route to this table: the database tier has no path
+# to the internet in any configuration.
+resource "aws_route_table" "database" {
+  vpc_id = aws_vpc.this.id
+
+  tags = {
+    Name = "${var.environment}-db-isolated-tier"
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  count          = length(var.public_subnet_cidrs)
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "application" {
+  count          = length(var.app_subnet_cidrs)
+  subnet_id      = aws_subnet.application[count.index].id
+  route_table_id = aws_route_table.application[count.index].id
+}
+
+resource "aws_route_table_association" "database" {
+  count          = length(var.db_subnet_cidrs)
+  subnet_id      = aws_subnet.database[count.index].id
+  route_table_id = aws_route_table.database.id
+}
+
+# Opt-in internet gateway. Off by default: the library's org SCP denies
+# internet gateways outside the egress account.
+resource "aws_internet_gateway" "this" {
+  count  = var.enable_internet_gateway ? 1 : 0
+  vpc_id = aws_vpc.this.id
+
+  tags = {
+    Name = "${var.environment}-igw"
+  }
+}
+
+resource "aws_route" "public_internet" {
+  count                  = var.enable_internet_gateway ? 1 : 0
+  route_table_id         = aws_route_table.public.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.this[0].id
+}
+
+# Opt-in NAT for application-tier egress: one shared gateway, or one per
+# public subnet (AZ).
+resource "aws_eip" "nat" {
+  count  = local.nat_count
+  domain = "vpc"
+
+  tags = {
+    Name = "${var.environment}-nat-${count.index + 1}"
+  }
+}
+
+resource "aws_nat_gateway" "this" {
+  count         = local.nat_count
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
+
+  tags = {
+    Name = "${var.environment}-nat-${count.index + 1}"
+  }
+
+  depends_on = [aws_internet_gateway.this]
+}
+
+resource "aws_route" "application_nat" {
+  count                  = local.nat_count > 0 ? length(var.app_subnet_cidrs) : 0
+  route_table_id         = aws_route_table.application[count.index].id
+  destination_cidr_block = "0.0.0.0/0"
+  # Subnet N uses the NAT in its own AZ; with fewer NATs than subnets, wrap.
+  nat_gateway_id = aws_nat_gateway.this[count.index % local.nat_count].id
+}
+
+# Database-tier NACL (SC-7): in from the application tier on the database
+# port, out to the application tier on ephemeral ports (NACLs are stateless),
+# everything else denied by the implicit rule.
+resource "aws_network_acl" "database" {
+  count  = var.enable_database_nacl ? 1 : 0
+  vpc_id = aws_vpc.this.id
+  #checkov:skip=CKV2_AWS_1:Attached to the database subnets through subnet_ids; checkov cannot follow the reference through count
+  subnet_ids = aws_subnet.database[*].id
+
+  dynamic "ingress" {
+    for_each = var.app_subnet_cidrs
+    content {
+      rule_no    = 100 + ingress.key
+      action     = "allow"
+      protocol   = "tcp"
+      cidr_block = ingress.value
+      from_port  = var.database_port
+      to_port    = var.database_port
+    }
+  }
+
+  dynamic "egress" {
+    for_each = var.app_subnet_cidrs
+    content {
+      rule_no    = 100 + egress.key
+      action     = "allow"
+      protocol   = "tcp"
+      cidr_block = egress.value
+      from_port  = 1024
+      to_port    = 65535
+    }
+  }
+
+  tags = {
+    Name = "${var.environment}-db-isolated-tier"
   }
 }
 
