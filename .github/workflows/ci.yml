@@ -86,7 +86,7 @@ jobs:
           tflint --recursive --config "$GITHUB_WORKSPACE/.tflint.hcl" --minimum-failure-severity=warning
 
   module-tests:
-    name: Terraform Module Tests (${{ matrix.name }})
+    name: Module tests (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -176,6 +176,27 @@ jobs:
             echo "::error::A root stack's .terraform.lock.hcl is stale. In that directory run: terraform providers lock -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_arm64 -platform=windows_amd64"
             exit 1
           }
+
+  # Branch protection requires a check with exactly this name; a matrix
+  # reports one check per leg, so this job stands in for all of them.
+  module-tests-gate:
+    name: Terraform Module Tests
+    if: always()
+    needs: module-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: Every matrix leg succeeded
+        env:
+          RESULT: ${{ needs.module-tests.result }}
+        run: |
+          echo "module-tests: $RESULT"
+          [ "$RESULT" = "success" ]
 
   lambda-tests:
     name: Lambda unit tests (pytest, ruff)
