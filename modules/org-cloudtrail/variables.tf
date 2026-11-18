@@ -1,6 +1,7 @@
+# tflint-ignore: terraform_unused_declarations
 variable "organization_id" {
   type        = string
-  description = "AWS Organizations ID (e.g. o-xxxxxxxxxx). Required for the bucket policy trust condition."
+  description = "AWS Organizations ID (e.g. o-xxxxxxxxxx). No longer used: the trail's KMS key policy is pinned to the trail ARN instead. Kept so existing callers do not break; will be removed in the next major version."
 
   validation {
     condition     = can(regex("^o-[a-z0-9]{10,32}$", var.organization_id))
@@ -25,14 +26,25 @@ variable "log_retention_days" {
   description = <<-EOT
     CloudWatch Logs retention. Moderate baseline typically expects >= 90
     days readily available plus 1 year total; High baseline commonly
-    expects 3+ years total retention — confirm against your SSP.
+    expects 3+ years total retention — confirm against your SSP. Must be a
+    value CloudWatch Logs accepts; 0 keeps logs forever.
   EOT
+
+  validation {
+    condition     = contains([0, 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.log_retention_days)
+    error_message = "log_retention_days must be one of the values CloudWatch Logs accepts: 0 (never expire), 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653."
+  }
 }
 
 variable "s3_log_retention_days" {
   type        = number
   default     = 2555
-  description = "S3 lifecycle retention in days for the long-term log archive (default ~7 years). Adjust to your organization's records retention schedule."
+  description = "S3 lifecycle retention in days for the long-term log archive (default ~7 years). Must be more than 365: logs move to Glacier at day 365 and S3 rejects an expiration that is not later. Adjust to your organization's records retention schedule."
+
+  validation {
+    condition     = var.s3_log_retention_days > 365
+    error_message = "s3_log_retention_days must be greater than 365: logs move to Glacier at day 365 and S3 rejects an expiration that is not later than the transition."
+  }
 }
 
 variable "object_lock_retention_days" {

@@ -196,3 +196,46 @@ run "rejects_object_lock_longer_than_retention" {
 
   expect_failures = [aws_s3_bucket_object_lock_configuration.trail]
 }
+
+run "rejects_s3_retention_not_after_glacier_transition" {
+  command = plan
+
+  variables {
+    s3_log_retention_days = 365
+  }
+
+  expect_failures = [var.s3_log_retention_days]
+}
+
+run "rejects_log_retention_cloudwatch_does_not_accept" {
+  command = plan
+
+  variables {
+    log_retention_days = 100
+  }
+
+  expect_failures = [var.log_retention_days]
+}
+
+run "accepts_multi_year_retention" {
+  command = plan
+
+  variables {
+    log_retention_days    = 1096
+    s3_log_retention_days = 366
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_group.trail.retention_in_days == 1096
+    error_message = "A valid CloudWatch Logs retention must be accepted."
+  }
+}
+
+run "key_policy_pins_cloudtrail_to_this_trail_only" {
+  command = plan
+
+  assert {
+    condition     = one([for s in jsondecode(data.aws_iam_policy_document.cloudtrail_kms.json).Statement : s if s.Sid == "AllowCloudTrailEncrypt"]).Condition == { StringEquals = { "aws:SourceArn" = "arn:aws-us-gov:cloudtrail:us-gov-west-1:123456789012:trail/org-security-trail" } }
+    error_message = "CloudTrail's use of the key must be conditioned on aws:SourceArn only, the key CloudTrail documents for KMS calls."
+  }
+}
