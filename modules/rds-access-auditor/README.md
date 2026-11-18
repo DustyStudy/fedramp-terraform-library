@@ -55,11 +55,18 @@ administrator access with
 and IAM Access Analyzer instead.
 
 Findings go to one SNS summary, grouped by severity. A clean, complete
-run sends nothing. An account the Lambda couldn't reach is listed under
-"Accounts not scanned" rather than left out, and a run that couldn't list
-the organization's accounts always sends a report, so a failure never
-looks clean. A report over the SNS size limit is cut at the least severe
+run sends nothing. An account the Lambda couldn't reach, a region (or
+IAM) that failed, and any account left when the 15-minute run was about
+to time out are listed under "Not scanned" rather than left out, and a
+run that couldn't list the organization's accounts always sends a report,
+so a failure never looks clean; findings from everything else are still
+reported. A report over the SNS size limit is cut at the least severe
 end and says so, and a failed publish fails the invocation.
+
+A failed invocation is not retried (a retry would repeat the whole scan).
+It lands in the dead-letter queue, and two CloudWatch alarms, on the
+Lambda's `Errors` metric and on the queue's depth, notify the same SNS
+topic. The queue alarm stays in alarm until the queue is emptied.
 
 ## What happens inside the database
 
@@ -177,7 +184,7 @@ only: a human still decides what to change.
 | name_prefix | Prefix used for naming all resources created by this module. | `string` | `"rds-access-auditor"` | no |
 | notification_email | Optional email address to subscribe to the SNS topic. Leave empty to skip. | `string` | `""` | no |
 | regions | Regions to audit RDS databases in. Empty means the region the module is deployed in. IAM roles are global and always audited. | `list(string)` | `[]` | no |
-| reserved_concurrent_executions | Concurrency reserved for the Lambda. Set -1 to reserve none: accounts at the 10-execution quota floor (new and sandbox accounts) reject any reservation. | `number` | `2` | no |
+| reserved_concurrent_executions | Concurrency reserved for the Lambda. Set -1 to reserve none: accounts at the 10-execution quota floor (new and sandbox accounts) reject any reservation. 0 is rejected because it throttles every run. | `number` | `2` | no |
 | schedule_expression | EventBridge schedule expression controlling how often the audit runs. | `string` | `"rate(1 day)"` | no |
 | use_fips_endpoint | Make the Lambda's AWS SDK calls through FIPS 140 validated endpoints (sets AWS_USE_FIPS_ENDPOINT). Default true, matching the provider setting in this library's root configurations. | `bool` | `true` | no |
 

@@ -1,0 +1,11 @@
+# Every change needs a review from an owner once "Require review from
+# Code Owners" is on for main. The last matching pattern wins.
+* @DustyStudy
+
+# Organization-wide guardrails and IAM: a mistake here reaches every account.
+/modules/org-scp-boundary/   @DustyStudy
+/modules/org-governance/     @DustyStudy
+/modules/iam-access-control/ @DustyStudy
+
+# Workflows, Dependabot and this file.
+/.github/ @DustyStudy

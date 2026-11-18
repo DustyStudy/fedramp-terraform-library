@@ -29,10 +29,15 @@ one — the Organization instance) and runs three checks:
 **1. Over-privileged permission sets** — for every permission set, the
 Lambda checks:
    - Whether the `AdministratorAccess` AWS-managed policy is attached
-   - Whether its inline policy contains a full wildcard action
-     (`"Action": "*"`) or a service-wide wildcard (e.g. `iam:*`) on one
-     of `sensitive_wildcard_services`, combined with `Resource: "*"`
-   - Whether its inline policy allows a named **privilege escalation
+   - Whether its inline policy, or the default version of any other
+     attached AWS-managed policy (`IAMFullAccess`, `PowerUserAccess`,
+     `AWSOrganizationsFullAccess` and so on, read with `iam:GetPolicy`
+     and `iam:GetPolicyVersion`), contains a full wildcard action
+     (`"Action": "*"`), an `Allow` with `NotAction`, or a service-wide
+     wildcard (e.g. `iam:*`) on one of `sensitive_wildcard_services`,
+     combined with `Resource: "*"`. An `Allow` with `NotResource` counts
+     as `Resource: "*"`.
+   - Whether one of those policies allows a named **privilege escalation
      action** on a resource that contains `*`: policy edits
      (`iam:PutRolePolicy`, `iam:AttachRolePolicy` and the user and group
      versions), `iam:CreatePolicyVersion`, `iam:UpdateAssumeRolePolicy`,
@@ -68,6 +73,21 @@ over-privileged permission sets and no direct-to-user assignments) sends
 nothing, even if unused permission sets exist. An inline policy that
 can't be read fails the invocation instead of counting as clean, as does
 a failed publish; a report over the SNS size limit is cut and says so.
+
+The Lambda runs with the 15-minute maximum timeout and adaptive retries,
+since it makes one `ListAccountAssignments` call per permission set per
+account. If it still nears the timeout it stops, and publishes what it
+found with the subject and first line marked `INCOMPLETE` and the number
+of permission sets it did not finish. Treat an incomplete report as
+partial: split the load or raise the Identity Center API quotas.
+
+Failed runs are not retried (the default two async retries would repeat
+the whole scan); the failed event goes to the dead-letter queue. Two
+CloudWatch alarms notify the same SNS topic: one on the Lambda's `Errors`
+metric (which includes timeouts) and one when the dead-letter queue is not
+empty. The module sets the topic's policy so CloudWatch alarms in this
+account can publish; attaching your own `aws_sns_topic_policy` to the
+topic would replace it.
 
 ## Using Terraform
 
@@ -133,7 +153,10 @@ Detective only: a human still does the review and the right-sizing.
   API is called `sso-admin`, but its IAM Action prefix is `sso:` (e.g.
   `sso:ListPermissionSets`) — the two don't match, which is easy to get
   wrong when hand-writing the Lambda's execution-role policy.
-- Only **AWS-managed** policy content is evaluated for check 1.
+- Only inline and **AWS-managed** policy content is evaluated for
+  check 1. Conditions are not evaluated, so an AWS-managed policy that
+  allows `iam:PassRole` on `*` with an `iam:PassedToService` condition
+  is still reported.
   Customer-managed policies attached to a permission set are counted and
   named in the report, but their content isn't fetched — the underlying
   IAM policy for a customer-managed reference lives per-account, not

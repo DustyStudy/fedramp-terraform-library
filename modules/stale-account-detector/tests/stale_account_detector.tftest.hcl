@@ -183,3 +183,45 @@ run "exec_role_trust_limited_to_this_account" {
     error_message = "The Lambda execution role trust must carry an aws:SourceAccount condition for this account."
   }
 }
+
+run "rejects_zero_reserved_concurrency" {
+  command = plan
+
+  variables {
+    reserved_concurrent_executions = 0
+  }
+
+  expect_failures = [var.reserved_concurrent_executions]
+}
+
+run "failed_runs_alarm_and_are_not_retried" {
+  command = plan
+
+  assert {
+    condition     = aws_lambda_function_event_invoke_config.detector.maximum_retry_attempts == 0
+    error_message = "A failed scan must not be re-run twice by the default async retries."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.errors.metric_name == "Errors" && aws_cloudwatch_metric_alarm.errors.alarm_actions == toset([aws_sns_topic.report.arn])
+    error_message = "Lambda errors must alarm to the module's SNS topic."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.dlq.metric_name == "ApproximateNumberOfMessagesVisible" && aws_cloudwatch_metric_alarm.dlq.alarm_actions == toset([aws_sns_topic.report.arn])
+    error_message = "A message in the DLQ must alarm to the module's SNS topic."
+  }
+
+  assert {
+    condition = length([
+      for s in jsondecode(aws_kms_key.log_encryption.policy).Statement : s
+      if try(s.Principal.Service, "") == "cloudwatch.amazonaws.com" && s.Condition.StringEquals["aws:SourceAccount"] == "123456789012"
+    ]) == 1
+    error_message = "CloudWatch alarms in this account must be able to use the topic's key, or the alarm notification is dropped."
+  }
+
+  assert {
+    condition     = jsondecode(aws_sns_topic_policy.report.policy).Statement[0].Principal.Service == "cloudwatch.amazonaws.com"
+    error_message = "The topic policy must let CloudWatch alarms publish."
+  }
+}

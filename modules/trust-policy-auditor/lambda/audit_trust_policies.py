@@ -57,10 +57,11 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import UTC, datetime, timedelta
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -368,8 +369,10 @@ def _check_outside_trust(value, conditions, account_id, role_arn, ctx):
     if not other or other == account_id or not ctx.outside_org(other):
         return None
     findings = []
-    if ctx.is_external(other) and "sts:externalid" not in conditions:
+    # A wildcard, negated or Null External ID condition admits any caller.
+    if ctx.is_external(other) and not _restricts(conditions, {"sts:externalid"}):
         detail = f"trusts {value}, outside the organization, with no sts:ExternalId condition"
+        detail += _unrestricting_note(conditions, {"sts:externalid"})
         findings.append(_finding("HIGH", "cross-account-trust", account_id, role_arn, detail))
     if not _network_pinned(conditions):
         detail = (f"trusts {value}, outside the organization, from any network: anyone holding that "
@@ -485,54 +488,71 @@ def _get_role(iam, role):
         raise
 
 
-def audit_account(account_id, client, regions, ctx):
+def audit_account(account_id, client, regions, ctx, errors=None):
     """Run every check in one account. client(service, region) returns a
-    boto3 client with that account's credentials."""
+    boto3 client with that account's credentials. A region that fails is
+    added to errors as ("<account> <region>", code); what was already found
+    is kept."""
     findings = []
     iam = client("iam", None)
     for role in _paginate(iam, "list_roles", "Roles"):
         findings += check_role_trust(role, account_id, ctx, get_role=lambda r=role: _get_role(iam, r))
 
     for region in regions:
-        lambda_client = client("lambda", region)
-        for function in _paginate(lambda_client, "list_functions", "Functions"):
-            arn = function["FunctionArn"]
-            # Each alias and published version has its own resource policy.
-            targets = [arn]
+        try:
+            _audit_region(account_id, client, region, ctx, findings)
+        except (ClientError, BotoCoreError) as exc:
+            logger.exception("Could not finish auditing %s in %s", account_id, region)
+            if errors is not None:
+                errors.append((f"{account_id} {region}", _error_code(exc)))
+    return findings
+
+
+def _audit_region(account_id, client, region, ctx, findings):
+    """Lambda and RAM checks for one region, added to findings as they are
+    found so an error part way keeps the earlier ones."""
+    lambda_client = client("lambda", region)
+    for function in _paginate(lambda_client, "list_functions", "Functions"):
+        arn = function["FunctionArn"]
+        # Each alias and published version has its own resource policy.
+        targets = [arn]
+        try:
+            targets += [a["AliasArn"] for a in _paginate(lambda_client, "list_aliases", "Aliases", FunctionName=arn)]
+            targets += [
+                v["FunctionArn"]
+                for v in _paginate(lambda_client, "list_versions_by_function", "Versions", FunctionName=arn)
+                if v["Version"] != "$LATEST"
+            ]
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] == "ResourceNotFoundException":
+                continue  # deleted mid-scan
+            raise
+        for target in targets:
             try:
-                targets += [a["AliasArn"] for a in _paginate(lambda_client, "list_aliases", "Aliases", FunctionName=arn)]
-                targets += [
-                    v["FunctionArn"]
-                    for v in _paginate(lambda_client, "list_versions_by_function", "Versions", FunctionName=arn)
-                    if v["Version"] != "$LATEST"
-                ]
+                policy = lambda_client.get_policy(FunctionName=target)["Policy"]
             except ClientError as exc:
                 if exc.response["Error"]["Code"] == "ResourceNotFoundException":
-                    continue  # deleted mid-scan
+                    continue
                 raise
-            for target in targets:
-                try:
-                    policy = lambda_client.get_policy(FunctionName=target)["Policy"]
-                except ClientError as exc:
-                    if exc.response["Error"]["Code"] == "ResourceNotFoundException":
-                        continue
-                    raise
-                findings += check_function_policy(target, policy, account_id, ctx)
+            findings += check_function_policy(target, policy, account_id, ctx)
 
-        ram = client("ram", region)
-        for share in _paginate(ram, "get_resource_shares", "resourceShares", resourceOwner="SELF"):
-            if share.get("status") != "ACTIVE":
-                continue
-            associations = _paginate(
-                ram,
-                "get_resource_share_associations",
-                "resourceShareAssociations",
-                associationType="PRINCIPAL",
-                resourceShareArns=[share["resourceShareArn"]],
-            )
-            principals = [a["associatedEntity"] for a in associations if a.get("status") == "ASSOCIATED"]
-            findings += check_resource_share(share, principals, account_id, ctx)
-    return findings
+    ram = client("ram", region)
+    for share in _paginate(ram, "get_resource_shares", "resourceShares", resourceOwner="SELF"):
+        if share.get("status") != "ACTIVE":
+            continue
+        associations = _paginate(
+            ram,
+            "get_resource_share_associations",
+            "resourceShareAssociations",
+            associationType="PRINCIPAL",
+            resourceShareArns=[share["resourceShareArn"]],
+        )
+        principals = [a["associatedEntity"] for a in associations if a.get("status") == "ASSOCIATED"]
+        findings += check_resource_share(share, principals, account_id, ctx)
+
+
+def _error_code(exc):
+    return exc.response["Error"]["Code"] if isinstance(exc, ClientError) else type(exc).__name__
 
 
 def _organization_accounts():
@@ -574,8 +594,8 @@ def _report(findings, errors, ctx):
         )
     # Above the findings, so a report cut to the SNS size limit keeps them.
     if errors:
-        lines.append(f"\n=== Accounts not scanned ({len(errors)}) ===")
-        lines.extend(f"{account}: {error}" for account, error in errors)
+        lines.append(f"\n=== Not scanned ({len(errors)}) ===")
+        lines.extend(f"{scope}: {error}" for scope, error in errors)
     for severity in SEVERITIES:
         matching = [f for f in findings if f["severity"] == severity]
         if not matching:
@@ -611,16 +631,27 @@ def lambda_handler(event, context):
     if MEMBER_ROLE_NAME and org_accounts:
         targets += sorted(a for a in org_accounts if a != own_account)
 
+    # Leave two minutes to sort and publish what was found.
+    remaining = context.get_remaining_time_in_millis() / 1000 if context else 900
+    deadline = time.monotonic() + max(remaining - 120, 0)
+
     findings, errors = [], []
+    scanned = 0
     for account_id in targets:
+        # shortcut: checked between accounts only, so one account slower than
+        # the two-minute margin still times out; check per region if that happens.
+        if time.monotonic() >= deadline:
+            errors.append((account_id, "ran out of time"))
+            continue
         try:
             client = _client_factory() if account_id == own_account else _member_client(partition, account_id)
-            findings += audit_account(account_id, client, regions, ctx)
-        except ClientError as exc:
+            findings += audit_account(account_id, client, regions, ctx, errors)
+            scanned += 1
+        except (ClientError, BotoCoreError) as exc:
             # One unreachable account shouldn't hide the others' findings,
             # but it must show up in the report, not look clean.
             logger.exception("Could not audit account %s", account_id)
-            errors.append((account_id, exc.response["Error"]["Code"]))
+            errors.append((account_id, _error_code(exc)))
 
     findings.sort(key=lambda f: (SEVERITIES.index(f["severity"]), f["account"], f["resource"]))
     counts = {s: sum(f["severity"] == s for f in findings) for s in SEVERITIES}
@@ -632,4 +663,4 @@ def lambda_handler(event, context):
         subject = f"Trust policy audit: {counts['CRITICAL']} critical, {counts['HIGH']} high"
         _notify(subject, _report(findings, errors, ctx))
 
-    return {"counts": counts, "accounts_scanned": len(targets) - len(errors), "errors": errors, "findings": findings}
+    return {"counts": counts, "accounts_scanned": scanned, "errors": errors, "findings": findings}
