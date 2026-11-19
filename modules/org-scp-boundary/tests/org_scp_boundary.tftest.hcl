@@ -125,7 +125,7 @@ run "mfa_removal_requires_mfa" {
   }
 
   assert {
-    condition = toset(one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == "DenyMfaRemovalWithoutMfa"]).Action) == toset(["iam:DeactivateMFADevice", "iam:DeleteVirtualMFADevice", "iam:ResyncMFADevice"])
+    condition     = toset(one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == "DenyMfaRemovalWithoutMfa"]).Action) == toset(["iam:DeactivateMFADevice", "iam:DeleteVirtualMFADevice", "iam:ResyncMFADevice"])
     error_message = "The MFA statement must deny exactly deactivate, delete and resync, never enrolment (first enrolment has no MFA)."
   }
 
