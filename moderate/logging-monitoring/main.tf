@@ -4,6 +4,7 @@ module "logging_monitoring" {
   source = "../../modules/logging-monitoring"
 
   cloudtrail_log_group_name = var.cloudtrail_log_group_name
+  expected_secret_readers   = var.expected_secret_readers
 }
 
 # Resources lived in this root before 1.3.0.

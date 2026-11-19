@@ -12,6 +12,17 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Added
+- `logging-monitoring`: `cis-mfa-device-changes` alarm on IAM MFA device
+  create, enable, deactivate, delete and resync. New optional
+  `expected_secret_readers` input: when non-empty, `cis-unexpected-secret-reads`
+  alarms on Secrets Manager `GetSecretValue` and SSM `GetParameter*` by any
+  other principal. The root `moderate/logging-monitoring` passes it through.
+  IAM Identity Center MFA/passkey events are not covered (event names unverified).
+- `org-scp-boundary`: `DenyMfaRemovalWithoutMfa` statement denies deactivating,
+  deleting or resyncing an MFA device without MFA. Exempt principals in
+  `exempt_principal_arns` skip it; roles that reset users' MFA must be listed.
+
 ## [4.0.0] - 2026-11-17
 
 Fixes from a production-readiness review of every module, root stack and
