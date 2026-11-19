@@ -35,12 +35,16 @@ module "logging_monitoring" {
 | Route table changes | SC-7, AU-6 | KSI-CNA-ULN |
 | VPC changes | SC-7, CM-6 | KSI-CNA-RNT |
 | MFA device changes (not CIS) | IA-2(1), IA-5, AU-6 | KSI-IAM-MFA |
+| Identity Center MFA and passkey changes (not CIS) | IA-2(1), IA-5, AU-6 | KSI-IAM-MFA |
 | Unexpected secret reads (not CIS; needs `expected_secret_readers`) | AC-6, AU-6, SI-4 | KSI-MLA-RVL |
 
-The last two alarms go beyond the CIS 14. The secret-read alarm exists only
+The last three alarms go beyond the CIS 14. The secret-read alarm exists only
 when `expected_secret_readers` is non-empty (alerting on every read is too
-noisy). IAM Identity Center MFA and passkey registration is not covered: its
-CloudTrail event names could not be verified against AWS documentation.
+noisy). The Identity Center alarm matches any non-read event from the
+`sso-directory` and `identitystore` sources whose name contains `Mfa` or
+`WebAuthn`: AWS documents those sources for MFA device management but lists no
+event names, so confirm the match against your own CloudTrail the first time a
+user registers a device.
 
 <!-- BEGIN_TF_DOCS -->
 ## Inputs

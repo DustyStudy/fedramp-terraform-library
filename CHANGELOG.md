@@ -18,7 +18,9 @@ FedRAMP expects.
   `expected_secret_readers` input: when non-empty, `cis-unexpected-secret-reads`
   alarms on Secrets Manager `GetSecretValue` and SSM `GetParameter*` by any
   other principal. The root `moderate/logging-monitoring` passes it through.
-  IAM Identity Center MFA/passkey events are not covered (event names unverified).
+  `cis-identity-center-mfa-changes` alarms on non-read `sso-directory` and
+  `identitystore` events whose name contains `Mfa` or `WebAuthn` (the event names
+  are not documented, so the match is by pattern).
 - `org-scp-boundary`: `DenyMfaRemovalWithoutMfa` statement denies deactivating,
   deleting or resyncing an MFA device without MFA. Exempt principals in
   `exempt_principal_arns` skip it; roles that reset users' MFA must be listed.
