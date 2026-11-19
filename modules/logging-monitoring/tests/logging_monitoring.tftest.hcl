@@ -216,6 +216,20 @@ run "mfa_device_changes_filter" {
   }
 }
 
+run "identity_center_mfa_changes_filter" {
+  command = plan
+
+  assert {
+    condition     = alltrue([for src in ["sso-directory.amazonaws.com", "identitystore.amazonaws.com"] : strcontains(aws_cloudwatch_log_metric_filter.identity_center_mfa_changes.pattern, "$.eventSource=${src})")]) && strcontains(aws_cloudwatch_log_metric_filter.identity_center_mfa_changes.pattern, "$.readOnly=false") && strcontains(aws_cloudwatch_log_metric_filter.identity_center_mfa_changes.pattern, "*Mfa*") && strcontains(aws_cloudwatch_log_metric_filter.identity_center_mfa_changes.pattern, "*WebAuthn*")
+    error_message = "The Identity Center filter must match Identity Store MFA and passkey changes from both sources and ignore reads (IA-2(1))."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.identity_center_mfa_changes.metric_name == aws_cloudwatch_log_metric_filter.identity_center_mfa_changes.metric_transformation[0].name && aws_cloudwatch_metric_alarm.identity_center_mfa_changes.threshold == 1
+    error_message = "The Identity Center MFA alarm must watch its filter's metric and fire on one event."
+  }
+}
+
 run "secret_reads_off_by_default" {
   command = plan
 
