@@ -180,6 +180,36 @@ data "aws_iam_policy_document" "fedramp_boundary_scp" {
       values   = ["false"]
     }
   }
+  # 6. Deny removing or resyncing an MFA device without MFA (IA-2(1), IA-5)
+  # A stolen password or key must not be able to strip the second factor.
+  # BoolIfExists also catches long-term access keys (key absent). Enrolment
+  # (CreateVirtualMFADevice, EnableMFADevice) is left out on purpose: first
+  # enrolment happens without MFA. Federated or SSO sessions carry no MFA
+  # flag, so admins who reset a user's MFA go in exempt_principal_arns.
+  statement {
+    sid    = "DenyMfaRemovalWithoutMfa"
+    effect = "Deny"
+    actions = [
+      "iam:DeactivateMFADevice",
+      "iam:DeleteVirtualMFADevice",
+      "iam:ResyncMFADevice"
+    ]
+    resources = ["*"]
+    condition {
+      test     = "BoolIfExists"
+      variable = "aws:MultiFactorAuthPresent"
+      values   = ["false"]
+    }
+
+    dynamic "condition" {
+      for_each = length(var.exempt_principal_arns) > 0 ? [1] : []
+      content {
+        test     = "ArnNotLike"
+        variable = "aws:PrincipalArn"
+        values   = var.exempt_principal_arns
+      }
+    }
+  }
 }
 
 resource "aws_organizations_policy" "fedramp_boundary" {

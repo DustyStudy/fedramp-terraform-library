@@ -32,6 +32,15 @@ module "org_scp_boundary" {
   IMDSv2) reports clean. The module's tests check that the SCP with every
   statement enabled stays under the 5,120-character SCP limit.
 
+- `DenyMfaRemovalWithoutMfa` denies `iam:DeactivateMFADevice`,
+  `iam:DeleteVirtualMFADevice` and `iam:ResyncMFADevice` unless the caller
+  signed in with MFA (`BoolIfExists aws:MultiFactorAuthPresent = false`), so
+  a stolen password or access key cannot strip the second factor. Enrolment
+  actions are not denied, because first enrolment has no MFA. Users in
+  `modules/iam-access-control` have MFA when they manage their own devices,
+  so self-service still works. Federated/SSO sessions carry no MFA flag:
+  put the role that resets users' MFA in `exempt_principal_arns`.
+
 - The region lock (`DenyUnapprovedRegions`) explicitly excludes global
   services (`iam`, `organizations`, `route53`, `cloudfront`, `support`,
   `aws-portal`, `budgets`) via `not_actions` — without that exclusion list

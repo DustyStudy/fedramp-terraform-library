@@ -34,6 +34,13 @@ module "logging_monitoring" {
 | Network gateway changes | SC-7, AU-6 | KSI-CNA-RNT |
 | Route table changes | SC-7, AU-6 | KSI-CNA-ULN |
 | VPC changes | SC-7, CM-6 | KSI-CNA-RNT |
+| MFA device changes (not CIS) | IA-2(1), IA-5, AU-6 | KSI-IAM-MFA |
+| Unexpected secret reads (not CIS; needs `expected_secret_readers`) | AC-6, AU-6, SI-4 | KSI-MLA-RVL |
+
+The last two alarms go beyond the CIS 14. The secret-read alarm exists only
+when `expected_secret_readers` is non-empty (alerting on every read is too
+noisy). IAM Identity Center MFA and passkey registration is not covered: its
+CloudTrail event names could not be verified against AWS documentation.
 
 <!-- BEGIN_TF_DOCS -->
 ## Inputs
@@ -41,10 +48,11 @@ module "logging_monitoring" {
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
 | cloudtrail_log_group_name | Name of the CloudWatch Logs log group receiving CloudTrail management events (the log_group_name output of modules/org-cloudtrail). | `string` | n/a | yes |
+| expected_secret_readers | CloudTrail principal ARNs (userIdentity.arn) that normally read secrets and parameters, e.g. "arn:<partition>:sts::<account>:assumed-role/app-role/*". Each entry may contain one "*" wildcard. When non-empty, the module alarms on secretsmanager GetSecretValue and ssm GetParameter, GetParameters and GetParametersByPath by any other principal. Default empty creates no secret-read filter or alarm, because alerting on every read is too noisy. | `list(string)` | `[]` | no |
 
 ## Outputs
 
 | Name | Description |
 | ---- | ----------- |
-| cis_alarms_topic_arn | SNS topic receiving all 14 CIS/Security Hub CloudWatch alarms — subscribe your on-call, ticketing, or SOAR integration here. |
+| cis_alarms_topic_arn | SNS topic receiving all CIS/Security Hub CloudWatch alarms plus the MFA and secret-read alarms — subscribe your on-call, ticketing, or SOAR integration here. |
 <!-- END_TF_DOCS -->

@@ -482,3 +482,65 @@ resource "aws_cloudwatch_metric_alarm" "vpc_changes" {
   treat_missing_data  = "notBreaching"
   alarm_actions       = [aws_sns_topic.cis_alarms.arn]
 }
+
+# --- MfaDeviceChanges ---
+# Not a CIS control: an attacker with a stolen session registers their own
+# MFA device to keep access.
+resource "aws_cloudwatch_log_metric_filter" "mfa_device_changes" {
+  name           = "MfaDeviceChanges"
+  log_group_name = var.cloudtrail_log_group_name
+  pattern        = "{($.eventSource=iam.amazonaws.com) && (($.eventName=CreateVirtualMFADevice) || ($.eventName=EnableMFADevice) || ($.eventName=DeactivateMFADevice) || ($.eventName=DeleteVirtualMFADevice) || ($.eventName=ResyncMFADevice))}"
+
+  metric_transformation {
+    name          = "MfaDeviceChanges"
+    namespace     = "LogMetrics"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "mfa_device_changes" {
+  alarm_name          = "cis-mfa-device-changes"
+  alarm_description   = "IAM MFA device registered, removed or resynced."
+  namespace           = "LogMetrics"
+  metric_name         = "MfaDeviceChanges"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.cis_alarms.arn]
+}
+
+# --- UnexpectedSecretReads ---
+# Only created when expected_secret_readers is set: alerting on every read
+# of every secret is too noisy to be useful.
+resource "aws_cloudwatch_log_metric_filter" "secret_reads" {
+  count          = length(var.expected_secret_readers) > 0 ? 1 : 0
+  name           = "UnexpectedSecretReads"
+  log_group_name = var.cloudtrail_log_group_name
+  pattern        = "{(($.eventSource=secretsmanager.amazonaws.com && $.eventName=GetSecretValue) || ($.eventSource=ssm.amazonaws.com && ($.eventName=GetParameter || $.eventName=GetParameters || $.eventName=GetParametersByPath)))${join("", [for p in var.expected_secret_readers : " && $.userIdentity.arn!=\"${p}\""])}}"
+
+  metric_transformation {
+    name          = "UnexpectedSecretReads"
+    namespace     = "LogMetrics"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "secret_reads" {
+  count               = length(var.expected_secret_readers) > 0 ? 1 : 0
+  alarm_name          = "cis-unexpected-secret-reads"
+  alarm_description   = "Secret or parameter read by a principal not in expected_secret_readers."
+  namespace           = "LogMetrics"
+  metric_name         = "UnexpectedSecretReads"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.cis_alarms.arn]
+}

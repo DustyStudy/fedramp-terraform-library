@@ -201,3 +201,54 @@ run "alarms_notify_the_encrypted_topic" {
     error_message = "The alarm topic must be encrypted with the module's CMK (SC-28)."
   }
 }
+
+run "mfa_device_changes_filter" {
+  command = plan
+
+  assert {
+    condition     = alltrue([for e in ["CreateVirtualMFADevice", "EnableMFADevice", "DeactivateMFADevice", "DeleteVirtualMFADevice", "ResyncMFADevice"] : strcontains(aws_cloudwatch_log_metric_filter.mfa_device_changes.pattern, "$.eventName=${e})")]) && strcontains(aws_cloudwatch_log_metric_filter.mfa_device_changes.pattern, "$.eventSource=iam.amazonaws.com")
+    error_message = "The MFA filter must catch all five IAM MFA device events (IA-2(1))."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.mfa_device_changes.metric_name == aws_cloudwatch_log_metric_filter.mfa_device_changes.metric_transformation[0].name && aws_cloudwatch_metric_alarm.mfa_device_changes.threshold == 1 && aws_cloudwatch_metric_alarm.mfa_device_changes.alarm_actions == toset(["arn:aws-us-gov:sns:us-gov-west-1:123456789012:cis-benchmark-alarms"])
+    error_message = "The MFA alarm must watch its filter's metric, fire on one event and notify the alarm topic."
+  }
+}
+
+run "secret_reads_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(aws_cloudwatch_log_metric_filter.secret_reads) == 0 && length(aws_cloudwatch_metric_alarm.secret_reads) == 0
+    error_message = "With no expected_secret_readers there must be no secret-read filter or alarm."
+  }
+}
+
+run "secret_reads_excludes_expected_readers" {
+  command = plan
+
+  variables {
+    expected_secret_readers = ["arn:aws-us-gov:sts::123456789012:assumed-role/app/*", "arn:aws-us-gov:iam::123456789012:user/ci"]
+  }
+
+  assert {
+    condition     = strcontains(aws_cloudwatch_log_metric_filter.secret_reads[0].pattern, "GetSecretValue") && strcontains(aws_cloudwatch_log_metric_filter.secret_reads[0].pattern, "GetParametersByPath") && strcontains(aws_cloudwatch_log_metric_filter.secret_reads[0].pattern, "$.userIdentity.arn!=\"arn:aws-us-gov:sts::123456789012:assumed-role/app/*\"") && strcontains(aws_cloudwatch_log_metric_filter.secret_reads[0].pattern, "$.userIdentity.arn!=\"arn:aws-us-gov:iam::123456789012:user/ci\"")
+    error_message = "The filter must match secret and parameter reads and exclude every expected reader."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.secret_reads[0].metric_name == aws_cloudwatch_log_metric_filter.secret_reads[0].metric_transformation[0].name && aws_cloudwatch_metric_alarm.secret_reads[0].alarm_actions == toset(["arn:aws-us-gov:sns:us-gov-west-1:123456789012:cis-benchmark-alarms"])
+    error_message = "The secret-read alarm must watch its filter's metric and notify the alarm topic."
+  }
+}
+
+run "rejects_quote_in_expected_reader" {
+  command = plan
+
+  variables {
+    expected_secret_readers = ["bad\"arn"]
+  }
+
+  expect_failures = [var.expected_secret_readers]
+}

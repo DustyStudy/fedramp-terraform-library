@@ -117,6 +117,29 @@ run "imdsv2_denies_launch_and_downgrade" {
   }
 }
 
+run "mfa_removal_requires_mfa" {
+  command = plan
+
+  variables {
+    exempt_principal_arns = ["arn:aws:iam::*:role/mfa-admin"]
+  }
+
+  assert {
+    condition     = toset(one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == "DenyMfaRemovalWithoutMfa"]).Action) == toset(["iam:DeactivateMFADevice", "iam:DeleteVirtualMFADevice", "iam:ResyncMFADevice"])
+    error_message = "The MFA statement must deny exactly deactivate, delete and resync, never enrolment (first enrolment has no MFA)."
+  }
+
+  assert {
+    condition     = one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == "DenyMfaRemovalWithoutMfa"]).Condition.BoolIfExists["aws:MultiFactorAuthPresent"] == "false"
+    error_message = "MFA removal must be denied when MFA is absent or false."
+  }
+
+  assert {
+    condition     = one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == "DenyMfaRemovalWithoutMfa"]).Condition.ArnNotLike["aws:PrincipalArn"] == "arn:aws:iam::*:role/mfa-admin"
+    error_message = "Exempt principals must be excluded from the MFA removal deny."
+  }
+}
+
 run "no_exemptions_means_unconditional_denies" {
   command = plan
 
@@ -144,7 +167,7 @@ run "exempt_principals_skip_the_baseline_denies" {
 
   assert {
     condition = alltrue([
-      for sid in ["DenyDisablingSecurityServices", "DenyModifyingAccountBaseline"] :
+      for sid in ["DenyDisablingSecurityServices", "DenyModifyingAccountBaseline", "DenyMfaRemovalWithoutMfa"] :
       toset(one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == sid]).Condition.ArnNotLike["aws:PrincipalArn"]) == toset(["arn:aws:iam::*:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_SecurityAdmin_*", "arn:aws:iam::*:role/terraform-deployer"])
     ])
     error_message = "Every exempt principal must be excluded from the security-service and baseline denies."
