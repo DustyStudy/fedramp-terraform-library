@@ -544,3 +544,35 @@ resource "aws_cloudwatch_metric_alarm" "secret_reads" {
   treat_missing_data  = "notBreaching"
   alarm_actions       = [aws_sns_topic.cis_alarms.arn]
 }
+
+# --- IdentityCenterMfaChanges ---
+# MFA devices and passkeys of Identity Center directory users are managed
+# through the Identity Store event group (sso-directory and identitystore
+# sources). AWS documents the sources but not the event names, so this matches
+# any change (readOnly=false) whose name contains Mfa or WebAuthn.
+resource "aws_cloudwatch_log_metric_filter" "identity_center_mfa_changes" {
+  name           = "IdentityCenterMfaChanges"
+  log_group_name = var.cloudtrail_log_group_name
+  pattern        = "{(($.eventSource=sso-directory.amazonaws.com) || ($.eventSource=identitystore.amazonaws.com)) && ($.readOnly=false) && (($.eventName=\"*Mfa*\") || ($.eventName=\"*WebAuthn*\"))}"
+
+  metric_transformation {
+    name          = "IdentityCenterMfaChanges"
+    namespace     = "LogMetrics"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "identity_center_mfa_changes" {
+  alarm_name          = "cis-identity-center-mfa-changes"
+  alarm_description   = "IAM Identity Center MFA device or passkey registered, changed or removed."
+  namespace           = "LogMetrics"
+  metric_name         = "IdentityCenterMfaChanges"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.cis_alarms.arn]
+}
