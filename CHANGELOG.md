@@ -13,6 +13,16 @@ FedRAMP expects.
 ## [Unreleased]
 
 ### Added
+- `secret-access-burst-detector`: new module. A scheduled Lambda queries the
+  CloudTrail log group with Logs Insights and reports any principal that had
+  `denied_call_threshold` (default 20) denied API calls and also read a secret
+  or parameter (Secrets Manager `GetSecretValue`, SSM `GetParameter*`) within
+  `query_window_minutes` (default 30). This is the pattern in the AntiFox-linked
+  intrusions reported 2026-11-10, where one read succeeded among hundreds of
+  denied calls; the existing `logging-monitoring` alarms do not correlate per
+  principal. Detective only, and off by default (`enabled = false` leaves the
+  schedule disabled): enable it per account after tuning, since automation that
+  is routinely denied causes noise and query cost grows with log volume.
 - `logging-monitoring`: `cis-mfa-device-changes` alarm on IAM MFA device
   create, enable, deactivate, delete and resync. New optional
   `expected_secret_readers` input: when non-empty, `cis-unexpected-secret-reads`

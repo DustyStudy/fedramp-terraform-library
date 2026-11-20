@@ -30,6 +30,7 @@ definitions before using it in an SSP.
 | `trust-policy-auditor` | AC-3, AC-6, AC-21, IA-5, SC-7 | KSI-IAM-SNU, KSI-IAM-ELP |
 | `rds-access-auditor` | AC-3, AC-6, IA-2, IA-5, SC-7, SC-8 | KSI-IAM-ELP, KSI-IAM-SNU, KSI-CNA-RNT, KSI-SVC-ASM, KSI-SVC-SIN |
 | `stale-account-detector` | AC-2, AC-2(3), IA-4, CM-8 | KSI-IAM-AAM |
+| `secret-access-burst-detector` | SI-4, AU-6 (relies on AU-2, AU-12 from `org-cloudtrail`) | KSI-MLA-RVL |
 
 **Note on native resources vs. workarounds:** `iam-password-policy` and
 `guardduty-org` use native Terraform resources (`aws_iam_account_password_policy`,
