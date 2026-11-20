@@ -45,6 +45,7 @@ variable validation to reject it.
 | `identity-center-access-auditor` | 5 | The Lambda role is read-only; settings reach the Lambda; it runs daily with encrypted logs; the topic uses the module CMK |
 | `trust-policy-auditor` | 6 | It can't assume any role unless `member_role_name` is set, and then only that role; the Lambda role and the member-account policy are read-only; settings reach the Lambda; it runs daily with encrypted logs and a CMK-encrypted topic; a role ARN or a malformed account ID is rejected |
 | `rds-access-auditor` | 6 | It can't list the organization or assume any role unless `member_role_name` is set, and then only that role; the Lambda role and the member-account policy are read-only; settings reach the Lambda; it runs daily with encrypted logs and a CMK-encrypted topic; a role ARN or a malformed region is rejected |
+| `secret-access-burst-detector` | 10 | The schedule is disabled unless `enabled` is set; the Lambda role can start queries only on the CloudTrail log group, write only to its own log group, and uses `*` only for `logs:GetQueryResults` and X-Ray; ARNs use the current partition; settings reach the Lambda; logs and topic use the rotating module CMK; failed runs alarm and are not retried; a zero threshold or window is rejected |
 | `org-cloudtrail` | 7 | The trail covers the whole organization; logs use a rotating CMK; buckets block public access and are versioned; the bucket policy blocks confused-deputy access and plain HTTP; ARNs use the current partition; dotted trail names and malformed organization IDs are rejected |
 | `org-scp-boundary` | 6 | The SCP denies disabling security services; the region lock uses the approved regions; insecure transport is denied; the policy attaches to every target; the IMDSv2 rule is off by default and, when on, denies both launch without IMDSv2 and downgrade |
 | `security-hub-org` | 2 | Default standards and organization enrollment are on; standards auto-enable can be turned off |
@@ -62,7 +63,8 @@ variable validation to reject it.
 
 The pytest suites (`tests/python/`) run the Lambda handlers for
 `identity-center-access-auditor`, `rds-access-auditor`,
-`stale-account-detector` and `trust-policy-auditor` against mocked boto3
+`secret-access-burst-detector`, `stale-account-detector` and
+`trust-policy-auditor` against mocked boto3
 clients. CI also runs `rds-access-auditor`'s SQL role audit against
 PostgreSQL 16 with a fixture role per finding (`tests/sql/`).
 
