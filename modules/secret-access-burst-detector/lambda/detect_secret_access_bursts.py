@@ -70,8 +70,11 @@ READS_QUERY = (
     '(eventSource = "secretsmanager.amazonaws.com" and eventName = "GetSecretValue")'
     ' or (eventSource = "ssm.amazonaws.com"'
     ' and eventName in ["GetParameter", "GetParameters", "GetParametersByPath"]))'
+    # One always-present target field: grouping on fields some events lack
+    # could leave those reads out of the result.
+    ' | fields coalesce(requestParameters.secretId, requestParameters.name, requestParameters.path, "-") as target'
     " | stats count(*) as reads, min(@timestamp) as first_read, max(@timestamp) as last_read"
-    " by userIdentity.arn, eventName, requestParameters.secretId, requestParameters.name, requestParameters.path"
+    " by userIdentity.arn, eventName, target"
 )
 
 
@@ -143,12 +146,7 @@ def lambda_handler(event, context):
             )
             lines.append("  Successful reads:")
             for row in principal_reads:
-                target = (
-                    row.get("requestParameters.secretId")
-                    or row.get("requestParameters.name")
-                    or row.get("requestParameters.path")
-                    or "(name not in the event)"
-                )
+                target = row.get("target") if row.get("target") not in (None, "", "-") else "(name not in the event)"
                 lines.append(
                     f"  - {row.get('eventName')} {target} x{row.get('reads')} "
                     f"(first {row.get('first_read')}, last {row.get('last_read')})"

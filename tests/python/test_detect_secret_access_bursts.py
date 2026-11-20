@@ -31,7 +31,7 @@ def _read(arn, event_name="GetSecretValue", **request):
         "reads": 1,
         "first_read": "2026-11-10 10:21:00.000",
         "last_read": "2026-11-10 10:21:00.000",
-        **{f"requestParameters.{k}": v for k, v in request.items()},
+        "target": next(iter(request.values()), "-"),
     }
 
 
