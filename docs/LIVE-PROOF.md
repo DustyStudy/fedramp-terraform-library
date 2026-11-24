@@ -274,6 +274,37 @@ window.
 - **No workloads ran on the cluster.** It has no nodes, and its
   authentication mode is the provider default, `CONFIG_MAP`.
 
+## Later run: v4.1.0 detectors and backup immutability
+
+On 2026-11-24, after v4.1.0 was released,
+[`proof/release-4.1.0`](../proof/release-4.1.0/README.md) was applied to the
+sandbox member account in `us-east-1`. It checks three behaviours of 4.1.0
+code that plan-time tests cannot reach.
+
+| Check | Result |
+|---|---|
+| `secret-access-burst-detector` runs against a real CloudTrail log group with `logs:GetQueryResults` scoped to that log group, not `*` | PASS: invocations return status 200 with no `FunctionError` |
+| The denied-call query, including `filter denied >= N` after `stats`, is accepted by Logs Insights | PASS |
+| A role with 8 denied calls (`AccessDenied`, `AccessDeniedException`, `UnauthorizedOperation`) and one `GetSecretValue` is reported | PASS: the finding named `assumed-role/ftl410-burst-actor/ftl410-probe` with 8 denied calls and the read; both the scheduled run and a manual run found it |
+| The `account-baseline` vault deny policy refuses a non-exempt role that IAM allows | PASS: `DeleteRecoveryPoint`, `UpdateRecoveryPointLifecycle` and `DeleteBackupVault` each failed with "explicit deny in a resource-based policy" |
+| AWS Backup still expires a recovery point under the deny policy and governance-mode Vault Lock | PENDING: recovery point from 2026-11-24 21:43 UTC with a 1-day lifecycle; checked after 2026-11-25 21:43 UTC |
+
+Things the run showed about deploying, not about the modules:
+
+- A trail misses events in its first minutes. The first burst ran about a
+  minute after `StartLogging`, before the first delivery at 21:43:38 UTC,
+  and was never in the log group. A rerun twenty minutes later was found.
+- The Identity Center role's ARN includes its home region
+  (`.../sso.amazonaws.com/us-east-2/AWSReservedSSO_...`). An exempt pattern
+  written without that segment would not match it, and with
+  `protect_backup_vault_recovery_points` that would leave nobody able to
+  change the vault policy. The stack adds the caller's exact role ARN.
+- An organization SCP that protects CloudTrail also blocks deleting a test
+  trail. Teardown of the trail needs an exempt principal.
+- With `use_fips_endpoint = true` the provider also sends the SSO credential
+  request to `portal.sso-fips.<region>`, which does not exist, so these two
+  stacks set it to `false`. The modules' own Lambdas still default to FIPS.
+
 ## What the run could not do
 
 - **S3 account-level public access block.** The organization's own SCP

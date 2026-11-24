@@ -39,6 +39,7 @@ the raw probe output is in [`docs/proof/`](../docs/proof).
 | `cloudtrail-key/` | One statement of the `org-cloudtrail` key policy, applied with `-target`. |
 | `eks-config/` | `eks-hardened` and `config-conformance-pack`, with `network-perimeter-vpc`. |
 | `patching/` | `ssm-patching-hardened` and `moderate/network-boundary/vpc-flow-logs`. |
+| `release-4.1.0/` | v4.1.0 checks: `burst/` (`secret-access-burst-detector` with its own trail) and `backup/` (`account-baseline` vault lock and deny policy, applied with `-target`). Its `probe.py` runs them. |
 | `controls_probe.py` | Probe for the patching, CloudTrail-key and access-control stacks. |
 
 Applying any of these creates billable resources and, in `member/`,
