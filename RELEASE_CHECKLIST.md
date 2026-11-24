@@ -30,8 +30,8 @@ external change), N/A.
 | 10 | Docs consistent: module inventory, control mapping, NIST matrix, module READMEs, links | PASS (pending CI) | Fixed 23→24 counts, catalog rows, CP-9/CP-10/IA-2 matrix rows, CRM, org-governance Vault Lock pointer, control-mapping IA/CP-10, `?ref=v4.1.0` pins, output descriptions. Links clean. Test-count text updated after the final run |
 | 11 | Release PR: CHANGELOG `[4.1.0]` section, README `?ref=v4.1.0`, README test summary | PASS | `release.yml`'s awk extracts the `[4.1.0]` notes; README and `docs/PROOF.md` counts from the 2026-11-24 run |
 | 12 | Full CI green on the release PR head | PASS | PR DustyStudy/fedramp-terraform-library#96 at `67d252d`: pipeline 45488772919 (terraform-docs, fmt + TFLint, module tests floor TF 1.12.0/AWS 6.0.0 and latest TF 1.17.2, lock files, pytest + ruff, SQL audit), Security Scan 45488773606 (Checkov, Gitleaks, Trivy, zizmor), CodeQL 45488772953. CI reruns on this tracker-only commit before merge |
-| 13 | Live plan/apply of changed modules in a sandbox account (CONTRIBUTING PR checklist) | NOT RUN (owner accepted) | Owner chose merge and tag without a sandbox run, 2026-11-24. Untested live: scoped `logs:GetQueryResults`, the post-`stats` threshold filter, Backup lifecycle expiry under the vault deny policy. All module tests are plan-only with mocked providers |
-| 14 | Tag `v4.1.0` and `release.yml` publishes attested assets | APPROVED, in progress | Owner approved merge and tag, 2026-11-24. Squash-merge #96, tag the merge commit, `release.yml` publishes |
+| 13 | Live plan/apply of changed modules in a sandbox account (CONTRIBUTING PR checklist) | PASS except expiry (PENDING) | `proof/release-4.1.0`, account 264524063329, us-east-1, 2026-11-24. Burst detector: runs with scoped `GetQueryResults` and the post-`stats` filter (status 200, no FunctionError) and published a finding for the 8-denied-call + `GetSecretValue` actor. Vault deny policy: `DeleteRecoveryPoint`, `UpdateRecoveryPointLifecycle`, `DeleteBackupVault` all denied by the resource policy for a role IAM allows. Backup expiry under the deny policy: recovery point due 2026-11-25 21:43 UTC; scheduled read-only check `ftl410-backup-expiry-check` at 2026-11-26 12:00 UTC. Details in `docs/LIVE-PROOF.md` |
+| 14 | Tag `v4.1.0` and `release.yml` publishes attested assets | PASS | #96 squash-merged as `d13ce7c`; tag `v4.1.0` on `d13ce7c`; release run 45491240056 succeeded; release has `fedramp-terraform-library-4.1.0.tar.gz`, `SHA256SUMS`, `sbom.spdx.json`; `gh release verify v4.1.0` verified attestations for all three |
 
 ## Decisions
 
@@ -65,9 +65,40 @@ external change), N/A.
 
 ## AWS resources created for this run
 
-None.
+All in sandbox member account 264524063329, us-east-1, partition `aws`,
+created 2026-11-24 ~21:40 UTC as `AWSReservedSSO_AdministratorAccess`. All
+are disposable fixtures owned by this run; local state in
+`proof/release-4.1.0/{burst,backup}/terraform.tfstate`.
+
+- `proof/release-4.1.0/burst` (32): single-account trail `ftl410-*` to a CWL
+  log group, its S3 bucket and KMS key; fixture role `ftl410-burst-actor`;
+  secret `ftl410-probe`; capture queue `ftl410-capture`; the
+  `secret-access-burst-detector` module (Lambda, KMS key, SNS topic, DLQ,
+  EventBridge rule, alarms, log group).
+- `proof/release-4.1.0/backup` (11, `-target` only): vault `ftl410-vault`
+  with governance-mode Vault Lock (1 day) and the deny vault policy, its KMS
+  key, `AWSBackupDefaultServiceRole` (did not exist before), DynamoDB table
+  `ftl410-backup-src`, role `ftl410-backup-deleter`; plus one recovery point
+  from backup job `7878ae92-2e47-4ed0-bb5f-af7c3ada006c` (1-day lifecycle).
+- Not created by this run, left alone: log groups
+  `/aws/lambda/ftlproof-db-client`, `/aws/rds/instance/ftlproof-hardened/postgresql`,
+  `RDSOSMetrics` from an earlier proof.
+
+Status:
+- `burst`: fully destroyed 2026-11-24. `cloudtrail:DeleteTrail` is denied by
+  org SCP `guardrails-security-services` (`p-gww24i22`), and SCP `p-ympc9bn9`
+  stops granting it to the exempt `security-pipeline` role. With the owner's
+  explicit approval, `ProtectAuditLogging` was given one extra exempt ARN (the
+  sandbox `AWSReservedSSO_AdministratorAccess` role only) from 22:45:04Z to
+  22:45:15Z, the trail was deleted, and the original SCP content was restored
+  and verified byte-identical. The other 7 resources were then destroyed;
+  state is empty. KMS keys are pending deletion.
+- `backup`: up until the expiry check, then destroyed as the exempt admin.
+
+Teardown: `proof/release-4.1.0/README.md`. KMS keys stay pending deletion
+7-30 days after destroy.
 
 ## Next step
 
-After the tag: confirm the `v4.1.0` release has the tarball, `SHA256SUMS`,
-SBOM and attestations (`gh release verify v4.1.0`).
+Finish criterion 13 (see `proof/release-4.1.0/README.md`), then tear the
+stack down and record the result in `docs/LIVE-PROOF.md`.
