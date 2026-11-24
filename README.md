@@ -108,20 +108,20 @@ The catalog includes 24 shared modules under `modules/` and three components und
 | [`trust-policy-auditor`](modules/trust-policy-auditor/README.md) | Daily detective audit of who can reach in from outside: OIDC trust without a pinned `sub`/`aud`, cross-account and `"*"` trust, open Lambda function policies, RAM shares outside the organization. Single account or organization-wide |
 | [`rds-access-auditor`](modules/rds-access-auditor/README.md) | Daily detective audit of RDS and Aurora access: public exposure with open security groups, unmanaged master passwords, IAM auth off, TLS not enforced, IAM `rds-db:connect` as any user or the master user. Ships a read-only SQL audit of PostgreSQL role grants |
 | [`secret-access-burst-detector`](modules/secret-access-burst-detector/README.md) | Scheduled detective check of CloudTrail logs: reports a principal with a burst of denied API calls and a successful secret or parameter read in the same window. Off by default |
-| [`account-baseline`](modules/account-baseline/README.md) | EBS default encryption, S3 account public access block, optional default-VPC/SG lockdown |
+| [`account-baseline`](modules/account-baseline/README.md) | EBS default encryption, S3 account public access block, optional default-VPC/SG lockdown, backup vault with opt-in Vault Lock and deny-delete vault policy |
 | [`ecr-hardened`](modules/ecr-hardened/README.md) | KMS-encrypted ECR repository, tag immutability, scan-on-push |
 | [`ecs-fargate-hardened`](modules/ecs-fargate-hardened/README.md) | ECS cluster with Container Insights and KMS-encrypted logging (incl. ECS Exec) |
 | [`eks-hardened`](modules/eks-hardened/README.md) | EKS cluster with KMS secrets envelope encryption, full control-plane logging, private-only endpoint |
 | [`fips-vpc-endpoints`](modules/fips-vpc-endpoints/README.md) | VPC interface endpoints: see the module's `variables.tf` for which services genuinely have FIPS-suffixed endpoints and which don't |
 | [`network-perimeter-vpc`](modules/network-perimeter-vpc/README.md) | 3-tier VPC with KMS-encrypted Flow Logs and a locked-down default security group |
 | [`org-governance`](modules/org-governance/README.md) | Workload-perimeter SCP, AI-services opt-out policy, centralized backup policy |
-| [`org-scp-boundary`](modules/org-scp-boundary/README.md) | Region-lock SCP, security-service protection, insecure-transport deny, optional IMDSv2 enforcement |
+| [`org-scp-boundary`](modules/org-scp-boundary/README.md) | Region-lock SCP, security-service protection, insecure-transport deny, MFA-removal deny, optional IMDSv2 enforcement |
 | [`rds-postgres-hardened`](modules/rds-postgres-hardened/README.md) | Multi-AZ PostgreSQL with enforced TLS, KMS encryption, managed master password |
 | [`stale-account-detector`](modules/stale-account-detector/README.md) | Reports unused IAM credentials, roles, Identity Center access and idle accounts across the organization |
 | [`ssm-patching-hardened`](modules/ssm-patching-hardened/README.md) | Automated patch baseline, weekly maintenance window, KMS-encrypted patch logs |
 | [`waf-hardened`](modules/waf-hardened/README.md) | Regional WAFv2 with AWS-managed rule groups, rate limiting, KMS-encrypted logging |
 | [`iam-access-control`](modules/iam-access-control/README.md) | Access Analyzer, permission boundary, enforced-MFA group, root usage alerting |
-| [`logging-monitoring`](modules/logging-monitoring/README.md) | 14 CIS/Security Hub CloudWatch metric-filter + alarm pairs |
+| [`logging-monitoring`](modules/logging-monitoring/README.md) | 14 CIS/Security Hub CloudWatch metric-filter + alarm pairs, plus IAM and Identity Center MFA-change alarms and an optional unexpected-secret-read alarm |
 | [`moderate/network-boundary/vpc-flow-logs`](moderate/network-boundary/vpc-flow-logs/README.md) | VPC Flow Logs to encrypted S3, for an existing VPC |
 | [`moderate/network-boundary/default-security-group-lockdown`](moderate/network-boundary/default-security-group-lockdown/README.md) | Strips all rules from an existing VPC's default security group (native resource; no custom scripting needed, unlike CFN) |
 | [`moderate/data-protection/kms-cmk-baseline`](moderate/data-protection/kms-cmk-baseline/README.md) | Reusable customer-managed KMS key for encryption at rest |
@@ -244,7 +244,7 @@ see `CONTRIBUTING.md` for the pattern.
    configuration:
    ```hcl
    module "org_cloudtrail" {
-     source          = "github.com/DustyStudy/fedramp-terraform-library//modules/org-cloudtrail?ref=v4.0.0"
+     source          = "github.com/DustyStudy/fedramp-terraform-library//modules/org-cloudtrail?ref=v4.1.0"
      organization_id = "o-xxxxxxxxxx"
    }
    ```

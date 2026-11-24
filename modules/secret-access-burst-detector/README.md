@@ -36,7 +36,7 @@ both `logging-monitoring` alarms; this adds to them and replaces neither.
 ## How it works
 
 An EventBridge rule (default: every 15 minutes) invokes the Lambda, which
-looks back `query_window_minutes` (default 30):
+looks back `query_window_minutes` (default 60):
 
 1. **Denied calls per principal.** A Logs Insights query counts records
    whose `errorCode` matches `AccessDenied*` or `*UnauthorizedOperation`
@@ -45,8 +45,8 @@ looks back `query_window_minutes` (default 30):
 2. **Successful secret reads**, only if some principal reached
    `denied_call_threshold` (default 20): records with no `errorCode` for
    `secretsmanager` `GetSecretValue` and `ssm` `GetParameter`,
-   `GetParameters` and `GetParametersByPath` (the same events as
-   `logging-monitoring`'s `UnexpectedSecretReads` filter).
+   `GetParameters`, `GetParametersByPath` and `GetParameterHistory` (the
+   same events as `logging-monitoring`'s `UnexpectedSecretReads` filter).
 
 A principal in both results is a finding. Each run publishes at most one
 SNS message, listing for every finding the principal, its denied-call
@@ -57,9 +57,13 @@ Things to know:
 
 - The order inside the window is not checked. Denials after the read
   count the same as denials before it.
-- Windows overlap (30 minutes of data every 15), so a burst that spans a
-  run boundary is still caught, and the same finding is usually reported
-  twice.
+- Windows overlap (60 minutes of data every 15), so a burst that spans a
+  run boundary is still caught, and the same finding is reported by
+  every run whose window holds it: up to four times with the defaults.
+- A burst and a read are reliably correlated only when they are no
+  further apart than `query_window_minutes` minus the schedule interval
+  minus the CloudTrail delivery delay (about 5 minutes): 40 minutes with
+  the defaults. Further apart, it depends on when a run happens to fire.
 - An assumed-role session is its own principal
   (`arn:<partition>:sts::<account>:assumed-role/<role>/<session>`), so
   denials spread over many sessions of one role are counted per session.
@@ -111,7 +115,7 @@ alerts. Enable it per account, after a tuning period:
    whose credential is stolen is not detected.
 3. **Check the cost.** Logs Insights charges for the log data each query
    scans, so cost grows with the CloudTrail log group's volume, the
-   window, and the schedule: by default 96 runs a day, each scanning 30
+   window, and the schedule: by default 96 runs a day, each scanning 60
    minutes of logs once, or twice when a principal crosses the threshold.
    An organization trail's log group can be large.
 4. Set `enabled = true` and apply.
@@ -169,9 +173,9 @@ and what to revoke.
 | ignored_principal_arns | CloudTrail principal ARNs (userIdentity.arn) never reported, for automation that is routinely denied and also reads secrets, e.g. "arn:<partition>:sts::<account>:assumed-role/inventory-scanner/*". "*" matches any run of characters. Keep the list short: an ignored principal whose credential is stolen is not detected. | `list(string)` | `[]` | no |
 | name_prefix | Prefix used for naming all resources created by this module. | `string` | `"secret-access-burst-detector"` | no |
 | notification_email | Optional email address to subscribe to the SNS topic. Leave empty to skip. | `string` | `""` | no |
-| query_window_minutes | How far back each run looks. Denied calls and secret reads are correlated inside this window. A longer window scans more log data per run. | `number` | `30` | no |
+| query_window_minutes | How far back each run looks. Denied calls and secret reads are correlated inside this window. A burst and a read are reliably seen together only when they are no further apart than this window minus the schedule interval minus the CloudTrail delivery delay (about 5 minutes): 40 minutes with the defaults. Keep it larger than the schedule interval. A longer window scans more log data per run. | `number` | `60` | no |
 | reserved_concurrent_executions | Concurrency reserved for the Lambda. Set -1 to reserve none: accounts at the 10-execution quota floor (new and sandbox accounts) reject any reservation. 0 is rejected because it throttles every run. | `number` | `2` | no |
-| schedule_expression | EventBridge schedule expression controlling how often the detector runs. Keep the interval shorter than query_window_minutes so no events fall between runs. | `string` | `"rate(15 minutes)"` | no |
+| schedule_expression | EventBridge schedule expression controlling how often the detector runs. Keep the interval well below query_window_minutes: see that variable for the span that is reliably covered. | `string` | `"rate(15 minutes)"` | no |
 | use_fips_endpoint | Make the Lambda's AWS SDK calls through FIPS 140 validated endpoints (sets AWS_USE_FIPS_ENDPOINT). Default true, matching the provider setting in this library's root configurations. | `bool` | `true` | no |
 
 ## Outputs
@@ -187,7 +191,9 @@ and what to revoke.
 - Tested with plan-only `terraform test` runs and mocked unit tests. The
   two query strings have not been run against a live CloudTrail log
   group from this repository; step 2 above is where you confirm them.
-- CloudTrail usually delivers an event to CloudWatch Logs within a few
-  minutes. The overlapping windows cover that delay.
+- CloudTrail usually delivers an event to CloudWatch Logs within about
+  5 minutes. The overlapping windows cover that delay, at the cost of
+  that much of the reliably covered span (`query_window_minutes` minus
+  the schedule interval minus the delay).
 - `ignored_principal_arns` is passed to the Lambda as an environment
   variable, and Lambda limits all of a function's variables to 4 KB.

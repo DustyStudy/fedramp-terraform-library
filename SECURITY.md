@@ -51,11 +51,11 @@ attestation recording which commit the tag points to. Check it with the
 GitHub CLI:
 
 ```sh
-gh release verify v4.0.0 --repo DustyStudy/fedramp-terraform-library
+gh release verify v4.1.0 --repo DustyStudy/fedramp-terraform-library
 ```
 
 The command prints the commit the tag resolves to. A Git module source
-(`?ref=v4.0.0`) is not checked by Terraform against anything, so for the
+(`?ref=v4.1.0`) is not checked by Terraform against anything, so for the
 strongest pin use that full commit SHA as the `ref`.
 
 Releases **after v3.0.0** are published by

@@ -109,10 +109,10 @@ run "imdsv2_denies_launch_and_downgrade" {
     error_message = "With require_imdsv2, switching an instance back to IMDSv1 must be denied."
   }
 
-  # SCPs are capped at 5,120 characters. AWS counts the policy without
-  # insignificant whitespace, which is what jsonencode produces.
+  # SCPs are capped at 5,120 characters and whitespace counts, so measure
+  # the content the module actually submits (minified).
   assert {
-    condition     = length(jsonencode(jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json))) <= 5120
+    condition     = length(aws_organizations_policy.fedramp_boundary.content) <= 5120
     error_message = "With every statement enabled, the SCP must stay within the 5,120-character limit."
   }
 }
@@ -125,8 +125,8 @@ run "mfa_removal_requires_mfa" {
   }
 
   assert {
-    condition     = toset(one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == "DenyMfaRemovalWithoutMfa"]).Action) == toset(["iam:DeactivateMFADevice", "iam:DeleteVirtualMFADevice", "iam:ResyncMFADevice"])
-    error_message = "The MFA statement must deny exactly deactivate, delete and resync, never enrolment (first enrolment has no MFA)."
+    condition     = toset(one([for s in jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json).Statement : s if s.Sid == "DenyMfaRemovalWithoutMfa"]).Action) == toset(["iam:DeactivateMFADevice", "iam:DeleteVirtualMFADevice"])
+    error_message = "The MFA statement must deny exactly deactivate and delete: never enrolment (first enrolment has no MFA) or resync (a drifted device must stay recoverable)."
   }
 
   assert {
@@ -183,6 +183,45 @@ run "exempt_principals_skip_the_baseline_denies" {
     condition     = length(aws_organizations_policy.fedramp_boundary.content) <= 5120
     error_message = "The SCP is over the 5,120-character Organizations limit."
   }
+}
+
+run "govcloud_six_long_exemptions_fit_the_size_limit" {
+  command = plan
+
+  override_data {
+    target = data.aws_partition.current
+    values = {
+      partition = "aws-us-gov"
+    }
+  }
+
+  variables {
+    require_imdsv2 = true
+    exempt_principal_arns = [
+      for name in ["SecurityAdmin", "NetworkAdmin", "PlatformAdmin", "BreakGlassAdmin", "IdentityAdmin", "AuditorReadOnly"] :
+      "arn:aws-us-gov:iam::*:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_${name}_*"
+    ]
+  }
+
+  assert {
+    condition     = length(aws_organizations_policy.fedramp_boundary.content) <= 5120
+    error_message = "Six SSO-style exempt ARNs with require_imdsv2 in GovCloud must fit the 5,120-character limit."
+  }
+
+  assert {
+    condition     = !strcontains(aws_organizations_policy.fedramp_boundary.content, "\n")
+    error_message = "The submitted SCP must be minified."
+  }
+}
+
+run "rejects_an_oversized_policy" {
+  command = plan
+
+  variables {
+    exempt_principal_arns = [for i in range(30) : "arn:aws:iam::*:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_Role${i}_*"]
+  }
+
+  expect_failures = [aws_organizations_policy.fedramp_boundary]
 }
 
 run "global_services_are_exempt_from_the_region_lock" {

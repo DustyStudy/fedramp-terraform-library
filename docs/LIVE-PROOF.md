@@ -1,6 +1,6 @@
 # Live proof
 
-Sixteen of the library's 23 modules have been deployed to a real AWS
+Sixteen of the library's 24 modules have been deployed to a real AWS
 Organization and checked with real API calls: thirteen on 2026-10-04 and
 2026-10-05, two more on
 [2026-10-10](#later-run-patching-flow-logs-and-access-control), and

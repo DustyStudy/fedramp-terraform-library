@@ -38,10 +38,13 @@ variable "exempt_principal_arns" {
   description = <<-EOT
     IAM role ARNs (wildcards allowed, e.g. an Identity Center permission set
     role "arn:<partition>:iam::*:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_SecurityAdmin_*")
-    that the security-service and account-baseline denies do not apply to.
-    Without one, nobody in a member account, including your deployment
-    pipeline, can create the S3 account public access block, enable
-    GuardDuty features or delete a KMS key once the SCP is attached.
+    that the security-service, account-baseline and MFA-removal denies do
+    not apply to. Without one, nobody in a member account, including your
+    deployment pipeline, can create the S3 account public access block,
+    enable GuardDuty features or delete a KMS key once the SCP is attached.
+    Roles that reset users' MFA devices must be listed here: federated/SSO
+    sessions never satisfy the MFA condition. Each ARN is rendered three
+    times in the SCP, which is capped at 5,120 characters.
   EOT
   type        = list(string)
   default     = []

@@ -49,7 +49,7 @@ home region.
 
 ```hcl
 module "stale_account_detector" {
-  source = "github.com/DustyStudy/fedramp-terraform-library//modules/stale-account-detector?ref=v4.0.0"
+  source = "github.com/DustyStudy/fedramp-terraform-library//modules/stale-account-detector?ref=v4.1.0"
 
   notification_email = "security@example.com"
   member_role_name   = "StaleAccountRead"

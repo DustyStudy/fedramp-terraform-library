@@ -3,6 +3,10 @@ data "aws_partition" "current" {}
 locals {
   govcloud         = data.aws_partition.current.partition == "aws-us-gov"
   approved_regions = var.approved_regions != null ? var.approved_regions : (local.govcloud ? ["us-gov-west-1", "us-gov-east-1"] : ["us-east-1", "us-west-2"])
+
+  # Minified: the data source's indentation counts toward the
+  # 5,120-character SCP limit.
+  scp_content = jsonencode(jsondecode(data.aws_iam_policy_document.fedramp_boundary_scp.json))
 }
 
 # A warning, not an error: callers that attach the SCP with no exemptions
@@ -180,19 +184,22 @@ data "aws_iam_policy_document" "fedramp_boundary_scp" {
       values   = ["false"]
     }
   }
-  # 6. Deny removing or resyncing an MFA device without MFA (IA-2(1), IA-5)
+  # 6. Deny removing an MFA device without MFA (IA-2(1), IA-5)
   # A stolen password or key must not be able to strip the second factor.
   # BoolIfExists also catches long-term access keys (key absent). Enrolment
   # (CreateVirtualMFADevice, EnableMFADevice) is left out on purpose: first
-  # enrolment happens without MFA. Federated or SSO sessions carry no MFA
-  # flag, so admins who reset a user's MFA go in exempt_principal_arns.
+  # enrolment happens without MFA. ResyncMFADevice is left out too: it needs
+  # two consecutive codes from the device, so it cannot remove a factor, and
+  # denying it would stop a user with a drifted device from recovering.
+  # Federated or SSO sessions are temporary credentials that carry
+  # aws:MultiFactorAuthPresent = false, so they are denied: admins who reset
+  # a user's MFA go in exempt_principal_arns.
   statement {
     sid    = "DenyMfaRemovalWithoutMfa"
     effect = "Deny"
     actions = [
       "iam:DeactivateMFADevice",
-      "iam:DeleteVirtualMFADevice",
-      "iam:ResyncMFADevice"
+      "iam:DeleteVirtualMFADevice"
     ]
     resources = ["*"]
     condition {
@@ -216,12 +223,17 @@ resource "aws_organizations_policy" "fedramp_boundary" {
   name        = var.policy_name
   description = "FedRAMP Comprehensive Authorization Boundary SCP"
   type        = "SERVICE_CONTROL_POLICY"
-  content     = data.aws_iam_policy_document.fedramp_boundary_scp.json
+  content     = local.scp_content
 
   lifecycle {
     precondition {
       condition     = length(local.approved_regions) > 0 && alltrue([for r in local.approved_regions : startswith(r, "us-gov-") == local.govcloud])
       error_message = "approved_regions must be non-empty and belong to the provider's partition (${data.aws_partition.current.partition}): only us-gov-* regions in aws-us-gov, and no us-gov-* regions elsewhere. Otherwise the region lock denies every regional action in the targeted accounts."
+    }
+
+    precondition {
+      condition     = length(local.scp_content) <= 5120
+      error_message = "The SCP is ${length(local.scp_content)} characters; Organizations rejects anything over 5,120. exempt_principal_arns is rendered in three statements: list fewer or shorter ARNs (use wildcards)."
     }
   }
 }

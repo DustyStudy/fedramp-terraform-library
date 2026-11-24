@@ -220,7 +220,7 @@ run "identity_center_mfa_changes_filter" {
   command = plan
 
   assert {
-    condition     = alltrue([for src in ["sso-directory.amazonaws.com", "identitystore.amazonaws.com"] : strcontains(aws_cloudwatch_log_metric_filter.identity_center_mfa_changes.pattern, "$.eventSource=${src})")]) && strcontains(aws_cloudwatch_log_metric_filter.identity_center_mfa_changes.pattern, "$.readOnly=false") && strcontains(aws_cloudwatch_log_metric_filter.identity_center_mfa_changes.pattern, "*Mfa*") && strcontains(aws_cloudwatch_log_metric_filter.identity_center_mfa_changes.pattern, "*WebAuthn*")
+    condition     = alltrue([for src in ["sso-directory.amazonaws.com", "identitystore.amazonaws.com"] : strcontains(aws_cloudwatch_log_metric_filter.identity_center_mfa_changes.pattern, "$.eventSource=${src})")]) && strcontains(aws_cloudwatch_log_metric_filter.identity_center_mfa_changes.pattern, "($.readOnly IS FALSE)") && strcontains(aws_cloudwatch_log_metric_filter.identity_center_mfa_changes.pattern, "*Mfa*") && strcontains(aws_cloudwatch_log_metric_filter.identity_center_mfa_changes.pattern, "*WebAuthn*")
     error_message = "The Identity Center filter must match Identity Store MFA and passkey changes from both sources and ignore reads (IA-2(1))."
   }
 
@@ -247,7 +247,7 @@ run "secret_reads_excludes_expected_readers" {
   }
 
   assert {
-    condition     = strcontains(aws_cloudwatch_log_metric_filter.secret_reads[0].pattern, "GetSecretValue") && strcontains(aws_cloudwatch_log_metric_filter.secret_reads[0].pattern, "GetParametersByPath") && strcontains(aws_cloudwatch_log_metric_filter.secret_reads[0].pattern, "$.userIdentity.arn!=\"arn:aws-us-gov:sts::123456789012:assumed-role/app/*\"") && strcontains(aws_cloudwatch_log_metric_filter.secret_reads[0].pattern, "$.userIdentity.arn!=\"arn:aws-us-gov:iam::123456789012:user/ci\"")
+    condition     = strcontains(aws_cloudwatch_log_metric_filter.secret_reads[0].pattern, "GetSecretValue") && strcontains(aws_cloudwatch_log_metric_filter.secret_reads[0].pattern, "GetParametersByPath") && strcontains(aws_cloudwatch_log_metric_filter.secret_reads[0].pattern, "$.eventName=GetParameterHistory") && strcontains(aws_cloudwatch_log_metric_filter.secret_reads[0].pattern, "$.userIdentity.arn!=\"arn:aws-us-gov:sts::123456789012:assumed-role/app/*\"") && strcontains(aws_cloudwatch_log_metric_filter.secret_reads[0].pattern, "$.userIdentity.arn!=\"arn:aws-us-gov:iam::123456789012:user/ci\"")
     error_message = "The filter must match secret and parameter reads and exclude every expected reader."
   }
 
@@ -265,4 +265,24 @@ run "rejects_quote_in_expected_reader" {
   }
 
   expect_failures = [var.expected_secret_readers]
+}
+
+run "rejects_iam_role_arn_in_expected_reader" {
+  command = plan
+
+  variables {
+    expected_secret_readers = ["arn:aws-us-gov:iam::123456789012:role/app"]
+  }
+
+  expect_failures = [var.expected_secret_readers]
+}
+
+run "rejects_pattern_over_1024_characters" {
+  command = plan
+
+  variables {
+    expected_secret_readers = [for i in range(9) : "arn:aws-us-gov:sts::123456789012:assumed-role/application-role-${i}/*"]
+  }
+
+  expect_failures = [aws_cloudwatch_log_metric_filter.secret_reads]
 }

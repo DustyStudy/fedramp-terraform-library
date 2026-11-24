@@ -166,6 +166,8 @@ def test_queries_cover_the_window_on_the_cloudtrail_log_group(make_fn):
     for call in fn.logs.start_query.call_args_list:
         assert call.kwargs["logGroupName"] == "aws-cloudtrail-logs"
         assert (call.kwargs["startTime"], call.kwargs["endTime"]) == (NOW - 45 * 60, NOW)
+        # Without the explicit limit the full-result check cannot be trusted.
+        assert call.kwargs["limit"] == fn.MAX_ROWS == 10_000
     assert [c.kwargs["queryString"] for c in fn.logs.start_query.call_args_list] == [fn.DENIED_QUERY, fn.READS_QUERY]
 
 
@@ -175,7 +177,33 @@ def test_queries_match_the_logging_monitoring_filters(make_fn):
     assert "/^AccessDenied/" in fn.DENIED_QUERY and "/UnauthorizedOperation$/" in fn.DENIED_QUERY
     assert "not ispresent(errorCode)" in fn.READS_QUERY
     assert '"secretsmanager.amazonaws.com" and eventName = "GetSecretValue"' in fn.READS_QUERY
-    assert 'eventName in ["GetParameter", "GetParameters", "GetParametersByPath"]' in fn.READS_QUERY
+    assert 'eventName in ["GetParameter", "GetParameters", "GetParametersByPath", "GetParameterHistory"]' in fn.READS_QUERY
+
+
+def test_default_window_is_60_minutes(make_fn):
+    fn = make_fn()
+
+    fn.lambda_handler({}, None)
+
+    assert fn.logs.start_query.call_args.kwargs["startTime"] == NOW - 60 * 60
+
+
+def test_epoch_millisecond_timestamps_are_reported_as_utc(make_fn):
+    denied = _denied(THIEF, 240) | {"first_denied": 1_800_000_000_000, "last_denied": "1800000600500.0"}
+    read = _read(THIEF, secretId="prod/db") | {"first_read": 1_800_000_660_000, "last_read": 1_800_000_660_000}
+    fn = make_fn(denied=[denied], reads=[read])
+
+    fn.lambda_handler({}, None)
+
+    assert "(first 2027-01-15 08:00:00.000, last 2027-01-15 08:10:00.500)" in _message(fn)
+    assert "x1 (first 2027-01-15 08:11:00.000, last 2027-01-15 08:11:00.000)" in _message(fn)
+
+
+def test_formatted_and_missing_timestamps_pass_through(make_fn):
+    fn = make_fn()
+
+    assert fn._utc("2026-11-10 10:00:00.000") == "2026-11-10 10:00:00.000"
+    assert fn._utc(None) is None
 
 
 def test_a_running_query_is_polled_until_complete(make_fn):

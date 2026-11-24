@@ -14,6 +14,6 @@ output "guardduty_findings_topic_arn" {
 }
 
 output "cis_alarms_topic_arn" {
-  description = "SNS topic receiving all 14 CIS/Security Hub CloudWatch alarms"
+  description = "SNS topic receiving all CIS/Security Hub CloudWatch alarms plus the MFA and secret-read alarms"
   value       = module.logging_monitoring.cis_alarms_topic_arn
 }
