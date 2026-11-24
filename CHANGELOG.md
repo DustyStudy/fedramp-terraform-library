@@ -13,6 +13,17 @@ FedRAMP expects.
 ## [Unreleased]
 
 ### Added
+- `account-baseline`: opt-in backup immutability for the vault the org backup
+  policy writes to. `backup_vault_lock_min_retention_days` turns on AWS Backup
+  Vault Lock (governance mode, or compliance mode when
+  `backup_vault_lock_changeable_for_days` is set; compliance mode cannot be
+  undone after the grace period). `protect_backup_vault_recovery_points` adds a
+  vault access policy denying recovery-point deletion, lifecycle shortening,
+  vault deletion and policy or lock changes to every principal except
+  `backup_vault_exempt_principal_arns`. Responds to ransomware operators
+  targeting backups first (Amazon Threat Intelligence, 2026-02-20, FortiGate
+  campaign that went after Veeam servers); before this the docs called the
+  backup policy WORM, but nothing stopped deletes. Off by default.
 - `secret-access-burst-detector`: new module. A scheduled Lambda queries the
   CloudTrail log group with Logs Insights and reports any principal that had
   `denied_call_threshold` (default 20) denied API calls and also read a secret

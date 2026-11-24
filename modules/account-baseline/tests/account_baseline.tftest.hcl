@@ -272,3 +272,102 @@ run "ebs_key_deletion_window_is_bounded" {
 
   expect_failures = [var.ebs_kms_key_deletion_window_in_days]
 }
+
+run "backup_vault_is_unlocked_and_unprotected_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(aws_backup_vault_lock_configuration.this) == 0 && length(aws_backup_vault_policy.protect) == 0
+    error_message = "Vault Lock and the deny policy are opt-in: compliance mode cannot be undone."
+  }
+}
+
+run "backup_vault_lock_compliance_mode" {
+  command = plan
+
+  variables {
+    backup_vault_lock_min_retention_days  = 7
+    backup_vault_lock_max_retention_days  = 365
+    backup_vault_lock_changeable_for_days = 3
+  }
+
+  assert {
+    condition = (
+      aws_backup_vault_lock_configuration.this[0].backup_vault_name == "FedRAMPComplianceVault" &&
+      aws_backup_vault_lock_configuration.this[0].min_retention_days == 7 &&
+      aws_backup_vault_lock_configuration.this[0].max_retention_days == 365 &&
+      aws_backup_vault_lock_configuration.this[0].changeable_for_days == 3
+    )
+    error_message = "Vault Lock must lock the module's vault with the requested retention and grace period (CP-9, SI-7)."
+  }
+}
+
+run "backup_vault_lock_rejects_short_grace_period" {
+  command = plan
+
+  variables {
+    backup_vault_lock_min_retention_days  = 7
+    backup_vault_lock_changeable_for_days = 1
+  }
+
+  expect_failures = [var.backup_vault_lock_changeable_for_days]
+}
+
+run "backup_vault_lock_rejects_max_below_min" {
+  command = plan
+
+  variables {
+    backup_vault_lock_min_retention_days = 30
+    backup_vault_lock_max_retention_days = 7
+  }
+
+  expect_failures = [var.backup_vault_lock_max_retention_days]
+}
+
+run "backup_vault_lock_needs_the_vault" {
+  command = plan
+
+  variables {
+    create_backup_vault                  = false
+    backup_vault_lock_min_retention_days = 7
+  }
+
+  expect_failures = [var.backup_vault_lock_min_retention_days]
+}
+
+run "backup_vault_policy_denies_tampering_except_exempt_roles" {
+  command = plan
+
+  variables {
+    protect_backup_vault_recovery_points = true
+    backup_vault_exempt_principal_arns   = ["arn:aws:iam::123456789012:role/terraform-deploy", "arn:aws:iam::123456789012:role/break-glass"]
+  }
+
+  assert {
+    condition = (
+      jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Effect == "Deny" &&
+      contains(jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Action, "backup:DeleteRecoveryPoint") &&
+      contains(jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Action, "backup:UpdateRecoveryPointLifecycle") &&
+      contains(jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Action, "backup:DeleteBackupVaultLockConfiguration")
+    )
+    error_message = "The vault policy must deny deleting recovery points, shortening their lifecycle and removing the lock (CP-9, SI-7)."
+  }
+
+  assert {
+    condition     = length(jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Condition.ArnNotLike["aws:PrincipalArn"]) == 2
+    error_message = "Exempt principals must be excluded by aws:PrincipalArn."
+  }
+}
+
+run "backup_vault_policy_without_exemptions_denies_everyone" {
+  command = plan
+
+  variables {
+    protect_backup_vault_recovery_points = true
+  }
+
+  assert {
+    condition     = !can(jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Condition)
+    error_message = "With no exempt principals the deny must have no condition."
+  }
+}
