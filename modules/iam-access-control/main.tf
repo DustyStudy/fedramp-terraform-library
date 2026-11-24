@@ -232,16 +232,18 @@ data "aws_iam_policy_document" "developer_permission_boundary" {
       "logs:DescribeLogStreams",
       "logs:GetLogEvents",
       "logs:FilterLogEvents",
-      "logs:StartQuery"
+      "logs:StartQuery",
+      "logs:GetQueryResults"
     ]
     resources = ["arn:${local.partition}:logs:*:${local.account_id}:log-group:/aws/lambda/*"]
   }
 
-  # GetQueryResults and StopQuery have no resource type, so IAM only matches "*".
+  # DescribeLogGroups and StopQuery have no resource type in the Service
+  # Authorization Reference, so IAM only matches "*".
   statement {
     sid       = "AllowLogsDiscovery"
     effect    = "Allow"
-    actions   = ["logs:DescribeLogGroups", "logs:GetQueryResults", "logs:StopQuery"]
+    actions   = ["logs:DescribeLogGroups", "logs:StopQuery"]
     resources = ["*"]
   }
 

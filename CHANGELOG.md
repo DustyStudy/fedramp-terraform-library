@@ -12,6 +12,14 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+### Fixed
+- `iam-access-control`: the developer permission boundary scopes
+  `logs:GetQueryResults` to `/aws/lambda/*` log groups instead of `*` (the old
+  comment wrongly said it has no resource type). `logs:DescribeLogGroups` and
+  `logs:StopQuery` stay on `*` because AWS defines no resource type for them.
+  This narrows what principals under the boundary can do: reading the results
+  of queries on non-Lambda log groups is now denied.
+
 ## [4.1.0] - 2026-11-24
 
 New detections and opt-in backup immutability, plus fixes from a
