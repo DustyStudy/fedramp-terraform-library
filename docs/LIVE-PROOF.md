@@ -300,7 +300,10 @@ Things the run showed about deploying, not about the modules:
   `protect_backup_vault_recovery_points` that would leave nobody able to
   change the vault policy. The stack adds the caller's exact role ARN.
 - An organization SCP that protects CloudTrail also blocks deleting a test
-  trail. Teardown of the trail needs an exempt principal.
+  trail, and a second SCP stops anyone in the account from granting an
+  exempt role that permission. Put a test trail's teardown in the
+  guardrails pipeline's hands before creating one, or reuse an existing
+  trail's log group.
 - With `use_fips_endpoint = true` the provider also sends the SSO credential
   request to `portal.sso-fips.<region>`, which does not exist, so these two
   stacks set it to `false`. The modules' own Lambdas still default to FIPS.

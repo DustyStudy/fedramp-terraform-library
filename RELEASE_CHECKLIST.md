@@ -89,6 +89,14 @@ Status:
   is denied by org SCP `p-gww24i22`, so `ftl410-trail` and its log group,
   bucket (with policy and public access block), KMS key and delivery role
   remain until the owner deletes the trail from an exempt principal.
+  Tried 2026-11-24: `security-pipeline` (SCP-exempt, assumable from the
+  management account) has no `cloudtrail:DeleteTrail` in its IAM policy, and
+  SCP `p-ympc9bn9` denies adding one (`iam:PutRolePolicy`). Nothing was
+  changed. Removing the trail needs the owner's guardrails pipeline or a
+  deliberate SCP change. Ongoing cost: a second copy of management events
+  (about $2 per 100,000), CloudWatch Logs ingestion and S3 storage. After the
+  trail is gone: `terraform state rm aws_cloudtrail.this` and
+  `terraform destroy` in `proof/release-4.1.0/burst`.
 - `backup`: up until the expiry check, then destroyed as the exempt admin.
 
 Teardown: `proof/release-4.1.0/README.md`. KMS keys stay pending deletion
