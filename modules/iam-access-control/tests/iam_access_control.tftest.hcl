@@ -198,3 +198,24 @@ run "boundary_denies_removing_itself" {
     error_message = "Removing a permissions boundary must be denied without a condition."
   }
 }
+
+run "boundary_scopes_logs_query_results_to_lambda_log_groups" {
+  command = plan
+
+  assert {
+    condition = toset(flatten([
+      for s in jsondecode(data.aws_iam_policy_document.developer_permission_boundary.json).Statement :
+      s.Resource if s.Effect == "Allow" && contains(flatten([s.Action]), "logs:GetQueryResults")
+    ])) == toset(["arn:aws-us-gov:logs:*:123456789012:log-group:/aws/lambda/*"])
+    error_message = "logs:GetQueryResults takes a log-group resource and must be allowed only on /aws/lambda/* log groups, never on \"*\"."
+  }
+
+  assert {
+    condition = toset(flatten([
+      for s in jsondecode(data.aws_iam_policy_document.developer_permission_boundary.json).Statement :
+      [for a in flatten([s.Action]) : a if startswith(a, "logs:")]
+      if s.Effect == "Allow" && contains(flatten([s.Resource]), "*")
+    ])) == toset(["logs:DescribeLogGroups", "logs:StopQuery"])
+    error_message = "Only logs:DescribeLogGroups and logs:StopQuery (no resource type) may be allowed on \"*\"."
+  }
+}

@@ -53,7 +53,9 @@ module "iam_access_control" {
 - KMS use is limited to `kms:Decrypt` and `kms:GenerateDataKey*` through
   DynamoDB, Lambda, S3, SNS and SQS, on this account's keys; the key policy
   still has to grant it. CloudWatch Logs is limited to writing and reading
-  `/aws/lambda/*` log groups.
+  `/aws/lambda/*` log groups. Logs Insights queries are started and their
+  results read only on those groups; only `logs:DescribeLogGroups` and
+  `logs:StopQuery`, which have no resource type, are allowed on `*`.
 - The boundary denies the actions that expose a resource to another account
   or the public: bucket policies, bucket ACLs and public access blocks,
   Lambda and layer permissions, DynamoDB resource policies, and SQS/SNS
