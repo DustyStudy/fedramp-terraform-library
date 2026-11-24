@@ -18,26 +18,43 @@ external change), N/A.
 | 1 | `terraform fmt -check -recursive` passes | PASS | Local, 2026-11-24, `main@391e3a6` |
 | 2 | TFLint (`--minimum-failure-severity=warning`) passes | PASS | CI run 45475984217 on `main@391e3a6` (not run locally: tflint blocked by local permissions) |
 | 3 | Module README tables match terraform-docs | PASS | CI run 45475984217 |
-| 4 | Every module and root validates; `terraform test` passes at floor and latest versions | PASS | CI run 45475984217 (both legs). Local TF 1.16.6: burst detector 10/10, account-baseline 23/23, logging-monitoring 10/10, org-scp-boundary 17/17; `moderate/logging-monitoring` validates |
+| 4 | Every module and root validates; `terraform test` passes at floor and latest versions | PASS (local); CI pending | Local TF 1.16.6 on the integrated tree, 2026-11-24: `terraform validate` 39/39 directories; `terraform test` 253 runs, 253 passed, 28 directories, 0 failed. Floor leg (TF 1.12.0, AWS 6.0.0) only in CI |
 | 5 | Committed root lock files complete | PASS | CI run 45475984217 |
-| 6 | Lambda unit tests and ruff pass | PASS | Local pytest 432 passed (mocked boto3); CI run 45475984217 |
+| 6 | Lambda unit tests and ruff pass | PASS (local); CI pending | pytest 437 passed (mocked boto3); `ruff check` clean |
 | 7 | SQL role audit passes on PostgreSQL 16 | PASS | CI run 45475984217 |
 | 8 | Security Scan (gitleaks, Checkov, Trivy, zizmor) and CodeQL pass; no open code-scanning, Dependabot or secret-scanning alerts | PASS | Runs 45475985160, 45475984276; alert APIs returned 0 open, 2026-11-24 |
 | 9a | Vault Lock / deny-delete vault policy (`account-baseline`) | PASS (local) | Blocker fixed: protecting the vault now requires an exempt principal and `create_backup_vault`; condition always rendered; all 7 actions, Principal and exemptions asserted; AWS 36,500-day bounds; IAM-ARN check. `terraform test` 27/27 |
 | 9b | Identity Center MFA alarm (`logging-monitoring`) | PASS (local) | **Blocker fixed:** `$.readOnly=false` never matched a JSON boolean; now `IS FALSE`. Lead's own `TestMetricFilter` (us-east-1, read-only, synthetic events): old pattern 0/4, new pattern matches exactly the 2 MFA/passkey writes. Secret-read filter: adds `GetParameterHistory` (verified match), expected-reader wildcard excludes `app/*` but not `app2`; 1,024-char precondition; IAM role ARNs rejected. `terraform test` 12/12 |
 | 9c | MFA-removal SCP (`org-scp-boundary`) | PASS (local) | Was: indented SCP with 4 SSO-style exempt ARNs + IMDSv2 in GovCloud = 5,156-5,272 chars > 5,120 (apply fails). Now submitted minified (`jsonencode(jsondecode(...))`; 6 ARNs = 4,325) with a plan-time `<= 5120` precondition; provider suppresses equivalent-policy diffs, so no perpetual diff. `ResyncMFADevice` removed from the deny. `terraform test` 19/19 |
-| 9d | `secret-access-burst-detector` | FAIL (fixing) | No blockers. Default 30-min window with 15-min schedule reliably correlates only ~10 min; `GetParameterHistory` missing; `StartQuery` limit unset; input validation gaps |
+| 9d | `secret-access-burst-detector` | PASS (local) | 60-min default window (~40 min reliably correlated); `GetParameterHistory`; `StartQuery` limit; both queries fail closed at the row limit (denied query now filtered to the threshold); `logs:GetQueryResults` scoped to the CloudTrail log group; log-group name and `ignored_principal_arns` validated; epoch-ms timestamps formatted; CMK asserts for Lambda env and DLQ. `terraform test` 12/12. Live Logs Insights behaviour not tested |
 | 10 | Docs consistent: module inventory, control mapping, NIST matrix, module READMEs, links | PASS (pending CI) | Fixed 23→24 counts, catalog rows, CP-9/CP-10/IA-2 matrix rows, CRM, org-governance Vault Lock pointer, control-mapping IA/CP-10, `?ref=v4.1.0` pins, output descriptions. Links clean. Test-count text updated after the final run |
-| 11 | Release PR: CHANGELOG `[4.1.0]` section, README `?ref=v4.1.0`, README test summary | OPEN | |
+| 11 | Release PR: CHANGELOG `[4.1.0]` section, README `?ref=v4.1.0`, README test summary | PASS | `release.yml`'s awk extracts the `[4.1.0]` notes; README and `docs/PROOF.md` counts from the 2026-11-24 run |
 | 12 | Full CI green on the release PR head | OPEN | |
 | 13 | Live plan/apply of changed modules in a sandbox account (CONTRIBUTING PR checklist) | BLOCKED | Needs owner-provided sandbox account and approval; all module tests are plan-only with mocked providers |
 | 14 | Tag `v4.1.0` and `release.yml` publishes attested assets | BLOCKED | Needs owner approval to merge to `main` and tag |
 
 ## Decisions
 
-- Version 4.1.0 (minor): every Unreleased change is additive and off by
-  default, except `org-scp-boundary`'s new `DenyMfaRemovalWithoutMfa`
-  statement, which is on for everyone who applies the module (see criterion 9).
+- Version 4.1.0 (minor): every change is additive. Two take effect on
+  upgrade: `org-scp-boundary`'s `DenyMfaRemovalWithoutMfa` statement and the
+  two `logging-monitoring` MFA-change alarms; the rest is opt-in. Upgrade
+  notes in CHANGELOG cover the SCP.
+- `ResyncMFADevice` removed from the MFA-removal deny: resync needs two codes
+  from the device, so it cannot strip a factor, and denying it blocks recovery.
+- `secret-access-burst-detector`: `logs:GetQueryResults` scoped to the
+  CloudTrail log group (AWS lists `log-group*` as its resource type; Codex
+  finding, verified in the Service Authorization Reference). Not live-tested;
+  the module is off by default and a denial fails the run and its Errors alarm.
+- Follow-up, not in this release: `iam-access-control` (main.tf:240-244) also
+  grants `logs:GetQueryResults` on `*` with the same incorrect justification.
+  It predates 4.1.0; scoping it changes a shipped role.
+
+## Reviews
+
+- Fable reviewers: burst detector, Vault Lock, alarms + SCP. Sonnet: docs.
+- Codex (gpt-6-astra, medium, read-only) on `391e3a6..12a76de`: 2 should-fix
+  (GetQueryResults wildcard, denied-query truncation) and 1 nit (CHANGELOG
+  opt-in claim). All three accepted and fixed; none overruled.
 - `account-baseline`: the vault deny policy now requires at least one exempt
   principal, rejected at plan time. A policy no one can change is worse than
   compliance-mode Vault Lock, which at least has a grace period.
@@ -52,4 +69,5 @@ None.
 
 ## Next step
 
-Integrate review findings on `release/4.1.0`, then open the release PR.
+CI on the draft release PR. When green, the owner approves the merge to
+`main`, then tags `v4.1.0` on the merge commit (CONTRIBUTING > Releasing).

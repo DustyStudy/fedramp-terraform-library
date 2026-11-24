@@ -16,7 +16,7 @@ applications read secrets all day), so this joins them per principal:
    GetParametersByPath and GetParameterHistory calls, per principal.
 
 A principal in both results is a finding. No findings, no message. A
-query that fails, or a read result too large to be complete, fails the
+query that fails, or a result too large to be complete, fails the
 invocation: a detective control that swallows the error reports a false
 "nothing found".
 
@@ -56,11 +56,13 @@ MAX_ROWS = 10_000  # the most rows a Logs Insights query returns
 MAX_MESSAGE_BYTES = 250_000  # SNS rejects a message over 256 KB
 
 # Same error codes as logging-monitoring's UnauthorizedApiCalls filter.
-# Sorted so that a result cut at MAX_ROWS drops only the lowest counts.
+# Filtered to the threshold in the query, so every row is a suspect and a
+# result of MAX_ROWS rows means suspects may be missing.
 DENIED_QUERY = (
     "filter errorCode like /^AccessDenied/ or errorCode like /UnauthorizedOperation$/"
     " | stats count(*) as denied, min(@timestamp) as first_denied, max(@timestamp) as last_denied"
     " by userIdentity.arn"
+    f" | filter denied >= {DENIED_CALL_THRESHOLD}"
     " | sort denied desc"
 )
 
@@ -124,9 +126,16 @@ def lambda_handler(event, context):
     end = int(time.time())
     start = end - WINDOW_MINUTES * 60
 
+    denied_rows = _run_query(DENIED_QUERY, start, end)
+    # A full result may be missing a suspect, so fail rather than report clean.
+    if len(denied_rows) >= MAX_ROWS:
+        raise RuntimeError(
+            f"The denied-call query returned {len(denied_rows)} rows, the Logs Insights maximum, so it may be "
+            "incomplete. Shorten query_window_minutes or raise denied_call_threshold."
+        )
     suspects = {
         row["userIdentity.arn"]: row
-        for row in _run_query(DENIED_QUERY, start, end)
+        for row in denied_rows
         if row.get("userIdentity.arn")
         and int(row["denied"]) >= DENIED_CALL_THRESHOLD
         and not _ignored(row["userIdentity.arn"])

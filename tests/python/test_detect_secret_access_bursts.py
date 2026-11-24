@@ -250,11 +250,28 @@ def test_a_failed_read_query_fails_the_run(make_fn):
 
 
 def test_a_full_read_result_fails_instead_of_guessing(make_fn):
-    fn = make_fn(denied=[_denied(THIEF, 240)], reads=[_read(OTHER, secretId="prod/db")])
-    fn.MAX_ROWS = 1
+    fn = make_fn(
+        denied=[_denied(THIEF, 240)], reads=[_read(OTHER, secretId="prod/db"), _read(OTHER, secretId="prod/api")]
+    )
+    fn.MAX_ROWS = 2
 
-    with pytest.raises(RuntimeError, match="incomplete"):
+    with pytest.raises(RuntimeError, match="secret-read query .* incomplete"):
         fn.lambda_handler({}, None)
+
+
+def test_a_full_denied_result_fails_instead_of_dropping_suspects(make_fn):
+    fn = make_fn(denied=[_denied(OTHER, 300), _denied(THIEF, 240)], reads=[_read(THIEF, secretId="prod/db")])
+    fn.MAX_ROWS = 2
+
+    with pytest.raises(RuntimeError, match="denied-call query .* denied_call_threshold"):
+        fn.lambda_handler({}, None)
+    fn.sns.publish.assert_not_called()
+    assert fn.logs.start_query.call_count == 1
+
+
+def test_denied_query_returns_only_principals_over_the_threshold(make_fn):
+    # The full-result check is only meaningful if every row is a suspect.
+    assert "| filter denied >= 7 |" in make_fn(DENIED_CALL_THRESHOLD="7").DENIED_QUERY
 
 
 def test_failed_publish_fails_the_run(make_fn):

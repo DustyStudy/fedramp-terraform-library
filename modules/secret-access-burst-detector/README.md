@@ -68,9 +68,9 @@ Things to know:
   (`arn:<partition>:sts::<account>:assumed-role/<role>/<session>`), so
   denials spread over many sessions of one role are counted per session.
   Records without `userIdentity.arn` are not correlated.
-- A failed query, a failed publish, or a secret-read result at the Logs
-  Insights row limit (10,000, so possibly incomplete) fails the
-  invocation instead of counting as clean. Failed runs are not retried;
+- A failed query, a failed publish, or a denied-call or secret-read
+  result at the Logs Insights row limit (10,000, so possibly incomplete)
+  fails the invocation instead of counting as clean. Failed runs are not retried;
   they go to the dead-letter queue, and two CloudWatch alarms (Lambda
   `Errors`, queue depth) notify the same SNS topic. The module sets the
   topic's policy so those alarms can publish; attaching your own
@@ -135,8 +135,7 @@ alerts. Enable it per account, after a tuning period:
 
 | Action | Resource | Why |
 |---|---|---|
-| `logs:StartQuery` | The CloudTrail log group only | Both ARN forms (with and without the trailing `:*`) so the grant matches however IAM presents the log group |
-| `logs:GetQueryResults` | `*` | The action has no resource type to scope to: it takes a query ID. The role can only start queries on the CloudTrail log group, so those are the only IDs it has |
+| `logs:StartQuery`, `logs:GetQueryResults` | The CloudTrail log group only | Both ARN forms (with and without the trailing `:*`) so the grant matches however IAM presents the log group |
 | `logs:CreateLogStream`, `logs:PutLogEvents` | Its own log group | Terraform creates the group, so the role cannot create log groups |
 | `sns:Publish` | The module's topic | Findings |
 | `sqs:SendMessage` | The module's dead-letter queue | Failed runs |

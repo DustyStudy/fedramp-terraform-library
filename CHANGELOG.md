@@ -15,9 +15,11 @@ FedRAMP expects.
 ## [4.1.0] - 2026-11-24
 
 New detections and opt-in backup immutability, plus fixes from a
-release-gate review of everything merged since 4.0.0 (#91 to #95). Every
-addition is opt-in, except the `org-scp-boundary` MFA statement, which takes
-effect for every account the SCP is attached to.
+release-gate review of everything merged since 4.0.0 (#91 to #95). Two
+additions take effect on upgrade: the `org-scp-boundary` MFA statement, for
+every account the SCP is attached to, and the two `logging-monitoring` MFA-change
+alarms (new metric filters and alarms on the existing topic). Everything else
+is opt-in.
 
 ### Upgrade notes
 - **Changes who is denied:** `org-scp-boundary` now denies
@@ -88,6 +90,10 @@ effect for every account the SCP is attached to.
   checked against the AWS limits (36,500 days), and turning on the vault
   policy without `create_backup_vault` now fails at plan instead of doing
   nothing.
+- `secret-access-burst-detector`: `logs:GetQueryResults` is scoped to the
+  CloudTrail log group instead of `*` (AWS lists `log-group` as its resource
+  type), and a denied-call result at the Logs Insights row limit now fails
+  the run instead of silently dropping suspects.
 - Docs: module counts (24), catalog descriptions, the NIST matrix CP-9, CP-10
   and IA-2 rows, the customer responsibility matrix and the control mapping
   now reflect the 4.1.0 controls.

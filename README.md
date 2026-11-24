@@ -16,9 +16,10 @@ Choose a [deployment track](#why-three-separate-tracks), [find a control impleme
 - **Approach:** 24 shared modules, with root configurations for the Moderate and High
   tracks, plus a map from the 10 FedRAMP 20x KSI clusters to those modules.
   FIPS endpoints and partition-aware ARNs for GovCloud.
-- **Verification:** 138 `terraform test` runs assert the rendered IAM and
-  bucket policies at plan time, and 288 pytest tests cover the module
-  Lambdas. Checkov, Trivy and Gitleaks run on every PR. See
+- **Verification:** 253 `terraform test` runs assert the rendered IAM and
+  bucket policies at plan time, and 437 pytest tests cover the module
+  Lambdas (local run of the 4.1.0 release branch, 2026-11-24; CI reruns both
+  on every PR). Checkov, Trivy and Gitleaks run on every PR. See
   [what is verified, and what is not](docs/PROOF.md).
 - **Live use:** sixteen modules were deployed to a real 4-account
   organization and checked with real API calls, including alarm,

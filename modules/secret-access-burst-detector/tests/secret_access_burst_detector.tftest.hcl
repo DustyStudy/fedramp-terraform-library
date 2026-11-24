@@ -98,6 +98,16 @@ run "role_can_query_only_the_cloudtrail_log_group" {
   }
 
   assert {
+    condition = [
+      for s in jsondecode(aws_iam_role_policy.lambda_exec.policy).Statement : s.Resource if contains(s.Action, "logs:GetQueryResults")
+      ] == [[
+        "arn:${data.aws_partition.current.partition}:logs:us-east-1:123456789012:log-group:aws-cloudtrail-logs",
+        "arn:${data.aws_partition.current.partition}:logs:us-east-1:123456789012:log-group:aws-cloudtrail-logs:*",
+    ]]
+    error_message = "logs:GetQueryResults must be scoped to the CloudTrail log group, not \"*\"."
+  }
+
+  assert {
     condition     = data.aws_partition.current.partition == "aws-us-gov"
     error_message = "These runs plan against a non-commercial partition, so an ARN hardcoded to the commercial one fails the assertions above and below."
   }
@@ -105,7 +115,7 @@ run "role_can_query_only_the_cloudtrail_log_group" {
   assert {
     condition = toset(flatten([
       for s in jsondecode(aws_iam_role_policy.lambda_exec.policy).Statement : s.Action if s.Resource == "*"
-    ])) == toset(["logs:GetQueryResults", "xray:PutTraceSegments", "xray:PutTelemetryRecords"])
+    ])) == toset(["xray:PutTraceSegments", "xray:PutTelemetryRecords"])
     error_message = "Only actions with no resource type to scope to may use Resource \"*\"."
   }
 

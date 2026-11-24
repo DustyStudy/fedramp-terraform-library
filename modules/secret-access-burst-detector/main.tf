@@ -160,17 +160,8 @@ resource "aws_iam_role_policy" "lambda_exec" {
         # Queries only the CloudTrail log group. Both ARN forms, since IAM
         # matches a log group with or without the trailing ":*".
         Effect   = "Allow"
-        Action   = ["logs:StartQuery"]
+        Action   = ["logs:StartQuery", "logs:GetQueryResults"]
         Resource = [local.cloudtrail_log_group_arn, "${local.cloudtrail_log_group_arn}:*"]
-      },
-      {
-        # checkov:skip=CKV_AWS_355: logs:GetQueryResults has no resource
-        # type to scope to; it takes a query ID in the request. The role can
-        # start queries only on the CloudTrail log group, so those are the
-        # results it has IDs for.
-        Effect   = "Allow"
-        Action   = ["logs:GetQueryResults"]
-        Resource = "*"
       },
       {
         Effect   = "Allow"
