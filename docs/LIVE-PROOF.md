@@ -304,6 +304,9 @@ Things the run showed about deploying, not about the modules:
   exempt role that permission. Put a test trail's teardown in the
   guardrails pipeline's hands before creating one, or reuse an existing
   trail's log group.
+  This run removed it by exempting the one sandbox admin role in
+  `ProtectAuditLogging` for 11 seconds and restoring the SCP
+  byte for byte, with the owner's approval.
 - With `use_fips_endpoint = true` the provider also sends the SSO credential
   request to `portal.sso-fips.<region>`, which does not exist, so these two
   stacks set it to `false`. The modules' own Lambdas still default to FIPS.
