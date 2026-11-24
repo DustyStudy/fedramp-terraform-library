@@ -227,3 +227,62 @@ resource "aws_iam_role_policy_attachment" "backup" {
   role       = aws_iam_role.backup[0].name
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/${each.key}"
 }
+
+# --- Backup vault immutability (CP-9, CP-10, SI-7) ---
+# Ransomware operators destroy backups before encrypting: Amazon's 2026-02-20
+# report on the FortiGate campaign describes the actor going after Veeam backup
+# servers as a precursor to ransomware. The org backup policy only sets a
+# schedule and retention; without a lock, anyone with backup:DeleteRecoveryPoint
+# in the account can delete every recovery point. Both controls below are
+# opt-in because they can stop legitimate deletes and, in compliance mode,
+# cannot be undone.
+
+resource "aws_backup_vault_lock_configuration" "this" {
+  count = var.create_backup_vault && var.backup_vault_lock_min_retention_days != null ? 1 : 0
+
+  backup_vault_name   = aws_backup_vault.this[0].name
+  min_retention_days  = var.backup_vault_lock_min_retention_days
+  max_retention_days  = var.backup_vault_lock_max_retention_days
+  changeable_for_days = var.backup_vault_lock_changeable_for_days
+}
+
+data "aws_iam_policy_document" "backup_vault_protect" {
+  count = var.create_backup_vault && var.protect_backup_vault_recovery_points ? 1 : 0
+
+  statement {
+    sid    = "DenyRecoveryPointAndVaultTampering"
+    effect = "Deny"
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+    actions = [
+      "backup:DeleteRecoveryPoint",
+      "backup:UpdateRecoveryPointLifecycle",
+      "backup:DeleteBackupVault",
+      "backup:PutBackupVaultAccessPolicy",
+      "backup:DeleteBackupVaultAccessPolicy",
+      "backup:PutBackupVaultLockConfiguration",
+      "backup:DeleteBackupVaultLockConfiguration",
+    ]
+    # A vault access policy is scoped to its own vault, so "*" here means this
+    # vault and its recovery points only.
+    resources = ["*"]
+
+    dynamic "condition" {
+      for_each = length(var.backup_vault_exempt_principal_arns) > 0 ? [1] : []
+      content {
+        test     = "ArnNotLike"
+        variable = "aws:PrincipalArn"
+        values   = var.backup_vault_exempt_principal_arns
+      }
+    }
+  }
+}
+
+resource "aws_backup_vault_policy" "protect" {
+  count = var.create_backup_vault && var.protect_backup_vault_recovery_points ? 1 : 0
+
+  backup_vault_name = aws_backup_vault.this[0].name
+  policy            = data.aws_iam_policy_document.backup_vault_protect[0].json
+}

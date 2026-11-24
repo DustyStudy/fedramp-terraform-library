@@ -66,6 +66,22 @@ module "account_baseline" {
   the org backup jobs fail. The vault is created in the provider's region
   only: deploy the module once per region in `backup_regions`, and in the
   `copy_destination_region` if you set one.
+- **Backup immutability (opt-in).** Without these, anyone in the account with
+  `backup:DeleteRecoveryPoint` can delete every recovery point, which is what
+  ransomware operators do before they encrypt.
+  `backup_vault_lock_min_retention_days` turns on AWS Backup Vault Lock.
+  Leave `backup_vault_lock_changeable_for_days` null for governance mode
+  (removable by principals allowed `backup:DeleteBackupVaultLockConfiguration`),
+  or set it (minimum 3) for compliance mode: after that many days the lock can
+  never be changed or removed, by anyone. Keep the minimum retention at or
+  below `org-governance`'s `backup_retention_days`, or the org backup jobs fail.
+  `protect_backup_vault_recovery_points` adds a vault access policy that
+  denies deleting recovery points, shortening their lifecycle, deleting the
+  vault and changing its policy or lock to every principal, root included,
+  except `backup_vault_exempt_principal_arns`; list your Terraform role there
+  first or the next apply cannot update the policy. AWS documents a vault
+  policy denying `DeleteRecoveryPoint` as an example; confirm lifecycle expiry
+  still removes recovery points in a test account before relying on it.
 - **Password defaults follow NIST SP 800-63B-4**, which FedRAMP's IA-5
   guidance points to: a 15-character minimum (8 is allowed only when the
   password is always used with MFA), no composition rules, and no periodic
@@ -84,7 +100,11 @@ module "account_baseline" {
 
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
+| backup_vault_exempt_principal_arns | IAM role or user ARNs (wildcards allowed) that protect_backup_vault_recovery_points does not deny: your Terraform deployment role and a break-glass role. Empty denies every principal. | `list(string)` | `[]` | no |
 | backup_vault_kms_key_arn | Optional existing CMK ARN for the backup vault. Empty creates a dedicated CMK with rotation enabled. | `string` | `""` | no |
+| backup_vault_lock_changeable_for_days | Vault Lock grace period in days (at least 3). Set it for compliance mode: once the grace period ends, the lock and its retention can never be changed or removed, even by the root user or AWS. Null is governance mode, which principals with backup:DeleteBackupVaultLockConfiguration can remove. | `number` | `null` | no |
+| backup_vault_lock_max_retention_days | Optional Vault Lock maximum retention. Backup jobs whose retention is longer fail. Null sets no maximum. Ignored unless backup_vault_lock_min_retention_days is set. | `number` | `null` | no |
+| backup_vault_lock_min_retention_days | Turn on AWS Backup Vault Lock for the vault: recovery points cannot be deleted before this many days, by anyone. Null (the default) leaves the vault unlocked. Must not exceed org-governance's backup_retention_days, or backup jobs into the vault fail. | `number` | `null` | no |
 | backup_vault_name | Backup vault name; must match org-governance's backup_vault_name. | `string` | `"FedRAMPComplianceVault"` | no |
 | create_backup_service_role | Create service-role/AWSBackupDefaultServiceRole, the role modules/org-governance's backup policy runs jobs as. AWS creates it only the first time someone opens the Backup console, so new accounts lack it and every scheduled job fails. The role is global: when you deploy this module in more than one region, set this true in exactly one of them. Set false if the role already exists in the account. | `bool` | `true` | no |
 | create_backup_vault | Create the AWS Backup vault that modules/org-governance's backup policy targets. Deploy once per region listed in that policy's backup_regions. | `bool` | `true` | no |
@@ -96,6 +116,7 @@ module "account_baseline" {
 | max_password_age | Days before a password must be changed; 0 disables expiry. NIST SP 800-63B-4 says verifiers SHALL NOT require periodic changes, so 0 is the default. Set a value only if your own policy requires rotation. | `number` | `0` | no |
 | minimum_password_length | Minimum password length. NIST SP 800-63B-4: at least 15 for single-factor passwords; 8 only when always used with MFA. FedRAMP assigns no separate value. | `number` | `15` | no |
 | password_reuse_prevention | Number of previous passwords remembered to prevent reuse (organization-defined; FedRAMP assigns no value). | `number` | `24` | no |
+| protect_backup_vault_recovery_points | Attach a vault access policy that denies deleting recovery points, shortening their lifecycle, deleting the vault, and changing the vault's access policy or lock, to every principal except backup_vault_exempt_principal_arns. Off by default. The deny applies to the root user too, so list your Terraform deployment role before turning it on. | `bool` | `false` | no |
 | require_lowercase_characters | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
 | require_numbers | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |
 | require_symbols | Opt-in composition rule. NIST SP 800-63B-4 says verifiers SHALL NOT impose composition rules. | `bool` | `false` | no |

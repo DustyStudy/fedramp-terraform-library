@@ -119,3 +119,58 @@ variable "create_backup_service_role" {
   type        = bool
   default     = true
 }
+
+variable "backup_vault_lock_min_retention_days" {
+  description = "Turn on AWS Backup Vault Lock for the vault: recovery points cannot be deleted before this many days, by anyone. Null (the default) leaves the vault unlocked. Must not exceed org-governance's backup_retention_days, or backup jobs into the vault fail."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.backup_vault_lock_min_retention_days == null || try(var.backup_vault_lock_min_retention_days >= 1 && floor(var.backup_vault_lock_min_retention_days) == var.backup_vault_lock_min_retention_days, false)
+    error_message = "backup_vault_lock_min_retention_days must be a whole number of at least 1."
+  }
+
+  validation {
+    condition     = var.backup_vault_lock_min_retention_days == null || var.create_backup_vault
+    error_message = "backup_vault_lock_min_retention_days needs create_backup_vault = true; this module only locks the vault it creates."
+  }
+}
+
+variable "backup_vault_lock_max_retention_days" {
+  description = "Optional Vault Lock maximum retention. Backup jobs whose retention is longer fail. Null sets no maximum. Ignored unless backup_vault_lock_min_retention_days is set."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.backup_vault_lock_max_retention_days == null || var.backup_vault_lock_min_retention_days == null || try(var.backup_vault_lock_max_retention_days >= var.backup_vault_lock_min_retention_days, false)
+    error_message = "backup_vault_lock_max_retention_days must be at least backup_vault_lock_min_retention_days."
+  }
+}
+
+variable "backup_vault_lock_changeable_for_days" {
+  description = "Vault Lock grace period in days (at least 3). Set it for compliance mode: once the grace period ends, the lock and its retention can never be changed or removed, even by the root user or AWS. Null is governance mode, which principals with backup:DeleteBackupVaultLockConfiguration can remove."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.backup_vault_lock_changeable_for_days == null || try(var.backup_vault_lock_changeable_for_days >= 3 && floor(var.backup_vault_lock_changeable_for_days) == var.backup_vault_lock_changeable_for_days, false)
+    error_message = "backup_vault_lock_changeable_for_days must be a whole number of at least 3 (the AWS minimum)."
+  }
+
+  validation {
+    condition     = var.backup_vault_lock_changeable_for_days == null || var.backup_vault_lock_min_retention_days != null
+    error_message = "backup_vault_lock_changeable_for_days needs backup_vault_lock_min_retention_days; there is no lock to make permanent."
+  }
+}
+
+variable "protect_backup_vault_recovery_points" {
+  description = "Attach a vault access policy that denies deleting recovery points, shortening their lifecycle, deleting the vault, and changing the vault's access policy or lock, to every principal except backup_vault_exempt_principal_arns. Off by default. The deny applies to the root user too, so list your Terraform deployment role before turning it on."
+  type        = bool
+  default     = false
+}
+
+variable "backup_vault_exempt_principal_arns" {
+  description = "IAM role or user ARNs (wildcards allowed) that protect_backup_vault_recovery_points does not deny: your Terraform deployment role and a break-glass role. Empty denies every principal."
+  type        = list(string)
+  default     = []
+}
