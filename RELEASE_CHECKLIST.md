@@ -29,7 +29,7 @@ external change), N/A.
 | 9d | `secret-access-burst-detector` | PASS (local) | 60-min default window (~40 min reliably correlated); `GetParameterHistory`; `StartQuery` limit; both queries fail closed at the row limit (denied query now filtered to the threshold); `logs:GetQueryResults` scoped to the CloudTrail log group; log-group name and `ignored_principal_arns` validated; epoch-ms timestamps formatted; CMK asserts for Lambda env and DLQ. `terraform test` 12/12. Live Logs Insights behaviour not tested |
 | 10 | Docs consistent: module inventory, control mapping, NIST matrix, module READMEs, links | PASS (pending CI) | Fixed 23→24 counts, catalog rows, CP-9/CP-10/IA-2 matrix rows, CRM, org-governance Vault Lock pointer, control-mapping IA/CP-10, `?ref=v4.1.0` pins, output descriptions. Links clean. Test-count text updated after the final run |
 | 11 | Release PR: CHANGELOG `[4.1.0]` section, README `?ref=v4.1.0`, README test summary | PASS | `release.yml`'s awk extracts the `[4.1.0]` notes; README and `docs/PROOF.md` counts from the 2026-11-24 run |
-| 12 | Full CI green on the release PR head | OPEN | |
+| 12 | Full CI green on the release PR head | OPEN | Draft PR DustyStudy/fedramp-terraform-library#96 (head `release/4.1.0`); CI started on push, result not yet recorded |
 | 13 | Live plan/apply of changed modules in a sandbox account (CONTRIBUTING PR checklist) | BLOCKED | Needs owner-provided sandbox account and approval; all module tests are plan-only with mocked providers |
 | 14 | Tag `v4.1.0` and `release.yml` publishes attested assets | BLOCKED | Needs owner approval to merge to `main` and tag |
 
