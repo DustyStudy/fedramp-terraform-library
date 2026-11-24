@@ -1,6 +1,11 @@
 variable "cloudtrail_log_group_name" {
   type        = string
   description = "Name of the CloudWatch Logs log group receiving CloudTrail management events (the log_group_name output of modules/org-cloudtrail). It must be in the account and region this module is deployed in."
+
+  validation {
+    condition     = can(regex("^[.\\-_/#A-Za-z0-9]+$", var.cloudtrail_log_group_name))
+    error_message = "cloudtrail_log_group_name must be a log group name (letters, digits and . - _ / #), not an ARN or a pattern."
+  }
 }
 
 variable "enabled" {
@@ -27,14 +32,21 @@ variable "notification_email" {
 
 variable "schedule_expression" {
   type        = string
-  description = "EventBridge schedule expression controlling how often the detector runs. Keep the interval shorter than query_window_minutes so no events fall between runs."
+  description = "EventBridge schedule expression controlling how often the detector runs. Keep the interval well below query_window_minutes: see that variable for the span that is reliably covered."
   default     = "rate(15 minutes)"
 }
 
 variable "query_window_minutes" {
   type        = number
-  description = "How far back each run looks. Denied calls and secret reads are correlated inside this window. A longer window scans more log data per run."
-  default     = 30
+  description = <<-EOT
+    How far back each run looks. Denied calls and secret reads are
+    correlated inside this window. A burst and a read are reliably seen
+    together only when they are no further apart than this window minus
+    the schedule interval minus the CloudTrail delivery delay (about 5
+    minutes): 40 minutes with the defaults. Keep it larger than the
+    schedule interval. A longer window scans more log data per run.
+  EOT
+  default     = 60
 
   validation {
     condition     = var.query_window_minutes >= 1 && floor(var.query_window_minutes) == var.query_window_minutes
@@ -63,6 +75,11 @@ variable "ignored_principal_arns" {
     principal whose credential is stolen is not detected.
   EOT
   default     = []
+
+  validation {
+    condition     = alltrue([for arn in var.ignored_principal_arns : startswith(arn, "arn:")])
+    error_message = "Each ignored_principal_arns entry must start with \"arn:\". A bare \"*\" would ignore every principal and turn the detector off."
+  }
 }
 
 variable "code_signing_config_arn" {

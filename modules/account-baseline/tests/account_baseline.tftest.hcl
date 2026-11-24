@@ -335,6 +335,30 @@ run "backup_vault_lock_needs_the_vault" {
   expect_failures = [var.backup_vault_lock_min_retention_days]
 }
 
+run "backup_vault_lock_governance_mode" {
+  command = plan
+
+  variables {
+    backup_vault_lock_min_retention_days = 7
+  }
+
+  assert {
+    condition     = aws_backup_vault_lock_configuration.this[0].min_retention_days == 7 && aws_backup_vault_lock_configuration.this[0].changeable_for_days == null
+    error_message = "Without a grace period the lock must stay in governance mode (no changeable_for_days)."
+  }
+}
+
+run "backup_vault_lock_rejects_retention_above_aws_maximum" {
+  command = plan
+
+  variables {
+    backup_vault_lock_min_retention_days = 7
+    backup_vault_lock_max_retention_days = 36501
+  }
+
+  expect_failures = [var.backup_vault_lock_max_retention_days]
+}
+
 run "backup_vault_policy_denies_tampering_except_exempt_roles" {
   command = plan
 
@@ -345,29 +369,57 @@ run "backup_vault_policy_denies_tampering_except_exempt_roles" {
 
   assert {
     condition = (
+      length(jsondecode(aws_backup_vault_policy.protect[0].policy).Statement) == 1 &&
       jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Effect == "Deny" &&
-      contains(jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Action, "backup:DeleteRecoveryPoint") &&
-      contains(jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Action, "backup:UpdateRecoveryPointLifecycle") &&
-      contains(jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Action, "backup:DeleteBackupVaultLockConfiguration")
+      jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Principal.AWS == "*" &&
+      toset(jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Action) == toset([
+        "backup:DeleteRecoveryPoint",
+        "backup:UpdateRecoveryPointLifecycle",
+        "backup:DeleteBackupVault",
+        "backup:PutBackupVaultAccessPolicy",
+        "backup:DeleteBackupVaultAccessPolicy",
+        "backup:PutBackupVaultLockConfiguration",
+        "backup:DeleteBackupVaultLockConfiguration",
+      ])
     )
-    error_message = "The vault policy must deny deleting recovery points, shortening their lifecycle and removing the lock (CP-9, SI-7)."
+    error_message = "The vault policy must deny every principal deleting recovery points, shortening their lifecycle, deleting the vault and changing its policy or lock (CP-9, SI-7)."
   }
 
   assert {
-    condition     = length(jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Condition.ArnNotLike["aws:PrincipalArn"]) == 2
-    error_message = "Exempt principals must be excluded by aws:PrincipalArn."
+    condition     = toset(jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Condition.ArnNotLike["aws:PrincipalArn"]) == toset(var.backup_vault_exempt_principal_arns)
+    error_message = "Exactly the exempt principals must be excluded by aws:PrincipalArn."
   }
 }
 
-run "backup_vault_policy_without_exemptions_denies_everyone" {
+run "backup_vault_policy_without_exemptions_is_rejected" {
   command = plan
 
   variables {
     protect_backup_vault_recovery_points = true
   }
 
-  assert {
-    condition     = !can(jsondecode(aws_backup_vault_policy.protect[0].policy).Statement[0].Condition)
-    error_message = "With no exempt principals the deny must have no condition."
+  expect_failures = [var.protect_backup_vault_recovery_points]
+}
+
+run "backup_vault_policy_needs_the_vault" {
+  command = plan
+
+  variables {
+    create_backup_vault                  = false
+    protect_backup_vault_recovery_points = true
+    backup_vault_exempt_principal_arns   = ["arn:aws:iam::123456789012:role/terraform-deploy"]
   }
+
+  expect_failures = [var.protect_backup_vault_recovery_points]
+}
+
+run "backup_vault_exempt_principals_must_be_iam_arns" {
+  command = plan
+
+  variables {
+    protect_backup_vault_recovery_points = true
+    backup_vault_exempt_principal_arns   = ["terraform-deploy"]
+  }
+
+  expect_failures = [var.backup_vault_exempt_principal_arns]
 }

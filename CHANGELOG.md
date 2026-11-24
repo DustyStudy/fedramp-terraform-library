@@ -12,6 +12,25 @@ FedRAMP expects.
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-11-24
+
+New detections and opt-in backup immutability, plus fixes from a
+release-gate review of everything merged since 4.0.0 (#91 to #95). Two
+additions take effect on upgrade: the `org-scp-boundary` MFA statement, for
+every account the SCP is attached to, and the two `logging-monitoring` MFA-change
+alarms (new metric filters and alarms on the existing topic). Everything else
+is opt-in.
+
+### Upgrade notes
+- **Changes who is denied:** `org-scp-boundary` now denies
+  `iam:DeactivateMFADevice` and `iam:DeleteVirtualMFADevice` to any session
+  without MFA. Identity Center and other federated sessions carry
+  `aws:MultiFactorAuthPresent = false`, so helpdesk or automation roles that
+  reset users' MFA must be in `exempt_principal_arns` before you apply.
+- **In-place SCP update:** the SCP is now submitted as minified JSON. The
+  provider treats it as the same policy, but the new statement updates it in
+  place once.
+
 ### Added
 - `account-baseline`: opt-in backup immutability for the vault the org backup
   policy writes to. `backup_vault_lock_min_retention_days` turns on AWS Backup
@@ -20,15 +39,20 @@ FedRAMP expects.
   undone after the grace period). `protect_backup_vault_recovery_points` adds a
   vault access policy denying recovery-point deletion, lifecycle shortening,
   vault deletion and policy or lock changes to every principal except
-  `backup_vault_exempt_principal_arns`. Responds to ransomware operators
+  `backup_vault_exempt_principal_arns`, which must name at least one IAM
+  principal (otherwise nobody, root included, could ever change or remove the
+  policy). Responds to ransomware operators
   targeting backups first (Amazon Threat Intelligence, 2026-02-20, FortiGate
   campaign that went after Veeam servers); before this the docs called the
   backup policy WORM, but nothing stopped deletes. Off by default.
 - `secret-access-burst-detector`: new module. A scheduled Lambda queries the
   CloudTrail log group with Logs Insights and reports any principal that had
   `denied_call_threshold` (default 20) denied API calls and also read a secret
-  or parameter (Secrets Manager `GetSecretValue`, SSM `GetParameter*`) within
-  `query_window_minutes` (default 30). This is the pattern in the AntiFox-linked
+  or parameter (Secrets Manager `GetSecretValue`, SSM `GetParameter`,
+  `GetParameters`, `GetParametersByPath`, `GetParameterHistory`) within
+  `query_window_minutes` (default 60, run every 15 minutes, so a burst and a
+  read up to about 40 minutes apart are reliably correlated; a finding can be
+  reported up to four times). This is the pattern in the AntiFox-linked
   intrusions reported 2026-11-10, where one read succeeded among hundreds of
   denied calls; the existing `logging-monitoring` alarms do not correlate per
   principal. Detective only, and off by default (`enabled = false` leaves the
@@ -37,14 +61,42 @@ FedRAMP expects.
 - `logging-monitoring`: `cis-mfa-device-changes` alarm on IAM MFA device
   create, enable, deactivate, delete and resync. New optional
   `expected_secret_readers` input: when non-empty, `cis-unexpected-secret-reads`
-  alarms on Secrets Manager `GetSecretValue` and SSM `GetParameter*` by any
-  other principal. The root `moderate/logging-monitoring` passes it through.
+  alarms on Secrets Manager `GetSecretValue` and SSM `GetParameter`,
+  `GetParameters`, `GetParametersByPath` and `GetParameterHistory` by any
+  other principal. Entries use the assumed-role session form
+  (`arn:<partition>:sts::<account>:assumed-role/<RoleName>/*`); IAM role ARNs
+  never match a session and are rejected, and a pattern over CloudWatch's
+  1,024-character limit fails at plan. The root `moderate/logging-monitoring`
+  passes it through.
   `cis-identity-center-mfa-changes` alarms on non-read `sso-directory` and
   `identitystore` events whose name contains `Mfa` or `WebAuthn` (the event names
   are not documented, so the match is by pattern).
-- `org-scp-boundary`: `DenyMfaRemovalWithoutMfa` statement denies deactivating,
-  deleting or resyncing an MFA device without MFA. Exempt principals in
+- `org-scp-boundary`: `DenyMfaRemovalWithoutMfa` statement denies deactivating
+  or deleting an MFA device without MFA. Exempt principals in
   `exempt_principal_arns` skip it; roles that reset users' MFA must be listed.
+  `ResyncMFADevice` stays allowed: it needs two codes from the device, and
+  users with a drifted device need it to recover.
+
+### Fixed
+- `logging-monitoring`: the Identity Center MFA alarm could never fire. Its
+  filter compared the JSON boolean `readOnly` with `=false`, which matches
+  nothing; it now uses `IS FALSE` (checked with CloudWatch `TestMetricFilter`).
+  Caught before release.
+- `org-scp-boundary`: the SCP is submitted minified, with a plan-time check
+  against the 5,120-character limit. The indented JSON with the new statement
+  went over the limit with four Identity Center exempt ARNs in GovCloud and
+  `require_imdsv2`, failing the apply; about eight now fit.
+- `account-baseline`: Vault Lock retention and grace-period inputs are
+  checked against the AWS limits (36,500 days), and turning on the vault
+  policy without `create_backup_vault` now fails at plan instead of doing
+  nothing.
+- `secret-access-burst-detector`: `logs:GetQueryResults` is scoped to the
+  CloudTrail log group instead of `*` (AWS lists `log-group` as its resource
+  type), and a denied-call result at the Logs Insights row limit now fails
+  the run instead of silently dropping suspects.
+- Docs: module counts (24), catalog descriptions, the NIST matrix CP-9, CP-10
+  and IA-2 rows, the customer responsibility matrix and the control mapping
+  now reflect the 4.1.0 controls.
 
 ## [4.0.0] - 2026-11-17
 

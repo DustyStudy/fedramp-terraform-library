@@ -39,8 +39,9 @@ module "org_governance" {
 - The centralized backup policy sets schedule and retention only — it
   does **not** enable AWS Backup Vault Lock (immutable/WORM backups).
   Vault Lock is a separate, deliberate step (it has an irreversible
-  compliance mode) that this module doesn't take on your behalf; add it
-  explicitly if your SSP requires immutable backups.
+  compliance mode) that this module doesn't take on your behalf; turn it on with
+  `account-baseline`'s `backup_vault_lock_min_retention_days` and
+  `protect_backup_vault_recovery_points` if your SSP requires immutable backups.
 - The backup policy's `iam_role_arn` uses `$account` — a literal,
   un-braced AWS Backup Organizations Policy substitution placeholder that
   resolves per-account at evaluation time. That's intentional; it's not a

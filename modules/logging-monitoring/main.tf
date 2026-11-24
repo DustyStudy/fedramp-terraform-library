@@ -1,9 +1,12 @@
 # CloudWatch Logs metric filters and alarms for the 14 detections in the CIS
 # AWS Foundations Benchmark (mirrored as AWS Security Hub CSPM controls
-# CloudWatch.1 through CloudWatch.14). Filter patterns are copied verbatim
-# from AWS's own documentation -- Security Hub CSPM's checks fail if the
-# exact prescribed pattern isn't used, so these are not paraphrased or
+# CloudWatch.1 through CloudWatch.14). Those 14 filter patterns are copied
+# verbatim from AWS's own documentation -- Security Hub CSPM's checks fail if
+# the exact prescribed pattern isn't used, so these are not paraphrased or
 # simplified.
+#
+# Beyond the CIS 14: two MFA-change alarms (IAM and IAM Identity Center) and
+# an optional unexpected-secret-read alarm (only with expected_secret_readers).
 #
 # Deploy against the CloudWatch Logs log group created by
 # modules/org-cloudtrail (or any log group receiving CloudTrail management
@@ -515,12 +518,24 @@ resource "aws_cloudwatch_metric_alarm" "mfa_device_changes" {
 
 # --- UnexpectedSecretReads ---
 # Only created when expected_secret_readers is set: alerting on every read
-# of every secret is too noisy to be useful.
+# of every secret is too noisy to be useful. GetParameterHistory is included
+# because it returns SecureString values when called with decryption.
+locals {
+  secret_reads_pattern = "{(($.eventSource=secretsmanager.amazonaws.com && $.eventName=GetSecretValue) || ($.eventSource=ssm.amazonaws.com && ($.eventName=GetParameter || $.eventName=GetParameters || $.eventName=GetParametersByPath || $.eventName=GetParameterHistory)))${join("", [for p in var.expected_secret_readers : " && $.userIdentity.arn!=\"${p}\""])}}"
+}
+
 resource "aws_cloudwatch_log_metric_filter" "secret_reads" {
   count          = length(var.expected_secret_readers) > 0 ? 1 : 0
   name           = "UnexpectedSecretReads"
   log_group_name = var.cloudtrail_log_group_name
-  pattern        = "{(($.eventSource=secretsmanager.amazonaws.com && $.eventName=GetSecretValue) || ($.eventSource=ssm.amazonaws.com && ($.eventName=GetParameter || $.eventName=GetParameters || $.eventName=GetParametersByPath)))${join("", [for p in var.expected_secret_readers : " && $.userIdentity.arn!=\"${p}\""])}}"
+  pattern        = local.secret_reads_pattern
+
+  lifecycle {
+    precondition {
+      condition     = length(local.secret_reads_pattern) <= 1024
+      error_message = "The secret-read filter pattern is ${length(local.secret_reads_pattern)} characters; CloudWatch Logs allows at most 1024. Shorten expected_secret_readers: use fewer entries or cover several principals with one * wildcard."
+    }
+  }
 
   metric_transformation {
     name          = "UnexpectedSecretReads"
@@ -549,11 +564,12 @@ resource "aws_cloudwatch_metric_alarm" "secret_reads" {
 # MFA devices and passkeys of Identity Center directory users are managed
 # through the Identity Store event group (sso-directory and identitystore
 # sources). AWS documents the sources but not the event names, so this matches
-# any change (readOnly=false) whose name contains Mfa or WebAuthn.
+# any change whose name contains Mfa or WebAuthn. readOnly is a JSON boolean:
+# "IS FALSE" matches it, "=false" never does.
 resource "aws_cloudwatch_log_metric_filter" "identity_center_mfa_changes" {
   name           = "IdentityCenterMfaChanges"
   log_group_name = var.cloudtrail_log_group_name
-  pattern        = "{(($.eventSource=sso-directory.amazonaws.com) || ($.eventSource=identitystore.amazonaws.com)) && ($.readOnly=false) && (($.eventName=\"*Mfa*\") || ($.eventName=\"*WebAuthn*\"))}"
+  pattern        = "{(($.eventSource=sso-directory.amazonaws.com) || ($.eventSource=identitystore.amazonaws.com)) && ($.readOnly IS FALSE) && (($.eventName=\"*Mfa*\") || ($.eventName=\"*WebAuthn*\"))}"
 
   metric_transformation {
     name          = "IdentityCenterMfaChanges"

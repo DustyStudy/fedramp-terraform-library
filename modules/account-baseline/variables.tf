@@ -126,8 +126,8 @@ variable "backup_vault_lock_min_retention_days" {
   default     = null
 
   validation {
-    condition     = var.backup_vault_lock_min_retention_days == null || try(var.backup_vault_lock_min_retention_days >= 1 && floor(var.backup_vault_lock_min_retention_days) == var.backup_vault_lock_min_retention_days, false)
-    error_message = "backup_vault_lock_min_retention_days must be a whole number of at least 1."
+    condition     = var.backup_vault_lock_min_retention_days == null || try(var.backup_vault_lock_min_retention_days >= 1 && var.backup_vault_lock_min_retention_days <= 36500 && floor(var.backup_vault_lock_min_retention_days) == var.backup_vault_lock_min_retention_days, false)
+    error_message = "backup_vault_lock_min_retention_days must be a whole number between 1 and 36500 (the AWS maximum)."
   }
 
   validation {
@@ -142,19 +142,24 @@ variable "backup_vault_lock_max_retention_days" {
   default     = null
 
   validation {
+    condition     = var.backup_vault_lock_max_retention_days == null || try(var.backup_vault_lock_max_retention_days >= 1 && var.backup_vault_lock_max_retention_days <= 36500 && floor(var.backup_vault_lock_max_retention_days) == var.backup_vault_lock_max_retention_days, false)
+    error_message = "backup_vault_lock_max_retention_days must be a whole number between 1 and 36500 (the AWS maximum)."
+  }
+
+  validation {
     condition     = var.backup_vault_lock_max_retention_days == null || var.backup_vault_lock_min_retention_days == null || try(var.backup_vault_lock_max_retention_days >= var.backup_vault_lock_min_retention_days, false)
     error_message = "backup_vault_lock_max_retention_days must be at least backup_vault_lock_min_retention_days."
   }
 }
 
 variable "backup_vault_lock_changeable_for_days" {
-  description = "Vault Lock grace period in days (at least 3). Set it for compliance mode: once the grace period ends, the lock and its retention can never be changed or removed, even by the root user or AWS. Null is governance mode, which principals with backup:DeleteBackupVaultLockConfiguration can remove."
+  description = "Vault Lock grace period in days (3 to 36500). Set it for compliance mode: once the grace period ends, the lock and its retention can never be changed or removed, even by the root user or AWS. Null is governance mode, which principals with backup:DeleteBackupVaultLockConfiguration can remove."
   type        = number
   default     = null
 
   validation {
-    condition     = var.backup_vault_lock_changeable_for_days == null || try(var.backup_vault_lock_changeable_for_days >= 3 && floor(var.backup_vault_lock_changeable_for_days) == var.backup_vault_lock_changeable_for_days, false)
-    error_message = "backup_vault_lock_changeable_for_days must be a whole number of at least 3 (the AWS minimum)."
+    condition     = var.backup_vault_lock_changeable_for_days == null || try(var.backup_vault_lock_changeable_for_days >= 3 && var.backup_vault_lock_changeable_for_days <= 36500 && floor(var.backup_vault_lock_changeable_for_days) == var.backup_vault_lock_changeable_for_days, false)
+    error_message = "backup_vault_lock_changeable_for_days must be a whole number between 3 (the AWS minimum) and 36500 (the AWS maximum)."
   }
 
   validation {
@@ -164,13 +169,28 @@ variable "backup_vault_lock_changeable_for_days" {
 }
 
 variable "protect_backup_vault_recovery_points" {
-  description = "Attach a vault access policy that denies deleting recovery points, shortening their lifecycle, deleting the vault, and changing the vault's access policy or lock, to every principal except backup_vault_exempt_principal_arns. Off by default. The deny applies to the root user too, so list your Terraform deployment role before turning it on."
+  description = "Attach a vault access policy that denies deleting recovery points, shortening their lifecycle, deleting the vault, and changing the vault's access policy or lock, to every principal except backup_vault_exempt_principal_arns. Off by default. The deny applies to the root user too, so it needs create_backup_vault = true and at least one entry in backup_vault_exempt_principal_arns: with none, nobody could change, remove or destroy the policy again."
   type        = bool
   default     = false
+
+  validation {
+    condition     = !var.protect_backup_vault_recovery_points || var.create_backup_vault
+    error_message = "protect_backup_vault_recovery_points needs create_backup_vault = true; this module only protects the vault it creates."
+  }
+
+  validation {
+    condition     = !var.protect_backup_vault_recovery_points || length(var.backup_vault_exempt_principal_arns) > 0
+    error_message = "protect_backup_vault_recovery_points needs at least one backup_vault_exempt_principal_arns entry (your Terraform deployment role); without one nobody, root included, can change, remove or destroy the vault policy."
+  }
 }
 
 variable "backup_vault_exempt_principal_arns" {
-  description = "IAM role or user ARNs (wildcards allowed) that protect_backup_vault_recovery_points does not deny: your Terraform deployment role and a break-glass role. Empty denies every principal."
+  description = "IAM role or user ARNs (wildcards allowed) that protect_backup_vault_recovery_points does not deny: your Terraform deployment role and a break-glass role. At least one is required when protect_backup_vault_recovery_points is true."
   type        = list(string)
   default     = []
+
+  validation {
+    condition     = alltrue([for a in var.backup_vault_exempt_principal_arns : can(regex("^arn:[^:]+:iam::", a))])
+    error_message = "Each backup_vault_exempt_principal_arns entry must be an IAM ARN (arn:<partition>:iam::...)."
+  }
 }

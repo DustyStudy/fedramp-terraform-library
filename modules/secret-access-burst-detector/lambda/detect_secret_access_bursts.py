@@ -12,11 +12,11 @@ applications read secrets all day), so this joins them per principal:
    (errorCode AccessDenied* or *UnauthorizedOperation) counted per
    userIdentity.arn.
 2. Only when a principal reaches DENIED_CALL_THRESHOLD: successful
-   secretsmanager GetSecretValue and ssm GetParameter, GetParameters and
-   GetParametersByPath calls, per principal.
+   secretsmanager GetSecretValue and ssm GetParameter, GetParameters,
+   GetParametersByPath and GetParameterHistory calls, per principal.
 
 A principal in both results is a finding. No findings, no message. A
-query that fails, or a read result too large to be complete, fails the
+query that fails, or a result too large to be complete, fails the
 invocation: a detective control that swallows the error reports a false
 "nothing found".
 
@@ -25,7 +25,7 @@ Records without userIdentity.arn (AWS service events) are not correlated.
 Env vars:
   SNS_TOPIC_ARN             - where findings are sent
   CLOUDTRAIL_LOG_GROUP_NAME - log group receiving CloudTrail events
-  QUERY_WINDOW_MINUTES      - how far back each run looks (default 30)
+  QUERY_WINDOW_MINUTES      - how far back each run looks (default 60)
   DENIED_CALL_THRESHOLD     - denied calls that make a principal a
                               suspect (default 20)
   IGNORED_PRINCIPAL_ARNS    - JSON list of userIdentity.arn values to
@@ -37,6 +37,7 @@ import json
 import logging
 import os
 import time
+from datetime import UTC, datetime
 
 import boto3
 
@@ -48,18 +49,20 @@ sns = boto3.client("sns")
 
 SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN")
 LOG_GROUP_NAME = os.environ.get("CLOUDTRAIL_LOG_GROUP_NAME")
-WINDOW_MINUTES = int(os.environ.get("QUERY_WINDOW_MINUTES", "30"))
+WINDOW_MINUTES = int(os.environ.get("QUERY_WINDOW_MINUTES", "60"))
 DENIED_CALL_THRESHOLD = int(os.environ.get("DENIED_CALL_THRESHOLD", "20"))
 IGNORED_PRINCIPAL_ARNS = json.loads(os.environ.get("IGNORED_PRINCIPAL_ARNS", "[]"))
 MAX_ROWS = 10_000  # the most rows a Logs Insights query returns
 MAX_MESSAGE_BYTES = 250_000  # SNS rejects a message over 256 KB
 
 # Same error codes as logging-monitoring's UnauthorizedApiCalls filter.
-# Sorted so that a result cut at MAX_ROWS drops only the lowest counts.
+# Filtered to the threshold in the query, so every row is a suspect and a
+# result of MAX_ROWS rows means suspects may be missing.
 DENIED_QUERY = (
     "filter errorCode like /^AccessDenied/ or errorCode like /UnauthorizedOperation$/"
     " | stats count(*) as denied, min(@timestamp) as first_denied, max(@timestamp) as last_denied"
     " by userIdentity.arn"
+    f" | filter denied >= {DENIED_CALL_THRESHOLD}"
     " | sort denied desc"
 )
 
@@ -69,7 +72,7 @@ READS_QUERY = (
     "filter not ispresent(errorCode) and ("
     '(eventSource = "secretsmanager.amazonaws.com" and eventName = "GetSecretValue")'
     ' or (eventSource = "ssm.amazonaws.com"'
-    ' and eventName in ["GetParameter", "GetParameters", "GetParametersByPath"]))'
+    ' and eventName in ["GetParameter", "GetParameters", "GetParametersByPath", "GetParameterHistory"]))'
     # One always-present target field: grouping on fields some events lack
     # could leave those reads out of the result.
     ' | fields coalesce(requestParameters.secretId, requestParameters.name, requestParameters.path, "-") as target'
@@ -82,7 +85,11 @@ def _run_query(query, start, end):
     """Rows of a finished query as dicts. Errors propagate, and a query
     that ends any way but Complete raises: an unread log must not look
     like a quiet one. The Lambda timeout bounds the wait."""
-    query_id = logs.start_query(logGroupName=LOG_GROUP_NAME, startTime=start, endTime=end, queryString=query)["queryId"]
+    # limit: without it a query may return fewer rows than MAX_ROWS, and the
+    # truncation check in lambda_handler would never fire.
+    query_id = logs.start_query(
+        logGroupName=LOG_GROUP_NAME, startTime=start, endTime=end, queryString=query, limit=MAX_ROWS
+    )["queryId"]
     while True:
         response = logs.get_query_results(queryId=query_id)
         status = response["status"]
@@ -91,6 +98,16 @@ def _run_query(query, start, end):
         if status not in ("Scheduled", "Running"):
             raise RuntimeError(f"Logs Insights query {query_id} ended with status {status}")
         time.sleep(1)
+
+
+def _utc(value):
+    """A stats min/max of @timestamp as UTC text. Logs Insights may return
+    epoch milliseconds or an already formatted time; the latter (and a
+    missing value) is passed through."""
+    try:
+        return datetime.fromtimestamp(float(value) / 1000, UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    except (TypeError, ValueError, OverflowError, OSError):
+        return value
 
 
 def _ignored(arn):
@@ -109,9 +126,16 @@ def lambda_handler(event, context):
     end = int(time.time())
     start = end - WINDOW_MINUTES * 60
 
+    denied_rows = _run_query(DENIED_QUERY, start, end)
+    # A full result may be missing a suspect, so fail rather than report clean.
+    if len(denied_rows) >= MAX_ROWS:
+        raise RuntimeError(
+            f"The denied-call query returned {len(denied_rows)} rows, the Logs Insights maximum, so it may be "
+            "incomplete. Shorten query_window_minutes or raise denied_call_threshold."
+        )
     suspects = {
         row["userIdentity.arn"]: row
-        for row in _run_query(DENIED_QUERY, start, end)
+        for row in denied_rows
         if row.get("userIdentity.arn")
         and int(row["denied"]) >= DENIED_CALL_THRESHOLD
         and not _ignored(row["userIdentity.arn"])
@@ -142,14 +166,14 @@ def lambda_handler(event, context):
         for arn, denied, principal_reads in findings:
             lines.append(f"\nPrincipal: {arn}")
             lines.append(
-                f"  Denied calls: {denied['denied']} (first {denied.get('first_denied')}, last {denied.get('last_denied')})"
+                f"  Denied calls: {denied['denied']} (first {_utc(denied.get('first_denied'))}, last {_utc(denied.get('last_denied'))})"
             )
             lines.append("  Successful reads:")
             for row in principal_reads:
                 target = row.get("target") if row.get("target") not in (None, "", "-") else "(name not in the event)"
                 lines.append(
                     f"  - {row.get('eventName')} {target} x{row.get('reads')} "
-                    f"(first {row.get('first_read')}, last {row.get('last_read')})"
+                    f"(first {_utc(row.get('first_read'))}, last {_utc(row.get('last_read'))})"
                 )
         _notify(
             subject=f"Secret read after denied-call burst: {len(findings)} principal(s)",

@@ -269,13 +269,12 @@ data "aws_iam_policy_document" "backup_vault_protect" {
     # vault and its recovery points only.
     resources = ["*"]
 
-    dynamic "condition" {
-      for_each = length(var.backup_vault_exempt_principal_arns) > 0 ? [1] : []
-      content {
-        test     = "ArnNotLike"
-        variable = "aws:PrincipalArn"
-        values   = var.backup_vault_exempt_principal_arns
-      }
+    # Never optional: without it the deny on changing the policy locks everyone
+    # out. Variable validation requires at least one exempt principal.
+    condition {
+      test     = "ArnNotLike"
+      variable = "aws:PrincipalArn"
+      values   = var.backup_vault_exempt_principal_arns
     }
   }
 }

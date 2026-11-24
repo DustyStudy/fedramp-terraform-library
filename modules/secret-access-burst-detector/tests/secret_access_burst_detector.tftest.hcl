@@ -66,7 +66,7 @@ run "off_by_default" {
   }
 }
 
-run "enabled_runs_every_15_minutes_over_30" {
+run "enabled_runs_every_15_minutes_over_60" {
   command = plan
 
   variables {
@@ -79,8 +79,8 @@ run "enabled_runs_every_15_minutes_over_30" {
   }
 
   assert {
-    condition     = aws_lambda_function.detect.environment[0].variables.QUERY_WINDOW_MINUTES == "30" && aws_lambda_function.detect.environment[0].variables.DENIED_CALL_THRESHOLD == "20"
-    error_message = "Defaults are a 30-minute window and 20 denied calls."
+    condition     = aws_lambda_function.detect.environment[0].variables.QUERY_WINDOW_MINUTES == "60" && aws_lambda_function.detect.environment[0].variables.DENIED_CALL_THRESHOLD == "20"
+    error_message = "Defaults are a 60-minute window and 20 denied calls."
   }
 }
 
@@ -98,6 +98,16 @@ run "role_can_query_only_the_cloudtrail_log_group" {
   }
 
   assert {
+    condition = [
+      for s in jsondecode(aws_iam_role_policy.lambda_exec.policy).Statement : s.Resource if contains(s.Action, "logs:GetQueryResults")
+      ] == [[
+        "arn:${data.aws_partition.current.partition}:logs:us-east-1:123456789012:log-group:aws-cloudtrail-logs",
+        "arn:${data.aws_partition.current.partition}:logs:us-east-1:123456789012:log-group:aws-cloudtrail-logs:*",
+    ]]
+    error_message = "logs:GetQueryResults must be scoped to the CloudTrail log group, not \"*\"."
+  }
+
+  assert {
     condition     = data.aws_partition.current.partition == "aws-us-gov"
     error_message = "These runs plan against a non-commercial partition, so an ARN hardcoded to the commercial one fails the assertions above and below."
   }
@@ -105,7 +115,7 @@ run "role_can_query_only_the_cloudtrail_log_group" {
   assert {
     condition = toset(flatten([
       for s in jsondecode(aws_iam_role_policy.lambda_exec.policy).Statement : s.Action if s.Resource == "*"
-    ])) == toset(["logs:GetQueryResults", "xray:PutTraceSegments", "xray:PutTelemetryRecords"])
+    ])) == toset(["xray:PutTraceSegments", "xray:PutTelemetryRecords"])
     error_message = "Only actions with no resource type to scope to may use Resource \"*\"."
   }
 
@@ -138,7 +148,7 @@ run "settings_reach_the_lambda" {
   command = plan
 
   variables {
-    query_window_minutes   = 60
+    query_window_minutes   = 90
     denied_call_threshold  = 50
     ignored_principal_arns = ["arn:*:sts::123456789012:assumed-role/scanner/*"]
   }
@@ -149,7 +159,7 @@ run "settings_reach_the_lambda" {
   }
 
   assert {
-    condition     = aws_lambda_function.detect.environment[0].variables.QUERY_WINDOW_MINUTES == "60" && aws_lambda_function.detect.environment[0].variables.DENIED_CALL_THRESHOLD == "50"
+    condition     = aws_lambda_function.detect.environment[0].variables.QUERY_WINDOW_MINUTES == "90" && aws_lambda_function.detect.environment[0].variables.DENIED_CALL_THRESHOLD == "50"
     error_message = "query_window_minutes and denied_call_threshold must reach the Lambda."
   }
 
@@ -180,6 +190,16 @@ run "logs_and_topic_use_a_rotating_cmk" {
   assert {
     condition     = aws_cloudwatch_log_group.detect.kms_key_id == aws_kms_key.log_encryption.arn && aws_cloudwatch_log_group.detect.retention_in_days == 365
     error_message = "Lambda logs must be encrypted with the module CMK and kept for a year (AU-11)."
+  }
+
+  assert {
+    condition     = aws_lambda_function.detect.kms_key_arn == aws_kms_key.log_encryption.arn
+    error_message = "The Lambda environment variables must be encrypted with the module CMK."
+  }
+
+  assert {
+    condition     = aws_sqs_queue.dlq.kms_master_key_id == aws_kms_key.log_encryption.arn
+    error_message = "The dead-letter queue must be encrypted with the module CMK, not aws/sqs."
   }
 
   assert {
@@ -253,4 +273,24 @@ run "zero_reserved_concurrency_is_rejected" {
   }
 
   expect_failures = [var.reserved_concurrent_executions]
+}
+
+run "log_group_arn_or_pattern_is_rejected" {
+  command = plan
+
+  variables {
+    cloudtrail_log_group_name = "aws-cloudtrail-logs:*"
+  }
+
+  expect_failures = [var.cloudtrail_log_group_name]
+}
+
+run "ignore_everything_pattern_is_rejected" {
+  command = plan
+
+  variables {
+    ignored_principal_arns = ["*"]
+  }
+
+  expect_failures = [var.ignored_principal_arns]
 }
