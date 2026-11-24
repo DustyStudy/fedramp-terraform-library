@@ -7,11 +7,13 @@ Reusable Terraform modules that implement common controls and security
 patterns for organizations pursuing **FedRAMP Moderate**, **FedRAMP
 High**, or **FedRAMP 20x** authorization.
 
+Choose a [deployment track](#why-three-separate-tracks), [find a control implementation](docs/control-mapping.md), or [deploy a worked example](examples/README.md).
+
 **At a glance**
 
 - **Problem:** FedRAMP control implementations get rebuilt by hand for every
   system, and a plan that passes `terraform validate` can still grant too much.
-- **Approach:** 23 hardened modules composed into Moderate and High
+- **Approach:** 24 shared modules, with root configurations for the Moderate and High
   tracks, plus a map from the 10 FedRAMP 20x KSI clusters to those modules.
   FIPS endpoints and partition-aware ARNs for GovCloud.
 - **Verification:** 138 `terraform test` runs assert the rendered IAM and
@@ -93,35 +95,37 @@ tests/                pytest and SQL fixtures for the module Lambdas
 
 ## Modules
 
+The catalog includes 24 shared modules under `modules/` and three components under `moderate/`.
+
 | Module | What it does |
 |---|---|
-| `org-cloudtrail` | Organization-wide CloudTrail, KMS-encrypted, with a dedicated access-log bucket |
-| `config-conformance-pack` | AWS Config recorder + encrypted delivery channel, optional FedRAMP Moderate conformance pack |
-| `guardduty-org` | GuardDuty with organization auto-enrollment, findings routed to SNS |
-| `security-hub-org` | Security Hub with default standards + organization auto-enrollment |
-| `iam-password-policy` | Account-wide IAM password policy |
-| `identity-center-access-auditor` | Daily detective audit of IAM Identity Center: admin or wildcard permission sets, direct-to-user assignments, unused permission sets |
-| `trust-policy-auditor` | Daily detective audit of who can reach in from outside: OIDC trust without a pinned `sub`/`aud`, cross-account and `"*"` trust, open Lambda function policies, RAM shares outside the organization. Single account or organization-wide |
-| `rds-access-auditor` | Daily detective audit of RDS and Aurora access: public exposure with open security groups, unmanaged master passwords, IAM auth off, TLS not enforced, IAM `rds-db:connect` as any user or the master user. Ships a read-only SQL audit of PostgreSQL role grants |
-| `secret-access-burst-detector` | Scheduled detective check of CloudTrail logs: reports a principal with a burst of denied API calls and a successful secret or parameter read in the same window. Off by default |
-| `account-baseline` | EBS default encryption, S3 account public access block, optional default-VPC/SG lockdown |
-| `ecr-hardened` | KMS-encrypted ECR repository, tag immutability, scan-on-push |
-| `ecs-fargate-hardened` | ECS cluster with Container Insights and KMS-encrypted logging (incl. ECS Exec) |
-| `eks-hardened` | EKS cluster with KMS secrets envelope encryption, full control-plane logging, private-only endpoint |
-| `fips-vpc-endpoints` | VPC interface endpoints: see the module's `variables.tf` for which services genuinely have FIPS-suffixed endpoints and which don't |
-| `network-perimeter-vpc` | 3-tier VPC with KMS-encrypted Flow Logs and a locked-down default security group |
-| `org-governance` | Workload-perimeter SCP, AI-services opt-out policy, centralized backup policy |
-| `org-scp-boundary` | Region-lock SCP, security-service protection, insecure-transport deny, optional IMDSv2 enforcement |
-| `rds-postgres-hardened` | Multi-AZ PostgreSQL with enforced TLS, KMS encryption, managed master password |
-| `stale-account-detector` | Reports unused IAM credentials, roles, Identity Center access and idle accounts across the organization |
-| `ssm-patching-hardened` | Automated patch baseline, weekly maintenance window, KMS-encrypted patch logs |
-| `waf-hardened` | Regional WAFv2 with AWS-managed rule groups, rate limiting, KMS-encrypted logging |
-| `iam-access-control` | Access Analyzer, permission boundary, enforced-MFA group, root usage alerting |
-| `logging-monitoring` | 14 CIS/Security Hub CloudWatch metric-filter + alarm pairs |
-| `moderate/network-boundary/vpc-flow-logs` | VPC Flow Logs to encrypted S3, for an existing VPC |
-| `moderate/network-boundary/default-security-group-lockdown` | Strips all rules from an existing VPC's default security group (native resource; no custom scripting needed, unlike CFN) |
-| `moderate/data-protection/kms-cmk-baseline` | Reusable customer-managed KMS key for encryption at rest |
-| `incident-notifications` | Aggregated SNS topic for high-severity GuardDuty/Security Hub findings |
+| [`org-cloudtrail`](modules/org-cloudtrail/README.md) | Organization-wide CloudTrail, KMS-encrypted, with a dedicated access-log bucket |
+| [`config-conformance-pack`](modules/config-conformance-pack/README.md) | AWS Config recorder + encrypted delivery channel, optional FedRAMP Moderate conformance pack |
+| [`guardduty-org`](modules/guardduty-org/README.md) | GuardDuty with organization auto-enrollment, findings routed to SNS |
+| [`security-hub-org`](modules/security-hub-org/README.md) | Security Hub with default standards + organization auto-enrollment |
+| [`iam-password-policy`](modules/iam-password-policy/README.md) | Account-wide IAM password policy |
+| [`identity-center-access-auditor`](modules/identity-center-access-auditor/README.md) | Daily detective audit of IAM Identity Center: admin or wildcard permission sets, direct-to-user assignments, unused permission sets |
+| [`trust-policy-auditor`](modules/trust-policy-auditor/README.md) | Daily detective audit of who can reach in from outside: OIDC trust without a pinned `sub`/`aud`, cross-account and `"*"` trust, open Lambda function policies, RAM shares outside the organization. Single account or organization-wide |
+| [`rds-access-auditor`](modules/rds-access-auditor/README.md) | Daily detective audit of RDS and Aurora access: public exposure with open security groups, unmanaged master passwords, IAM auth off, TLS not enforced, IAM `rds-db:connect` as any user or the master user. Ships a read-only SQL audit of PostgreSQL role grants |
+| [`secret-access-burst-detector`](modules/secret-access-burst-detector/README.md) | Scheduled detective check of CloudTrail logs: reports a principal with a burst of denied API calls and a successful secret or parameter read in the same window. Off by default |
+| [`account-baseline`](modules/account-baseline/README.md) | EBS default encryption, S3 account public access block, optional default-VPC/SG lockdown |
+| [`ecr-hardened`](modules/ecr-hardened/README.md) | KMS-encrypted ECR repository, tag immutability, scan-on-push |
+| [`ecs-fargate-hardened`](modules/ecs-fargate-hardened/README.md) | ECS cluster with Container Insights and KMS-encrypted logging (incl. ECS Exec) |
+| [`eks-hardened`](modules/eks-hardened/README.md) | EKS cluster with KMS secrets envelope encryption, full control-plane logging, private-only endpoint |
+| [`fips-vpc-endpoints`](modules/fips-vpc-endpoints/README.md) | VPC interface endpoints: see the module's `variables.tf` for which services genuinely have FIPS-suffixed endpoints and which don't |
+| [`network-perimeter-vpc`](modules/network-perimeter-vpc/README.md) | 3-tier VPC with KMS-encrypted Flow Logs and a locked-down default security group |
+| [`org-governance`](modules/org-governance/README.md) | Workload-perimeter SCP, AI-services opt-out policy, centralized backup policy |
+| [`org-scp-boundary`](modules/org-scp-boundary/README.md) | Region-lock SCP, security-service protection, insecure-transport deny, optional IMDSv2 enforcement |
+| [`rds-postgres-hardened`](modules/rds-postgres-hardened/README.md) | Multi-AZ PostgreSQL with enforced TLS, KMS encryption, managed master password |
+| [`stale-account-detector`](modules/stale-account-detector/README.md) | Reports unused IAM credentials, roles, Identity Center access and idle accounts across the organization |
+| [`ssm-patching-hardened`](modules/ssm-patching-hardened/README.md) | Automated patch baseline, weekly maintenance window, KMS-encrypted patch logs |
+| [`waf-hardened`](modules/waf-hardened/README.md) | Regional WAFv2 with AWS-managed rule groups, rate limiting, KMS-encrypted logging |
+| [`iam-access-control`](modules/iam-access-control/README.md) | Access Analyzer, permission boundary, enforced-MFA group, root usage alerting |
+| [`logging-monitoring`](modules/logging-monitoring/README.md) | 14 CIS/Security Hub CloudWatch metric-filter + alarm pairs |
+| [`moderate/network-boundary/vpc-flow-logs`](moderate/network-boundary/vpc-flow-logs/README.md) | VPC Flow Logs to encrypted S3, for an existing VPC |
+| [`moderate/network-boundary/default-security-group-lockdown`](moderate/network-boundary/default-security-group-lockdown/README.md) | Strips all rules from an existing VPC's default security group (native resource; no custom scripting needed, unlike CFN) |
+| [`moderate/data-protection/kms-cmk-baseline`](moderate/data-protection/kms-cmk-baseline/README.md) | Reusable customer-managed KMS key for encryption at rest |
+| [`incident-notifications`](modules/incident-notifications/README.md) | Aggregated SNS topic for high-severity GuardDuty/Security Hub findings |
 
 See `docs/control-mapping.md` for the NIST 800-53/20x KSI mapping per
 module, and `docs/NIST-800-53-REV5-MATRIX.md` for the same information
